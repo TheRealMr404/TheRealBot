@@ -1474,7 +1474,7 @@ EOF
 
     randomdbpass=$(openssl rand -base64 10 | tr -dc 'a-zA-Z0-9' | cut -c1-8)
     randomdbdb=$(openssl rand -base64 10 | tr -dc 'a-zA-Z' | cut -c1-8)
-    dbname="mirzaprobot"
+    dbname="VpnBot"
 
     # ╭──────────────────────── PHASE: DB ──────────────────────────╮
     if ! phase_done DB; then
@@ -1938,7 +1938,7 @@ function migrate_to_pro() {
     fi
     echo -e "\033[32mDatabase connection successful.\033[0m"
     OLD_DB="mirzabot"
-    NEW_DB="mirzaprobot"
+    NEW_DB="VpnBot"
     if ! mysql -u "$ROOT_USER" -p"$ROOT_PASS" -e "USE $OLD_DB;" &>/dev/null; then
         echo -e "\033[31m[ERROR] Database '$OLD_DB' not found!\033[0m"
         exit 1
