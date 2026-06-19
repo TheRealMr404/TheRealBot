@@ -1,331 +1,233 @@
-// استفاده از Lodash برای debouncing
-// استفاده از SweetAlert2 برای نمایش پیام‌ها
-// استفاده از AOS برای انیمیشن‌ها
+var _lb = (function () {
+    var el   = document.getElementById('load-bar');
+    var t    = null;
+    var live = false;
 
-// Initialize AOS (Animate On Scroll)
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize animations
-    if (typeof AOS !== 'undefined') {
-        AOS.init({
-            duration: 800,
-            easing: 'ease-in-out',
-            once: true
+    function setW(pct, dur) {
+        if (!el) return;
+        el.style.setProperty('--lb-w',  pct + '%');
+        el.style.setProperty('--lb-dur', dur + 'ms');
+        el.className = 'lb-go';
+    }
+
+    function start() {
+        if (!el) return;
+        live = true;
+        clearTimeout(t);
+        el.className = '';
+        el.style.setProperty('--lb-w',  '0%');
+        el.style.setProperty('--lb-dur','0ms');
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                setW(30, 300);
+                t = setTimeout(function () { setW(60, 900);  }, 350);
+                t = setTimeout(function () { setW(80, 1200); }, 1300);
+                t = setTimeout(function () { setW(90, 800);  }, 2600);
+            });
         });
     }
-    
-    // Initialize form validation
-    initializeFormValidation();
-    
-    // Initialize password strength checker
-    initializePasswordStrength();
-    
-    // Initialize auto-hide alerts
-    initializeAlerts();
-    
-    // Initialize security features
-    initializeSecurity();
+
+    function done() {
+        if (!el || !live) return;
+        live = false;
+        clearTimeout(t);
+        el.className = 'lb-end';
+        t = setTimeout(function () {
+            el.className = '';
+            el.style.setProperty('--lb-w', '0%');
+        }, 450);
+    }
+
+    return { start: start, done: done };
+}());
+
+window.addEventListener('load', function () { _lb.done(); });
+
+document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href]');
+    if (!a) return;
+    if (a.target || a.dataset.confirm) return;
+    var href = a.href || '';
+    if (!href || href.startsWith('javascript') || href.startsWith('#') || href.startsWith('mailto')) return;
+    try { if (new URL(href).origin !== location.origin) return; } catch (x) {}
+    _lb.start();
 });
 
-// Form validation with enhanced features
-function initializeFormValidation() {
-    const form = document.getElementById('loginForm');
-    const loginBtn = document.getElementById('loginBtn');
-    const btnText = loginBtn?.querySelector('.btn-text');
-    const loading = loginBtn?.querySelector('.loading');
-    
-    if (!form) return;
-    
-    // Real-time validation
-    const inputs = form.querySelectorAll('input[required]');
-    inputs.forEach(input => {
-        input.addEventListener('input', debounce(validateInput, 300));
-        input.addEventListener('blur', validateInput);
+document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (f && f.method && f.method.toLowerCase() !== 'dialog') _lb.start();
+});
+
+var _TOAST_ICONS = {
+    ok:   '<polyline points="20 6 9 17 4 12"/>',
+    no:   '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    warn: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'
+};
+
+window.toast = function (msg, type, dur) {
+    type = type || 'info';
+    dur  = dur  || 4500;
+    var area = document.getElementById('toast-area');
+    if (!area) return;
+    var el = document.createElement('div');
+    el.className = 'toast toast-' + type;
+    el.innerHTML =
+        '<div class="toast-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        (_TOAST_ICONS[type] || _TOAST_ICONS.info) +
+        '</svg></div>' +
+        '<div style="flex:1;color:var(--text2)">' + String(msg).replace(/</g, '&lt;') + '</div>' +
+        '<button class="toast-close">✕</button>';
+    area.appendChild(el);
+    var timer = setTimeout(function () {
+        el.classList.add('closing');
+        setTimeout(function () { el.remove(); }, 260);
+    }, dur);
+    el.querySelector('.toast-close').addEventListener('click', function () {
+        clearTimeout(timer);
+        el.remove();
     });
-    
-    // Form submission
-    form.addEventListener('submit', function(event) {
-        event.preventDefault();
-        
-        if (!form.checkValidity()) {
-            event.stopPropagation();
-            showValidationErrors();
-        } else {
-            handleFormSubmission();
-        }
-        
-        form.classList.add('was-validated');
-    });
-    
-    function validateInput(event) {
-        const input = event.target;
-        const isValid = input.checkValidity();
-        
-        // Remove previous validation classes
-        input.classList.remove('is-valid', 'is-invalid');
-        
-        // Add appropriate class
-        if (input.value.trim() !== '') {
-            input.classList.add(isValid ? 'is-valid' : 'is-invalid');
-        }
-        
-        // Update submit button state
-        updateSubmitButton();
-    }
-    
-    function showValidationErrors() {
-        const invalidInputs = form.querySelectorAll(':invalid');
-        if (invalidInputs.length > 0) {
-            invalidInputs[0].focus();
-            
-            // Show SweetAlert if available
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'خطا در اطلاعات ورودی',
-                    text: 'لطفاً تمام فیلدها را به درستی پر کنید.',
-                    confirmButtonText: 'متوجه شدم',
-                    confirmButtonColor: '#6366f1'
-                });
-            }
-        }
-    }
-    
-    function handleFormSubmission() {
-        if (loginBtn && btnText && loading) {
-            loginBtn.disabled = true;
-            btnText.style.display = 'none';
-            loading.classList.add('show');
-            
-            // Add loading class to form
-            form.classList.add('loading');
-            
-            // Simulate form submission (remove this in production)
-            setTimeout(() => {
-                form.submit();
-            }, 1000);
-        }
-    }
-    
-    function updateSubmitButton() {
-        const allValid = Array.from(inputs).every(input => input.checkValidity() && input.value.trim() !== '');
-        if (loginBtn) {
-            loginBtn.disabled = !allValid;
-            loginBtn.classList.toggle('btn-ready', allValid);
-        }
-    }
-}
+};
 
-// Password strength checker
-function initializePasswordStrength() {
-    const passwordInput = document.getElementById('password');
-    if (!passwordInput) return;
-    
-    // Create strength indicator
-    const strengthIndicator = document.createElement('div');
-    strengthIndicator.className = 'password-strength mt-2';
-    strengthIndicator.innerHTML = `
-        <div class="strength-bar">
-            <div class="strength-fill"></div>
-        </div>
-        <small class="strength-text text-muted">قدرت رمز عبور</small>
-    `;
-    
-    passwordInput.parentNode.appendChild(strengthIndicator);
-    
-    passwordInput.addEventListener('input', function() {
-        const strength = calculatePasswordStrength(this.value);
-        updateStrengthIndicator(strengthIndicator, strength);
-    });
-}
+var _confirmCb = null;
 
-function calculatePasswordStrength(password) {
-    let score = 0;
-    
-    if (password.length >= 8) score += 25;
-    if (password.length >= 12) score += 25;
-    if (/[a-z]/.test(password)) score += 10;
-    if (/[A-Z]/.test(password)) score += 10;
-    if (/[0-9]/.test(password)) score += 15;
-    if (/[^A-Za-z0-9]/.test(password)) score += 15;
-    
-    return Math.min(score, 100);
-}
+window.showConfirm = function (msg, cb, title) {
+    document.getElementById('confirm-title').textContent = title || 'تأیید عملیات';
+    document.getElementById('confirm-msg').textContent   = msg   || 'آیا اطمینان دارید؟';
+    _confirmCb = cb;
+    document.getElementById('confirm-veil').classList.add('open');
+};
 
-function updateStrengthIndicator(indicator, strength) {
-    const fill = indicator.querySelector('.strength-fill');
-    const text = indicator.querySelector('.strength-text');
-    
-    fill.style.width = strength + '%';
-    
-    if (strength < 30) {
-        fill.style.background = '#ef4444';
-        text.textContent = 'ضعیف';
-    } else if (strength < 60) {
-        fill.style.background = '#f59e0b';
-        text.textContent = 'متوسط';
-    } else if (strength < 80) {
-        fill.style.background = '#10b981';
-        text.textContent = 'خوب';
-    } else {
-        fill.style.background = '#059669';
-        text.textContent = 'عالی';
-    }
-}
+window.closeConfirm = function () {
+    document.getElementById('confirm-veil').classList.remove('open');
+    _confirmCb = null;
+};
 
-// Enhanced password toggle
-function togglePassword() {
-    const passwordField = document.getElementById('password');
-    const toggleIcon = document.getElementById('toggleIcon');
-    
-    if (passwordField && toggleIcon) {
-        const isPassword = passwordField.type === 'password';
-        
-        passwordField.type = isPassword ? 'text' : 'password';
-        toggleIcon.classList.toggle('fa-eye', !isPassword);
-        toggleIcon.classList.toggle('fa-eye-slash', isPassword);
-        
-        // Add animation
-        toggleIcon.style.transform = 'scale(0.8)';
-        setTimeout(() => {
-            toggleIcon.style.transform = 'scale(1)';
-        }, 150);
-    }
-}
+document.getElementById('confirm-ok').addEventListener('click', function () {
+    document.getElementById('confirm-veil').classList.remove('open');
+    if (_confirmCb) { var cb = _confirmCb; _confirmCb = null; cb(); }
+});
 
-// Enhanced alerts with auto-hide
-function initializeAlerts() {
-    const alerts = document.querySelectorAll('.alert');
-    
-    alerts.forEach(alert => {
-        // Add close button
-        const closeBtn = document.createElement('button');
-        closeBtn.type = 'button';
-        closeBtn.className = 'btn-close';
-        closeBtn.setAttribute('aria-label', 'Close');
-        closeBtn.onclick = () => hideAlert(alert);
-        
-        alert.appendChild(closeBtn);
-        
-        // Auto-hide after 5 seconds
-        setTimeout(() => hideAlert(alert), 5000);
-    });
-}
+document.getElementById('confirm-veil').addEventListener('click', function (e) {
+    if (e.target === this) closeConfirm();
+});
 
-function hideAlert(alert) {
-    alert.style.transition = 'all 0.5s ease';
-    alert.style.opacity = '0';
-    alert.style.transform = 'translateY(-20px)';
-    
-    setTimeout(() => {
-        if (alert.parentNode) {
-            alert.parentNode.removeChild(alert);
-        }
-    }, 500);
-}
-
-// Security features
-function initializeSecurity() {
-    // Prevent right-click context menu
-    document.addEventListener('contextmenu', function(e) {
+document.querySelectorAll('[data-confirm]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
         e.preventDefault();
+        var href = el.href;
+        showConfirm(el.dataset.confirm || 'این عملیات قابل بازگشت نیست. ادامه؟', function () {
+            _lb.start();
+            window.location.href = href;
+        });
     });
-    
-    // Prevent F12 and other dev tools shortcuts
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'F12' || 
-            (e.ctrlKey && e.shiftKey && e.key === 'I') ||
-            (e.ctrlKey && e.shiftKey && e.key === 'C') ||
-            (e.ctrlKey && e.key === 'U')) {
-            e.preventDefault();
-        }
+});
+
+var _THEME_BG = {
+    navy: '#0F172A', purple: '#180D2E', emerald: '#0A1F1C',
+    sunset: '#1A0D0D', slate: '#080808', light: '#F1F5F9',
+    linen: '#FAF7F2', mint: '#F0FDF4', lavender: '#FAF5FF'
+};
+var _LIGHT_THEMES = ['light', 'linen', 'mint', 'lavender'];
+
+window.applyTheme = function (t) {
+    var root = document.documentElement;
+    root.setAttribute('data-theme', t);
+    root.style.backgroundColor = _THEME_BG[t] || '#0F172A';
+    root.style.colorScheme     = _LIGHT_THEMES.indexOf(t) >= 0 ? 'light' : 'dark';
+    localStorage.setItem('panel-theme', t);
+    var mtc = document.getElementById('mtc');
+    if (mtc && _THEME_BG[t]) mtc.content = _THEME_BG[t];
+};
+
+window.toggleSidebar = function () {
+    var sb = document.getElementById('sidebar');
+    sb.classList.toggle('collapsed');
+    localStorage.setItem('panel-sb-collapsed', sb.classList.contains('collapsed') ? '1' : '0');
+};
+
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('backdrop').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('backdrop').classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+(function () {
+    if (document.documentElement.classList.contains('sb-pre-collapsed')) {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.documentElement.classList.remove('sb-pre-collapsed');
+    }
+}());
+
+var _backdrop = document.getElementById('backdrop');
+if (_backdrop) _backdrop.addEventListener('click', closeSidebar);
+
+var _swipeSb = document.getElementById('sidebar');
+if (_swipeSb) {
+    var _swipeX = 0;
+    _swipeSb.addEventListener('touchstart', function (e) { _swipeX = e.touches[0].clientX; }, { passive: true });
+    _swipeSb.addEventListener('touchmove',  function (e) { if (e.touches[0].clientX - _swipeX > 40) closeSidebar(); }, { passive: true });
+}
+
+window.openModal = function (id) {
+    var m = document.getElementById(id);
+    if (m) m.classList.add('open');
+};
+window.closeModal = function (id) {
+    var m = document.getElementById(id);
+    if (m) m.classList.remove('open');
+};
+
+document.querySelectorAll('.modal-veil').forEach(function (v) {
+    v.addEventListener('click', function (e) { if (e.target === v) v.classList.remove('open'); });
+});
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-veil.open').forEach(function (m) { m.classList.remove('open'); });
+        closeSidebar();
+        closeConfirm();
+    }
+});
+
+document.querySelectorAll('.search-box').forEach(function (box) {
+    var inp = box.querySelector('input');
+    var btn = box.querySelector('.search-clear');
+    if (!inp || !btn) return;
+    function update() { btn.style.display = inp.value ? 'grid' : 'none'; }
+    inp.addEventListener('input', update);
+    update();
+    btn.addEventListener('click', function () {
+        inp.value = '';
+        inp.focus();
+        update();
+        inp.dispatchEvent(new Event('input'));
     });
-    
-    // Detect if dev tools are open
-    let devtools = {open: false, orientation: null};
-    const threshold = 160;
-    
-    setInterval(() => {
-        if (window.outerHeight - window.innerHeight > threshold || 
-            window.outerWidth - window.innerWidth > threshold) {
-            if (!devtools.open) {
-                devtools.open = true;
-                console.clear();
-                console.log('%cتوجه!', 'color: red; font-size: 50px; font-weight: bold;');
-                console.log('%cاین یک ویژگی امنیتی مرورگر است. اگر کسی به شما گفته که چیزی را اینجا کپی/پیست کنید، احتمالاً سعی در کلاهبرداری دارد.', 'color: red; font-size: 16px;');
-            }
-        } else {
-            devtools.open = false;
-        }
-    }, 500);
-}
+});
 
-// Utility functions
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
+document.querySelectorAll('[data-filter]').forEach(function (inp) {
+    var tbl = document.getElementById(inp.dataset.filter);
+    if (!tbl) return;
+    inp.addEventListener('input', function () {
+        var q = inp.value.trim().toLowerCase();
+        tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+            if (tr.querySelector('.empty')) return;
+            tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+});
 
-// Prevent form resubmission on page refresh
-if (window.history.replaceState) {
-    window.history.replaceState(null, null, window.location.href);
-}
-
-// Add CSS for password strength indicator
-const strengthCSS = `
-.password-strength {
-    margin-top: 0.5rem;
-}
-
-.strength-bar {
-    width: 100%;
-    height: 4px;
-    background-color: #e2e8f0;
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.strength-fill {
-    height: 100%;
-    width: 0%;
-    transition: all 0.3s ease;
-    border-radius: 2px;
-}
-
-.strength-text {
-    display: block;
-    margin-top: 0.25rem;
-    font-size: 0.875rem;
-}
-
-.btn-ready {
-    background: linear-gradient(135deg, #10b981, #059669) !important;
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4) !important;
-}
-
-.form-control.is-valid {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-}
-
-.form-control.is-invalid {
-    border-color: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-}
-
-.loading .form-control {
-    pointer-events: none;
-    opacity: 0.7;
-}
-`;
-
-// Inject CSS
-const styleSheet = document.createElement('style');
-styleSheet.textContent = strengthCSS;
-document.head.appendChild(styleSheet);
+setTimeout(function () {
+    document.querySelectorAll('.notice').forEach(function (n) {
+        n.style.transition = 'opacity .4s,transform .4s';
+        n.style.opacity    = '0';
+        n.style.transform  = 'translateY(-4px)';
+        setTimeout(function () { n.remove(); }, 420);
+    });
+}, 5500);

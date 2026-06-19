@@ -1,278 +1,285 @@
 <?php
-session_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../function.php';
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-    $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-    $query->execute();
-    $result = $query->fetch(PDO::FETCH_ASSOC);
-    $query = $pdo->prepare("SELECT * FROM product");
-    $query->execute();
-    $listinvoice = $query->fetchAll();
-    $query = $pdo->prepare("SELECT * FROM marzban_panel");
-    $query->execute();
-    $listpanel = $query->fetchAll();
-if( !isset($_SESSION["user"]) || !$result ){
-    header('Location: login.php');
-    return;
+require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/icons.php';
+require_auth();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add') {
+  csrf_check_post();
+  $name = trim($_POST['name_product'] ?? '');
+  if ($name === '') {
+    flash('error', 'نام محصول الزامی است.');
+    header('Location: product.php');
+    exit;
+  }
+  if (db_count($pdo, "SELECT COUNT(*) FROM product WHERE name_product = ?", [$name])) {
+    flash('error', 'محصولی با این نام قبلاً ثبت شده.');
+    header('Location: product.php');
+    exit;
+  }
+  $code = bin2hex(random_bytes(2));
+  try {
+    db_query(
+      $pdo,
+      "INSERT INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,one_buy_status) VALUES (?,?,?,?,?,?,?,'no_reset',?,?,'{}','0')",
+      [$name, $code, (int) ($_POST['price_product'] ?? 0), (int) ($_POST['volume_product'] ?? 0), (int) ($_POST['time_product'] ?? 0), $_POST['namepanel'] ?? '', $_POST['agent_product'] ?? '', $_POST['note_product'] ?? '', $_POST['cetegory_product'] ?? '']
+    );
+    flash('success', 'محصول «' . $name . '» اضافه شد.');
+  } catch (Exception $e) {
+    flash('error', 'خطای پایگاه داده: ' . $e->getMessage());
+  }
+  header('Location: product.php');
+  exit;
 }
-$nameProduct = $_POST['nameproduct'] ?? null;
-if(!empty($nameProduct)){
-    $randomString = bin2hex(random_bytes(2));
-    $userdata['data_limit_reset'] = "no_reset";
-    $product = select("product","*","name_product",$nameProduct,"count");
-    if($product != 0){
-        echo "alert(\"محصول از قبل وجود دارد\")";
-        return;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit') {
+  csrf_check_post();
+  $pid = (int) ($_POST['edit_id'] ?? 0);
+  $name = trim($_POST['name_product'] ?? '');
+  if ($pid && $name !== '') {
+    try {
+      db_query(
+        $pdo,
+        "UPDATE product SET name_product=?,price_product=?,Volume_constraint=?,Service_time=?,Location=?,agent=?,note=?,category=? WHERE id=?",
+        [$name, (int) ($_POST['price_product'] ?? 0), (int) ($_POST['volume_product'] ?? 0), (int) ($_POST['time_product'] ?? 0), $_POST['namepanel'] ?? '', $_POST['agent_product'] ?? '', $_POST['note_product'] ?? '', $_POST['cetegory_product'] ?? '', $pid]
+      );
+      flash('success', 'محصول ویرایش شد.');
+    } catch (Exception $e) {
+      flash('error', 'خطا: ' . $e->getMessage());
     }
-    $hidepanel = "{}";
-    $stmt = $pdo->prepare("INSERT IGNORE INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,one_buy_status) VALUES (:name_product,:code_product,:price_product,:Volume_constraint,:Service_time,:Location,:agent,:data_limit_reset,:note,:category,:hide_panel,'0')");
-    $stmt->bindParam(':name_product', $nameProduct, PDO::PARAM_STR);
-    $stmt->bindParam(':code_product', $randomString);
-    $stmt->bindParam(':price_product', $_POST['price_product'] ?? '', PDO::PARAM_STR);
-    $stmt->bindParam(':Volume_constraint', $_POST['volume_product'] ?? '', PDO::PARAM_STR);
-    $stmt->bindParam(':Service_time', $_POST['time_product'] ?? '', PDO::PARAM_STR);
-    $stmt->bindParam(':Location', $_POST['namepanel'] ?? '', PDO::PARAM_STR);
-    $stmt->bindParam(':agent', $_POST['agent_product'] ?? '', PDO::PARAM_STR);
-    $stmt->bindParam(':data_limit_reset', $userdata['data_limit_reset']);
-    $stmt->bindParam(':category', $_POST['cetegory_product'] ?? ''  , PDO::PARAM_STR);
-    $stmt->bindParam(':note', $_POST['note_product'] ?? ''  , PDO::PARAM_STR);
-    $stmt->bindParam(':hide_panel', $hidepanel);
-    $stmt->execute();
-    header("Location: product.php");
-}
-if(isset($_GET['oneproduct'], $_GET['toweproduct']) && $_GET['oneproduct'] !== '' && $_GET['toweproduct'] !== ''){
-    update("product", "id", 10000, "id", $_GET['oneproduct']);
-    update("product", "id", intval($_GET['oneproduct']), "id", intval($_GET['toweproduct']));
-    update("product", "id", intval($_GET['toweproduct']), "id", 10000);
-    header("Location: product.php");
+  }
+  header('Location: product.php');
+  exit;
 }
 
-if(isset($_GET['removeid']) && $_GET['removeid'] !== ''){
-    $stmt = $connect->prepare("DELETE FROM product WHERE id = ?");
-    $stmt->bind_param("s", $_GET['removeid']);
-    $stmt->execute();
-    header("Location: product.php");
+if (isset($_GET['delete'])) {
+  csrf_check_get();
+  db_query($pdo, "DELETE FROM product WHERE id = ?", [(int) $_GET['delete']]);
+  flash('success', 'محصول حذف شد.');
+  header('Location: product.php');
+  exit;
 }
+
+$panels = [];
+try {
+  $panels = db_fetchAll($pdo, "SELECT * FROM marzban_panel");
+} catch (Exception $e) {
+}
+$products = db_fetchAll($pdo, "SELECT * FROM product ORDER BY id");
+
+$pageTitle = 'محصولات';
+$pageLede = 'فهرست محصولات قابل فروش و مدیریت آن‌ها.';
+$activeNav = 'product';
+include __DIR__ . '/inc/layout_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="">
-    <meta name="author" content="Mosaddek">
-    <meta name="keyword" content="FlatLab, Dashboard, Bootstrap, Admin, Template, Theme, Responsive, Fluid, Retina">
-    <link rel="shortcut icon" href="img/favicon.html">
 
-    <title>پنل مدیریت ربات میرزا</title>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px" class="fade-up">
+  <div style="font-size:.85rem;color:var(--mute)"><?= count($products) ?> محصول ثبت‌شده</div>
+  <button class="btn btn-primary" onclick="openModal('addModal')"><?= icon('plus', 14) ?> افزودن محصول</button>
+</div>
 
-    <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/bootstrap-reset.css" rel="stylesheet">
-    <!--external css-->
-    <link href="assets/font-awesome/css/font-awesome.css" rel="stylesheet" />
-    <link href="assets/jquery-easy-pie-chart/jquery.easy-pie-chart.css" rel="stylesheet" type="text/css" media="screen"/>
-    <link rel="stylesheet" href="css/owl.carousel.css" type="text/css">
-    <!-- Custom styles for this template -->
-    <link href="css/style.css" rel="stylesheet">
-    <link href="css/style-responsive.css" rel="stylesheet" />
-
-    <!-- HTML5 shim and Respond.js IE8 support of HTML5 tooltipss and media queries -->
-    <!--[if lt IE 9]>
-      <script src="js/html5shiv.js"></script>
-      <script src="js/respond.min.js"></script>
-    <![endif]-->
-  </head>
-
-
-<body>
-
-    <section id="container" class="">
-<?php include("header.php");
-?>
-        <!--main content start-->
-        <section id="main-content">
-            <section class="wrapper">
-                <!-- page start-->
-                <div class="row">
-                    <div class="col-lg-12">
-                        <section class="panel">
-                            <header class="panel-heading">لیست محصولات</header>
-                                <section class="panel">
-                                <a href="#addproduct" data-toggle="modal"  class="btn btn-info  btn-sm">اضافه کردن محصول</a>
-                                <a href="#moveradif" data-toggle="modal"  class="btn btn-success  btn-sm">جابه جایی ردیف محصول</a>
-                        </section>
-                            <table class="table table-striped border-top" id="sample_1">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 8px;">
-                                            <input type="checkbox" class="group-checkable" data-set="#sample_1 .checkboxes" /></th>
-                                        <th class="hidden-phone">شناسه</th>
-                                        <th class="hidden-phone">کد سرویس</th>
-                                        <th class="hidden-phone">نام سرویس</th>
-                                        <th>قیمت سرویس</th>
-                                        <th class="hidden-phone">حجم سرویس</th>
-                                        <th class="hidden-phone">زمان سرویس</th>
-                                        <th class="hidden-phone">لوکیشن سرویس</th>
-                                        <th class="hidden-phone">گروه کاربری سرویس</th>
-                                        <th class="hidden-phone">ریست دوره ای سرویس</th>
-                                        <th class="hidden-phone">دسته بندی محصول</th>
-                                        <th class="hidden-phone">عملیات</th>
-                                    </tr>
-                                </thead>
-                                <tbody> <?php
-                                foreach($listinvoice as $list){
-                                    if($list['category'] == null){
-                                        $list['category'] = "ندارد";
-                                    }
-                                   echo "<tr class=\"odd gradeX\">
-                                        <td>
-                                        <input type=\"checkbox\" class=\"checkboxes\" value=\"1\" /></td>
-                                        <td>{$list['id']}</td>
-                                        <td>{$list['code_product']}</td>
-                                        <td class=\"hidden-phone\">{$list['name_product']}</td>
-                                        <td class=\"hidden-phone\">{$list['price_product']}</td>
-                                        <td class=\"hidden-phone\">{$list['Volume_constraint']}</td>
-                                        <td class=\"hidden-phone\">{$list['Service_time']}</td>
-                                        <td class=\"hidden-phone\">{$list['Location']}</td>
-                                        <td class=\"hidden-phone\">{$list['agent']}</td>
-                                        <td class=\"hidden-phone\">{$list['data_limit_reset']}</td>
-                                        <td class=\"hidden-phone\">{$list['category']}</td>
-                                        <td  class=\"hidden-phone\"><a class = \"btn btn-danger\" href= \"product.php?removeid={$list['id']}\">حذف محصول</a><a class = \"btn btn-info\" href= \"productedit.php?id={$list['id']}\">ویرایش محصول</a></td>
-                                    </tr>";
-                                }
-                                    ?>
-                                </tbody>
-                            </table>
-                        </section>
-                    </div>
+<div class="card fade-up d1">
+  <?php if (empty($products)): ?>
+    <div class="empty" style="padding:60px 20px">
+      <svg class="ill" viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="40" y="30" width="120" height="100" rx="12" fill="var(--surface-3)" />
+        <rect x="56" y="50" width="88" height="12" rx="6" fill="var(--border-strong)" />
+        <rect x="56" y="72" width="60" height="8" rx="4" fill="var(--border)" />
+        <rect x="56" y="90" width="72" height="8" rx="4" fill="var(--border)" />
+        <rect x="56" y="108" width="44" height="8" rx="4" fill="var(--border)" />
+        <circle cx="155" cy="125" r="22" fill="var(--accent-s)" stroke="var(--accent)" stroke-width="2" />
+        <path d="M147 125h16M155 117v16" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" />
+      </svg>
+      <p>هنوز محصولی ثبت نکرده‌اید</p>
+      <button class="btn btn-primary" style="margin-top:14px" onclick="openModal('addModal')"><?= icon('plus', 14) ?>
+        اضافه
+        کردن اولین محصول</button>
+    </div>
+  <?php else: ?>
+    <div class="toolbar">
+      <div class="toolbar-title">فهرست محصولات <small>(<?= count($products) ?>)</small></div>
+      <div class="search-box" style="min-width:220px">
+        <?= icon('search', 14) ?>
+        <input type="text" placeholder="جستجو..." data-filter="prodTbl">
+        <button type="button" class="search-clear">✕</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table id="prodTbl" class="tbl-xl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>نام محصول</th>
+            <th>قیمت</th>
+            <th>حجم</th>
+            <th>مدت</th>
+            <th>پنل</th>
+            <th>دسته</th>
+            <th>کد</th>
+            <th>عملیات</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php $i = 1;
+          foreach ($products as $p): ?>
+            <tr>
+              <td class="cf"><?= $i++ ?></td>
+              <td class="cs"><?= htmlspecialchars($p['name_product'] ?? '') ?></td>
+              <td class="cn cs"><?= number_format((int) ($p['price_product'] ?? 0)) ?> <span class="cf">ت</span></td>
+              <td class="cn"><?= htmlspecialchars($p['Volume_constraint'] ?? '—') ?> <span class="cf">GB</span></td>
+              <td class="cn"><?= htmlspecialchars($p['Service_time'] ?? '—') ?> <span class="cf">روز</span></td>
+              <td class="cf"><?= htmlspecialchars(trunc($p['Location'] ?? '—', 16)) ?></td>
+              <td><?php if (!empty($p['category'])): ?><span
+                    class="tag tag-info"><?= htmlspecialchars($p['category']) ?></span><?php else: ?><span
+                    class="cf">—</span><?php endif; ?></td>
+              <td class="cm" style="font-size:.72rem"><?= htmlspecialchars($p['code_product'] ?? '') ?></td>
+              <td>
+                <div style="display:flex;gap:5px">
+                  <button class="btn btn-ghost btn-sm btn-icon" title="ویرایش"
+                    onclick="openEditModal(<?= htmlspecialchars(json_encode($p), ENT_QUOTES) ?>)">
+                    <?= icon('edit', 13) ?>
+                  </button>
+                  <a href="product.php?delete=<?= (int) $p['id'] ?>&_csrf=<?= csrf_token() ?>"
+                    class="btn btn-no btn-sm btn-icon" title="حذف"
+                    data-confirm="حذف محصول «<?= htmlspecialchars($p['name_product']) ?>»؟">
+                    <?= icon('trash', 13) ?>
+                  </a>
                 </div>
-                <!-- page end-->
-            </section>
-        </section>
-        <div aria-hidden="true" aria-labelledby="myModalLabel" role="dialog" tabindex="-1" id="moveradif" class="modal fade">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header">
-                                                <button aria-hidden="true" data-dismiss="modal" class="close" type="button">×</button>
-                                                <h4 class="modal-title">تغییر مکان دو محصول</h4>
-                                            </div>
-                                            <div class="modal-body">
-                                                <form action = "product.php" method = "GET" class="form-horizontal" role="form">
-                                                    <div class="form-group">
-                                                        <label for="oneproduct" class="col-lg-2 control-label">شناسه اول</label>
-                                                        <div class="col-lg-10">
-                                                            <input type="number" name = "oneproduct" class="form-control" id="oneproduct">
-                                                        </div>
-                                                        <label for="toweproduct" class="col-lg-2 control-label" style = "margin:20px 0;">شناسه دوم</label>
-                                                        <div class="col-lg-10" style = "margin:20px 0;">
-                                                            <input type="number" name = "toweproduct" class="form-control" id="toweproduct">
-                                                        </div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <div class="col-lg-offset-2 col-lg-10">
-                                                            <button type="submit" class="btn btn-default">تغییر مکان دو محصول</button>
-                                                        </div>
-                                                    </div>
-                                                </form>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+</div>
 
-                                            </div>
+<div class="modal-veil" id="addModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>افزودن محصول جدید</h3>
+      <button class="modal-x" onclick="closeModal('addModal')"><?= icon('close', 14) ?></button>
+    </div>
+    <form method="POST">
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+        <input type="hidden" name="action" value="add">
+        <div class="form-grid">
+          <div class="field full">
+            <label>نام محصول *</label>
+            <input type="text" name="name_product" class="input" placeholder="مثلاً: ۵۰ گیگ یک ماهه" required>
+          </div>
+          <div class="field">
+            <label>قیمت (تومان)</label>
+            <input type="number" name="price_product" class="input" placeholder="۰" min="0">
+          </div>
+          <div class="field">
+            <label>حجم (GB)</label>
+            <input type="number" name="volume_product" class="input" placeholder="۵۰" min="0">
+          </div>
+          <div class="field">
+            <label>مدت (روز)</label>
+            <input type="number" name="time_product" class="input" placeholder="۳۰" min="0">
+          </div>
+          <div class="field">
+            <label>دسته‌بندی</label>
+            <input type="text" name="cetegory_product" class="input" placeholder="VPN، پکیج، ...">
+          </div>
+          <div class="field">
+            <label>پنل</label>
+            <select name="namepanel" class="select">
+              <option value="">— انتخاب نشده —</option>
+              <?php foreach ($panels as $pl): ?>
+                <option value="<?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>">
+                  <?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>
+                </option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field">
+            <label>نمایندگی</label>
+            <select name="agent_product" class="select">
+              <option value="f">کاربر عادی</option>
+              <option value="n">نماینده</option>
+              <option value="n2">نماینده پیشرفته</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label>توضیحات</label>
+            <input type="text" name="note_product" class="input" placeholder="توضیحات اختیاری">
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="submit" class="btn btn-primary"><?= icon('plus', 13) ?> ذخیره محصول</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('addModal')">انصراف</button>
+      </div>
+    </form>
+  </div>
+</div>
 
-                                        </div>
-                                    </div>
-                                </div>
-        <div aria-hidden="true" aria-labelledby="myModalLabel" role="dialog" tabindex="-1" id="addproduct" class="modal fade">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header">
-                                                <button aria-hidden="true" data-dismiss="modal" class="close" type="button">×</button>
-                                                <h4 class="modal-title">اضافه کردن محصول</h4>
-                                            </div>
-                                            <div class="modal-body">
-                                                <form action = "product.php" method = "POST" class="form-horizontal" role="form">
-                                                    <div class="form-group">
-                                                        <label for="nameproduct" class="col-lg-2 control-label">نام محصول</label>
-                                                        <div class="col-lg-10"><input required type="text" name = "nameproduct" class="form-control" id="nameproduct"></div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="nameproduct" class="col-lg-2 control-label">موقعیت محصول</label>
-                                                        <div class="col-lg-10">
-                                                        <select required  name = "namepanel" class="form-control">
-                                                  <option value="/all">تمامی پنل ها</option>
-                                                <?php
-                                                if(count($listpanel)>=0){
-                                                foreach($listpanel as $panel){
-                                                echo "<option value = \"{$panel['name_panel']}\">{$panel['name_panel']}</option>";
-                                                }
-                                                }
-                                                ?>
-                                            </select>
-                                                    </div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="price_product" class="col-lg-2 control-label">قیمت محصول</label>
-                                                        <div class="col-lg-10"><input  required type="number" name = "price_product" class="form-control" id="price_product"></div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="volume_product" class="col-lg-2 control-label">حجم محصول</label>
-                                                        <div class="col-lg-10"><input required type="number" name = "volume_product" class="form-control" id="volume_product"></div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="time_product" class="col-lg-2 control-label">زمان محصول</label>
-                                                        <div class="col-lg-10"><input required type="number" name = "time_product" class="form-control" id="volume_product"></div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="agent_product" class="col-lg-2 control-label">نوع کاربری محصول</label>
-                                                        <div class="col-lg-10">
-                                                        <select required  name = "agent_product" class="form-control">
-                                                 <option value="f">عادی</option>
-                                                <option value = "n">نماینده</option>
-                                                <option value = "n2">نماینده پیشرفته</option>
-                                            </select>
-                                                    </div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="note_product" class="col-lg-2 control-label">توضیحات محصول</label>
-                                                        <div class="col-lg-10"><input required type="text" name = "note_product" class="form-control" id="note_product"></div>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="cetegory_product" class="col-lg-2 control-label">دسته بندی محصول</label>
-                                                        <div class="col-lg-10"><input required type="text" name = "cetegory_product" class="form-control" id="cetegory_product"></div>
-                                                    </div>
+<div class="modal-veil" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>ویرایش محصول</h3>
+      <button class="modal-x" onclick="closeModal('editModal')"><?= icon('close', 14) ?></button>
+    </div>
+    <form method="POST">
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="<?= csrf_token() ?>">
+        <input type="hidden" name="action" value="edit">
+        <input type="hidden" name="edit_id" id="edit_id">
+        <div class="form-grid">
+          <div class="field full">
+            <label>نام محصول *</label>
+            <input type="text" name="name_product" id="edit_name" class="input" required>
+          </div>
+          <div class="field">
+            <label>قیمت (تومان)</label>
+            <input type="number" name="price_product" id="edit_price" class="input" min="0">
+          </div>
+          <div class="field">
+            <label>حجم (GB)</label>
+            <input type="number" name="volume_product" id="edit_volume" class="input" min="0">
+          </div>
+          <div class="field">
+            <label>مدت (روز)</label>
+            <input type="number" name="time_product" id="edit_time" class="input" min="0">
+          </div>
+          <div class="field">
+            <label>دسته‌بندی</label>
+            <input type="text" name="cetegory_product" id="edit_cat" class="input">
+          </div>
+          <div class="field">
+            <label>پنل</label>
+            <select name="namepanel" id="edit_panel" class="select">
+              <option value="">— انتخاب نشده —</option>
+              <?php foreach ($panels as $pl): ?>
+                <option value="<?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>">
+                  <?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>
+                </option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field">
+            <label>نمایندگی</label>
+            <select name="agent_product" id="edit_agent" class="select">
+              <option value="f">کاربر عادی</option>
+              <option value="n">نماینده</option>
+              <option value="n2">نماینده پیشرفته</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label>توضیحات</label>
+            <input type="text" name="note_product" id="edit_note" class="input">
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="submit" class="btn btn-primary"><?= icon('check', 13) ?> ذخیره تغییرات</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('editModal')">انصراف</button>
+      </div>
+    </form>
+  </div>
+</div>
 
-                                                    <div class="form-group">
-                                                        <div class="col-lg-offset-2 col-lg-10">
-                                                            <button type="submit" class="btn btn-danger">اضافه کردن محصول</button>
-                                                        </div>
-                                                    </div>
-                                                </form>
+<script src="js/product.js"></script>
 
-                                            </div>
-
-                                        </div>
-                                    </div>
-                                </div>
-
-        <!--main content end-->
-    </section>
-
-    <!-- js placed at the end of the document so the pages load faster -->
-    <script src="js/jquery.js"></script>
-    <script src="js/bootstrap.min.js"></script>
-    <script src="js/jquery.scrollTo.min.js"></script>
-    <script src="js/jquery.nicescroll.js" type="text/javascript"></script>
-    <script type="text/javascript" src="assets/data-tables/jquery.dataTables.js"></script>
-    <script type="text/javascript" src="assets/data-tables/DT_bootstrap.js"></script>
-
-
-    <!--common script for all pages-->
-    <script src="js/common-scripts.js"></script>
-
-    <!--script for this page only-->
-    <script src="js/dynamic-table.js"></script>
-
-
-</body>
-</html>
-    
+<?php include __DIR__ . '/inc/layout_foot.php'; ?>

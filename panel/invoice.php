@@ -1,136 +1,136 @@
 <?php
-session_start();
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../jdf.php';
+require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/icons.php';
+require_auth();
 
+$search = trim($_GET['q'] ?? '');
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-    $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-    $query->execute();
-    $result = $query->fetch(PDO::FETCH_ASSOC);
-    $query = $pdo->prepare("SELECT * FROM invoice");
-    $query->execute();
-    $listinvoice = $query->fetchAll();
-if( !isset($_SESSION["user"]) || !$result ){
-    header('Location: login.php');
-    return;
+$status = $_GET['status'] ?? '';
+$page = max(1, (int) ($_GET['page'] ?? 1));
+$perPage = 30;
+$offset = ($page - 1) * $perPage;
+
+$where = [];
+$params = [];
+if ($search !== '') {
+  $where[] = "(id_user LIKE ? OR COALESCE(name_product,'') LIKE ? OR COALESCE(username,'') LIKE ?)";
+  $params = ["%$search%", "%$search%", "%$search%"];
 }
+if ($status !== '') {
+
+  $where[] = "Status = ?";
+  $params[] = $status;
+}
+$whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+try {
+  $total = db_count($pdo, "SELECT COUNT(*) FROM invoice $whereSQL", $params);
+  $invoices = db_fetchAll($pdo, "SELECT * FROM invoice $whereSQL ORDER BY time_sell DESC LIMIT $perPage OFFSET $offset", $params);
+} catch (Exception $e) {
+  $total = 0;
+  $invoices = [];
+  flash('error', 'خطای پایگاه داده: ' . $e->getMessage());
+}
+$totalPages = max(1, (int) ceil($total / $perPage));
+
+$statusMap = [
+  'active' => ['tag-ok', 'فعال'],
+  'end_of_time' => ['tag-warn', 'اعلان پایان زمان'],
+  'end_of_volume' => ['tag-no', 'اعلان پایان حجم'],
+  'sendedwarn' => ['tag-warn', 'ارسال تمامی اعلان ها'],
+  'send_on_hold' => ['tag-plain', 'اعلان متصنل نشدن ارسال شده'],
+  'unpaid' => ['tag-plain', 'پرداخت نشده'],
+  'Unsuccessful' => ['tag-plain', 'خطا دریافت اطلاعات'],
+];
+
+$pageTitle = 'سفارشات';
+$pageLede = 'فهرست کلیه سفارشات ثبت‌شده در ربات.';
+$activeNav = 'invoice';
+include __DIR__ . '/inc/layout_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="">
-    <meta name="author" content="Mosaddek">
-    <meta name="keyword" content="FlatLab, Dashboard, Bootstrap, Admin, Template, Theme, Responsive, Fluid, Retina">
-    <link rel="shortcut icon" href="img/favicon.html">
 
-    <title>پنل مدیریت ربات میرزا</title>
+<div class="card fade-up">
+  <div class="toolbar">
+    <div class="toolbar-title">سفارشات <small>(<?= number_format($total) ?>)</small></div>
+    <form method="GET" id="invoiceForm" class="toolbar-end">
+      <select name="status" class="select" style="width:auto"
+        onchange="document.getElementById('invoiceForm').submit()">
+        <option value="">همه وضعیت‌ها</option>
+        <?php foreach ($statusMap as $k => [$_, $lbl]): ?>
+          <option value="<?= $k ?>" <?= $status === $k ? 'selected' : '' ?>><?= $lbl ?></option>
+        <?php endforeach; ?>
+      </select>
+      <div class="search-box" style="min-width:240px">
+        <?= icon('search', 14) ?>
+        <input type="text" name="q" placeholder="آیدی کاربر، نام محصول..." value="<?= htmlspecialchars($search) ?>"
+          autocomplete="off">
+        <button type="button" class="search-clear">✕</button>
+        <button type="submit" class="search-btn">جستجو</button>
+      </div>
+      <?php if ($search || $status): ?>
+        <a href="invoice.php" class="btn-link" style="font-size:.78rem">پاک کردن</a>
+      <?php endif; ?>
+    </form>
+  </div>
 
-    <!-- Bootstrap core CSS -->
-    <link href="css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/bootstrap-reset.css" rel="stylesheet">
-    <!--external css-->
-    <link href="assets/font-awesome/css/font-awesome.css" rel="stylesheet" />
-    <link href="assets/jquery-easy-pie-chart/jquery.easy-pie-chart.css" rel="stylesheet" type="text/css" media="screen"/>
-    <link rel="stylesheet" href="css/owl.carousel.css" type="text/css">
-    <!-- Custom styles for this template -->
-    <link href="css/style.css" rel="stylesheet">
-    <link href="css/style-responsive.css" rel="stylesheet" />
+  <div class="tbl-wrap">
+    <table class="tbl-md">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>کاربر</th>
+          <th>محصول</th>
+          <th>قیمت</th>
+          <th>تاریخ</th>
+          <th>وضعیت</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($invoices)): ?>
+          <tr>
+            <td colspan="6">
+              <div class="empty">
+                <svg class="ill" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="30" y="15" width="100" height="90" rx="8" fill="var(--sf3)" />
+                  <rect x="45" y="35" width="70" height="8" rx="4" fill="var(--bds)" />
+                  <rect x="45" y="52" width="50" height="6" rx="3" fill="var(--bd)" />
+                  <rect x="45" y="66" width="60" height="6" rx="3" fill="var(--bd)" />
+                  <rect x="45" y="80" width="35" height="6" rx="3" fill="var(--bd)" />
+                </svg>
+                <p><?= $search ? 'سفارشی با این جستجو یافت نشد' : 'هنوز سفارشی ثبت نشده' ?></p>
+              </div>
+            </td>
+          </tr>
+        <?php else:
+          $i = $offset + 1;
+          foreach ($invoices as $inv):
+            $st = $inv['Status'] ?? '';
+            [$cls, $lbl] = $statusMap[$st] ?? ['tag-plain', $st ?: '—'];
+            ?>
+            <tr>
+              <td class="cf"><?= $i++ ?></td>
+              <td class="cm"><?= htmlspecialchars($inv['id_user'] ?? '—') ?></td>
+              <td class="cs"><?= htmlspecialchars(trunc($inv['name_product'] ?? '—', 28)) ?></td>
+              <td class="cn cs"><?= number_format((int) ($inv['price_product'] ?? 0)) ?> <span class="cf">ت</span></td>
+              <td class="cf"><?= safe_date($inv['time_sell'] ?? null, 'Y/m/d') ?></td>
+              <td><span class="tag <?= $cls ?>"><?= $lbl ?></span></td>
+            </tr>
+          <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+  </div>
 
-    <!-- HTML5 shim and Respond.js IE8 support of HTML5 tooltipss and media queries -->
-    <!--[if lt IE 9]>
-      <script src="js/html5shiv.js"></script>
-      <script src="js/respond.min.js"></script>
-    <![endif]-->
-  </head>
+  <div class="tbl-foot">
+    <span><?= number_format($total) ?> رکورد · صفحه <?= $page ?> از <?= $totalPages ?></span>
+    <div class="pager">
+      <?php $qs = fn($p) => '?q=' . urlencode($search) . '&status=' . urlencode($status) . '&page=' . $p; ?>
+      <a class="<?= $page <= 1 ? 'dis' : '' ?>" href="<?= $qs(max(1, $page - 1)) ?>">‹</a>
+      <?php for ($p = max(1, $page - 2); $p <= min($totalPages, $page + 2); $p++): ?>
+        <a class="<?= $p === $page ? 'cur' : '' ?>" href="<?= $qs($p) ?>"><?= $p ?></a>
+      <?php endfor; ?>
+      <a class="<?= $page >= $totalPages ? 'dis' : '' ?>" href="<?= $qs(min($totalPages, $page + 1)) ?>">›</a>
+    </div>
+  </div>
+</div>
 
-
-<body>
-
-    <section id="container" class="">
-<?php include("header.php");
-?>
-        <!--main content start-->
-        <section id="main-content">
-            <section class="wrapper">
-                <!-- page start-->
-                <div class="row">
-                    <div class="col-lg-12">
-                        <section class="panel">
-                            <header class="panel-heading">لیست سفارشات</header>
-                            <table class="table table-striped border-top" id="sample_1">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 8px;">
-                                            <input type="checkbox" class="group-checkable" data-set="#sample_1 .checkboxes" /></th>
-                                        <th class="hidden-phone">آیدی عددی</th>
-                                        <th class="hidden-phone">شناسه سفارش</th>
-                                        <th>نام کاربری کانفیگ</th>
-                                        <th class="hidden-phone">لوکیشن سرویس</th>
-                                        <th class="hidden-phone">نام محصول</th>
-                                        <th class="hidden-phone">تاریخ سفارش</th>
-                                        <th class="hidden-phone">قیمت سفارش</th>
-                                        <th class="hidden-phone">وضعیت سفارش</th>
-                                    </tr>
-                                </thead>
-                                <tbody> <?php
-                                foreach($listinvoice as $list){
-                                    if(intval($list['time_sell'])){
-                                        $list['time_sell'] = jdate('Y/m/d |  H:i:s',$list['time_sell']);
-                                    }
-                                    $list['Status'] = [
-                                        'unpaid' => "در انتظار پرداخت",
-                                        "active" => "فعال",
-                                        "disabledn" => "ناموجود در پنل",
-                                        "end_of_time" => "هشدار زمان باقی ماند",
-                                        "end_of_volume" => "هشدار حجم باقی مانده",
-                                        "sendedwarn" => "هشدار حجم و زمان باقی مانده",
-                                        "send_on_hold" => "هشدار متصل نشدن به کانفیگ",
-                                        'removebyuser' => 'حذف شده توسط کاربر'
-                                        ][$list['Status']];
-                                        if($list['price_product'] == 0)$list['price_product'] = "رایگان";
-                                   echo "<tr class=\"odd gradeX\">
-                                        <td>
-                                        <input type=\"checkbox\" class=\"checkboxes\" value=\"1\" /></td>
-                                        <td>{$list['id_user']}</td>
-                                        <td class=\"hidden-phone\">{$list['id_invoice']}</td>
-                                        <td class=\"hidden-phone\">{$list['username']}</td>
-                                        <td class=\"hidden-phone\">{$list['Service_location']}</td>
-                                        <td class=\"hidden-phone\">{$list['name_product']}</td>
-                                        <td class=\"hidden-phone time_Sell\">{$list['time_sell']}</td>
-                                        <td class=\"hidden-phone\">{$list['price_product']}</td>
-                                        <td class=\"hidden-phone\">{$list['Status']}</td>
-                                    </tr>";
-                                }
-                                    ?>
-                                </tbody>
-                            </table>
-                        </section>
-                    </div>
-                </div>
-                <!-- page end-->
-            </section>
-        </section>
-        <!--main content end-->
-    </section>
-
-    <!-- js placed at the end of the document so the pages load faster -->
-    <script src="js/jquery.js"></script>
-    <script src="js/bootstrap.min.js"></script>
-    <script src="js/jquery.scrollTo.min.js"></script>
-    <script src="js/jquery.nicescroll.js" type="text/javascript"></script>
-    <script type="text/javascript" src="assets/data-tables/jquery.dataTables.js"></script>
-    <script type="text/javascript" src="assets/data-tables/DT_bootstrap.js"></script>
-
-
-    <!--common script for all pages-->
-    <script src="js/common-scripts.js"></script>
-
-    <!--script for this page only-->
-    <script src="js/dynamic-table.js"></script>
-
-
-</body>
-</html>
+<?php include __DIR__ . '/inc/layout_foot.php'; ?>
