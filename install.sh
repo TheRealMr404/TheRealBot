@@ -1170,9 +1170,21 @@ function install_bot() {
             "apt-get install -y software-properties-common git unzip curl wget jq" \
             || { show_step_error; install_pause "Installing base tools"; }
 
-        run_step "Installing PHP 8.2 (fpm + mysql)" \
-            "DEBIAN_FRONTEND=noninteractive apt install -y php8.2 php8.2-cli php8.2-fpm php8.2-mysql" \
-            || { show_step_error; install_pause "Installing PHP 8.2"; }
+
+install_php() {
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get install -y php8.2 php8.2-cli php8.2-fpm php8.2-mysql >/dev/null 2>&1 && return 0
+
+    apt-get install -y php php-cli php-fpm php-mysql >/dev/null 2>&1 && return 0
+
+    add-apt-repository -y ppa:ondrej/php >/dev/null 2>&1 || true
+    apt-get update -y >/dev/null 2>&1
+
+    apt-get install -y php8.2 php8.2-cli php8.2-fpm php8.2-mysql >/dev/null 2>&1
+
+    return $?
+}
 
         # Versioned packages only: unversioned (php-*, lamp-server^) would pull the
         # PPA's newest PHP (e.g. 8.4) as default and break the bot's mysqli/curl.
