@@ -275,7 +275,10 @@ function self_update_script() {
     _link_mirza "$MASTER_PATH" "$BIN_LINK"
     echo -e "\e[32mScript is up to date.\033[0m"
 }
-self_update_script "$@"
+# Custom build note:
+# Auto self-update is disabled so this edited installer is not overwritten by the upstream GitHub version.
+# To re-enable upstream auto-update, uncomment the next line.
+# self_update_script "$@"
 
 # ── Repo / paths ─────────────────────────────────────────────
 BOT_DIR_DEFAULT="/var/www/html/mirzaprobotconfig"
@@ -394,7 +397,7 @@ export -f setup_mysql_root
 # True if a package is installed and configured.
 _pkg_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
 
-# Refuse to install on a server that already has conflicting software.
+# Warn when conflicting software is found on a fresh server, then let the user decide.
 # Only runs on a brand-new install (never on resume / Mirza's own partial state).
 precheck_fresh_server() {
     local found=()
@@ -412,13 +415,24 @@ precheck_fresh_server() {
         clear
         banner
         _sec "Server is not clean"
-        printf "    ${C_BAD}●${CR} ${C_BAD}This installer needs a fresh server with no other software installed.${CR}\n"
-        printf "    ${C_DIM}Detected conflicting components:${CR}\n"
+        printf "    ${C_WARN}●${CR} ${C_WARN}Some software is already installed on this server.${CR}\n"
+        printf "    ${C_DIM}Detected components:${CR}\n"
         local f
         for f in "${found[@]}"; do printf "      ${C_WARN}-${CR} ${C_TXT}%s${CR}\n" "$f"; done
         echo ""
-        printf "    ${C_TXT}Use a clean Ubuntu 22.04/24.04 server (no web server, database, or panel)${CR}\n"
-        printf "    ${C_TXT}or reinstall the OS, then run the installer again.${CR}\n"
+        printf "    ${C_WARN}Warning:${CR} ${C_TXT}Continuing may cause port conflicts, database issues, or overwrite existing services.${CR}\n"
+        printf "    ${C_DIM}Recommended: use a clean Ubuntu 22.04/24.04 server if this machine has important data.${CR}\n"
+        echo ""
+        printf "  ${C_PROMPT}❯${CR} Continue installation anyway? ${C_DIM}[y/N]${CR}: "
+        read -r _continue_dirty_server
+
+        if [[ "$_continue_dirty_server" =~ ^[Yy]$ ]]; then
+            echo -e "  ${C_OK}●${CR} ${C_OK}Continuing installation by user choice.${CR}"
+            sleep 1
+            return 0
+        fi
+
+        echo -e "  ${C_BAD}●${CR} ${C_BAD}Installation cancelled.${CR}"
         return 1
     fi
     return 0
