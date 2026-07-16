@@ -15,36 +15,16 @@ $text_panel_admin_login_template = "💎 | Version Bot: $version
 if (!in_array($from_id, $admin_ids))
     return;
 
-$domainhostsEscaped = htmlspecialchars($domainhosts, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-
-// دکمه بروزرسانی فقط برای مدیر اصلی پنل نمایش داده می‌شود.
-$githubUpdateButtonText = '♻️ بروزرسانی ربات از GitHub';
-if (($adminrulecheck['rule'] ?? '') === 'administrator') {
-    $adminKeyboardData = json_decode($keyboardadmin, true);
-    if (is_array($adminKeyboardData) && isset($adminKeyboardData['keyboard']) && is_array($adminKeyboardData['keyboard'])) {
-        $updateButtonExists = false;
-        foreach ($adminKeyboardData['keyboard'] as $keyboardRow) {
-            foreach ((array) $keyboardRow as $keyboardButton) {
-                if (($keyboardButton['text'] ?? '') === $githubUpdateButtonText) {
-                    $updateButtonExists = true;
-                    break 2;
-                }
-            }
-        }
-
-        if (!$updateButtonExists) {
-            $insertPosition = max(count($adminKeyboardData['keyboard']) - 1, 0);
-            array_splice(
-                $adminKeyboardData['keyboard'],
-                $insertPosition,
-                0,
-                [[['text' => $githubUpdateButtonText]]]
-            );
-            $keyboardadmin = json_encode($adminKeyboardData, JSON_UNESCAPED_UNICODE);
-        }
-    }
+// تغییر عنوان دکمه قبلی «گزارش ربات» به «آپدیت ربات» بدون دست‌زدن به ساختار کیبورد.
+if (isset($keyboardadmin) && is_string($keyboardadmin)) {
+    $keyboardadmin = str_replace(
+        "📬 گزارش ربات",
+        "♻️ آپدیت ربات",
+        $keyboardadmin
+    );
 }
+
+$domainhostsEscaped = htmlspecialchars($domainhosts, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 $miniAppInstructionText = <<<HTML
 📌 آموزش فعالسازی مینی اپ در ربات BotFather
@@ -56,57 +36,7 @@ $miniAppInstructionText = <<<HTML
 <code>https://{$domainhostsEscaped}/app/</code>
 HTML;
 
-if ($text === $githubUpdateButtonText) {
-    if (($adminrulecheck['rule'] ?? '') !== 'administrator') {
-        sendmessage($from_id, '⛔ شما اجازه بروزرسانی ربات را ندارید.', $keyboardadmin, 'HTML');
-        return;
-    }
-
-    @set_time_limit(0);
-    @ignore_user_abort(true);
-
-    sendmessage(
-        $from_id,
-        "⏳ در حال دریافت آخرین فایل‌های شاخه <code>main</code> از GitHub هستم.\n\nفقط فایل <code>config.php</code> فعلی حفظ می‌شود.",
-        null,
-        'HTML'
-    );
-
-    $updateOutput = [];
-    $updateExitCode = 0;
-    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
-    $updateResult = trim(implode("\n", $updateOutput));
-
-    if ($updateExitCode === 0 && strpos($updateResult, 'UPDATE_SUCCESS:') !== false) {
-        $versionPosition = strrpos($updateResult, 'UPDATE_SUCCESS:');
-        $newVersion = trim(substr($updateResult, $versionPosition + strlen('UPDATE_SUCCESS:')));
-        if ($newVersion === '') {
-            $newVersion = 'main';
-        }
-
-        sendmessage(
-            $from_id,
-            "✅ بروزرسانی با موفقیت انجام شد.\n\n📦 نسخه: <code>" . htmlspecialchars($newVersion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n🔒 فایل <code>config.php</code> تغییر نکرد.",
-            $keyboardadmin,
-            'HTML'
-        );
-        return;
-    }
-
-    if (strpos($updateResult, 'UPDATE_ALREADY_RUNNING') !== false) {
-        sendmessage($from_id, '⚠️ یک بروزرسانی دیگر در حال اجرا است.', $keyboardadmin, 'HTML');
-        return;
-    }
-
-    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    sendmessage(
-        $from_id,
-        "❌ بروزرسانی انجام نشد. در صورت شروع جایگزینی، بکاپ قبلی به‌صورت خودکار برگردانده شده است.\n\n<pre>{$safeUpdateResult}</pre>",
-        $keyboardadmin,
-        'HTML'
-    );
-    return;
-} elseif (in_array($text, $textadmin) || $datain == "admin") {
+if (in_array($text, $textadmin) || $datain == "admin") {
     if ($datain == "admin")
         deletemessage($from_id, $message_id);
     if ($buyreport == "0" || $otherservice == "0" || $otherreport == "0" || $paymentreports == "0" || $reporttest == "0" || $errorreport == "0") {
@@ -7697,10 +7627,43 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     update("user", "Processing_value", $userdata['idpanel'], "id", $from_id);
     step("home", $from_id);
-} elseif ($text == "📬 گزارش ربات" && $adminrulecheck['rule'] == "administrator") {
-    $textupdate = "💬 | گزارش ربات\n\n🔹 | اگر در عملکرد ربات با <b>باگ یا مشکلی</b> روبه‌رو شدید، لطفاً مورد را برای بررسی به ما اطلاع دهید.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | در صورتی که با <b>باگ جدی</b> یا رفتار غیرعادی مواجه شدید، سریع‌تر گزارش دهید تا رفع شود.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | اگر پیشنهادی برای <b>افزودن قابلیت جدید</b> دارید یا ایده‌ای برای بهبود عملکرد ربات در نظر دارید، خوشحال می‌شویم بشنویم.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | همچنین اگر نیاز به <b>راهنمایی</b> یا کمک دارید، می‌توانید از طریق دایرکت با تیم پشتیبانی در ارتباط باشید.\n\n📩 | برای ارسال گزارش، پیشنهاد یا درخواست راهنمایی، در <b>گروه میرزا</b> پیام بگذارید:\n<a href=\"https://t.me/mirzapanelgroup\" rel=\"nofollow\" target=\"_blank\">Mirza Group</a>";
-    sendmessage($from_id, $textupdate, null, 'HTML');
+} elseif (($text == "📬 گزارش ربات" || $text == "♻️ بروزرسانی ربات" || $text == "♻️ آپدیت ربات") && $adminrulecheck['rule'] == "administrator") {
+    // فقط ادمین اصلی اجازه جایگزینی فایل‌های ربات را دارد.
+    if ((string) $from_id !== (string) $adminnumber) {
+        sendmessage($from_id, "❌ بروزرسانی فقط توسط ادمین اصلی قابل اجرا است.", $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+
+    sendmessage(
+        $from_id,
+        "⏳ در حال دریافت آخرین نسخه از GitHub...\n\nفقط فایل <code>config.php</code> فعلی حفظ می‌شود.",
+        null,
+        'HTML'
+    );
+
+    $updateOutput = [];
+    $updateExitCode = 0;
+    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
+
+    $updateResult = trim(implode("\n", $updateOutput));
+    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    if ($updateExitCode === 0) {
+        $updateMessage = "✅ بروزرسانی ربات با موفقیت انجام شد.";
+        if ($safeUpdateResult !== '') {
+            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
+        }
+    } else {
+        $updateMessage = "❌ بروزرسانی ربات ناموفق بود.";
+        if ($safeUpdateResult !== '') {
+            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
+        }
+    }
+
+    sendmessage($from_id, $updateMessage, $keyboardadmin, 'HTML');
     step('home', $from_id);
+    return;
 } elseif ($text == "🛠 قابلیت های پنل") {
     sendmessage($from_id, "🪚 برای استفاده از این قابلیت یکی از پنل های زیر را انتخاب نمایید", $json_list_marzban_panel, 'HTML');
     step('getlocoption', $from_id);
