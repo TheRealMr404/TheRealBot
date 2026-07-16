@@ -287,6 +287,132 @@ GIT_REPO="TheRealMr404/TheRealBot"
 LATEST_CACHE="/tmp/.mirza_latest_version"
 IP_CACHE="/tmp/.mirza_server_ip"
 
+
+# ── Telegram panel auto-updater ──────────────────────────────
+# Creates the updater used by the admin-panel button. It synchronizes the
+# installed bot with GitHub main and preserves only config.php.
+install_bot_auto_updater() {
+    local updater="/usr/local/sbin/therealbot-update"
+    local sudoers="/etc/sudoers.d/therealbot-update"
+
+    cat > "$updater" <<'THEREALBOT_UPDATER'
+#!/bin/bash
+set -Eeuo pipefail
+
+BOT_DIR="/var/www/html/mirzaprobotconfig"
+ZIP_URL="https://github.com/TheRealMr404/TheRealBot/archive/refs/heads/main.zip"
+BACKUP_DIR="/var/backups/therealbot"
+LOCK_FILE="/run/lock/therealbot-update.lock"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "UPDATE_ALREADY_RUNNING"
+    exit 20
+fi
+
+for cmd in curl unzip rsync php tar; do
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "MISSING_COMMAND:$cmd"
+        exit 21
+    }
+done
+
+[ -d "$BOT_DIR" ] || {
+    echo "BOT_DIRECTORY_NOT_FOUND"
+    exit 22
+}
+
+TMP_DIR="$(mktemp -d /tmp/therealbot-update.XXXXXX)"
+STAMP="$(date +%Y%m%d_%H%M%S)"
+BACKUP_FILE="$BACKUP_DIR/backup_${STAMP}.tar.gz"
+DEPLOY_STARTED=0
+
+rollback_and_cleanup() {
+    local rc=$?
+    trap - EXIT
+
+    if [ "$rc" -ne 0 ] && [ "$DEPLOY_STARTED" -eq 1 ] && [ -f "$BACKUP_FILE" ]; then
+        echo "ROLLBACK_STARTED"
+        find "$BOT_DIR" -mindepth 1 -maxdepth 1 ! -name config.php -exec rm -rf -- {} +
+        tar -xzf "$BACKUP_FILE" -C "$BOT_DIR"
+        chown -R www-data:www-data "$BOT_DIR"
+        echo "ROLLBACK_COMPLETED"
+    fi
+
+    rm -rf "$TMP_DIR"
+    exit "$rc"
+}
+trap rollback_and_cleanup EXIT
+
+mkdir -p "$BACKUP_DIR"
+
+curl -fL --retry 3 --connect-timeout 15 --max-time 180 \
+    "$ZIP_URL" -o "$TMP_DIR/bot.zip"
+
+unzip -q "$TMP_DIR/bot.zip" -d "$TMP_DIR/extracted"
+SOURCE_DIR="$(find "$TMP_DIR/extracted" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+
+[ -n "$SOURCE_DIR" ] && [ -d "$SOURCE_DIR" ] || {
+    echo "EXTRACTED_DIRECTORY_NOT_FOUND"
+    exit 23
+}
+
+# Do not deploy a broken PHP package.
+while IFS= read -r -d '' php_file; do
+    php -l "$php_file" >/dev/null || {
+        echo "PHP_SYNTAX_ERROR:$php_file"
+        exit 24
+    }
+done < <(find "$SOURCE_DIR" -type f -name '*.php' -print0)
+
+tar -czf "$BACKUP_FILE" -C "$BOT_DIR" .
+DEPLOY_STARTED=1
+
+# Mirror GitHub exactly; keep only the server's existing config.php.
+rsync -a --delete \
+    --exclude='/config.php' \
+    "$SOURCE_DIR/" "$BOT_DIR/"
+
+chown -R www-data:www-data "$BOT_DIR"
+find "$BOT_DIR" -type d -exec chmod 755 {} +
+find "$BOT_DIR" -type f -exec chmod 644 {} +
+find "$BOT_DIR" -type f -name '*.sh' -exec chmod 755 {} +
+
+php -l "$BOT_DIR/index.php" >/dev/null 2>&1 || {
+    echo "INSTALLED_INDEX_SYNTAX_ERROR"
+    exit 25
+}
+
+apache2ctl configtest >/dev/null 2>&1
+systemctl reload apache2
+
+DEPLOY_STARTED=0
+
+# Keep only the five newest backups.
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'backup_*.tar.gz' \
+    -printf '%T@ %p\n' | sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -f
+
+echo "UPDATE_SUCCESS"
+THEREALBOT_UPDATER
+
+    chmod 0750 "$updater"
+    chown root:root "$updater"
+
+    cat > "$sudoers" <<EOF
+www-data ALL=(root) NOPASSWD: $updater
+EOF
+    chmod 0440 "$sudoers"
+
+    if ! visudo -cf "$sudoers" >/dev/null 2>&1; then
+        rm -f "$sudoers"
+        echo "Invalid sudoers configuration for auto-updater."
+        return 1
+    fi
+
+    return 0
+}
+export -f install_bot_auto_updater
+
 # ── Resumable-install state engine ───────────────────────────
 # Survives reboots / network drops. Lets a failed install resume
 # from the last completed phase instead of starting from scratch.
@@ -1181,7 +1307,7 @@ function install_bot() {
         fi
 
         run_step "Installing base tools (git, curl, wget, unzip, jq)" \
-            "apt-get install -y software-properties-common git unzip curl wget jq" \
+            "apt-get install -y software-properties-common git unzip curl wget jq rsync" \
             || { show_step_error; install_pause "Installing base tools"; }
 
         run_step "Installing PHP 8.2 (fpm + mysql)" \
@@ -1608,6 +1734,10 @@ EOF
     fi
     # ╰─────────────────────────────────────────────────────────────╯
 
+    # Install the admin-panel GitHub auto-updater.
+    run_step "Installing bot auto-updater" "install_bot_auto_updater" \
+        || { show_step_error; install_pause "Installing bot auto-updater"; }
+
     # ── Done ──
     mark_phase COMPLETE
     clear
@@ -1719,6 +1849,12 @@ function update_bot() {
     fi
     sudo chown -R www-data:www-data "$BOT_DIR"
     sudo chmod -R 755 "$BOT_DIR"
+
+    # Recreate/refresh the updater after every CLI update as well.
+    if ! install_bot_auto_updater; then
+        echo -e "\e[91mWarning: failed to install the Telegram auto-updater.\033[0m"
+    fi
+
     DOMAIN_NAME=""
     if [ -f "$CONFIG_PATH" ]; then
         DOMAIN_NAME=$(grep "^\$domainhosts" "$CONFIG_PATH" | cut -d"'" -f2 | cut -d'/' -f1)
@@ -1806,6 +1942,7 @@ function remove_bot() {
     LOG_FILE="/var/log/remove_bot.log"
     echo "Log file: $LOG_FILE" > "$LOG_FILE"
     BOT_DIR="/var/www/html/mirzaprobotconfig"
+    rm -f /usr/local/sbin/therealbot-update /etc/sudoers.d/therealbot-update 2>/dev/null || true
     if [ ! -d "$BOT_DIR" ]; then
         echo -e "\e[31m[ERROR]\033[0m Mirza Bot is not installed (/var/www/html/mirzaprobotconfig not found)." | tee -a "$LOG_FILE"
         echo -e "\e[33mNothing to remove. Exiting...\033[0m" | tee -a "$LOG_FILE"

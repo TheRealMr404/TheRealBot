@@ -17,6 +17,35 @@ if (!in_array($from_id, $admin_ids))
 
 $domainhostsEscaped = htmlspecialchars($domainhosts, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
+
+// دکمه بروزرسانی فقط برای مدیر اصلی پنل نمایش داده می‌شود.
+$githubUpdateButtonText = '♻️ بروزرسانی ربات از GitHub';
+if (($adminrulecheck['rule'] ?? '') === 'administrator') {
+    $adminKeyboardData = json_decode($keyboardadmin, true);
+    if (is_array($adminKeyboardData) && isset($adminKeyboardData['keyboard']) && is_array($adminKeyboardData['keyboard'])) {
+        $updateButtonExists = false;
+        foreach ($adminKeyboardData['keyboard'] as $keyboardRow) {
+            foreach ((array) $keyboardRow as $keyboardButton) {
+                if (($keyboardButton['text'] ?? '') === $githubUpdateButtonText) {
+                    $updateButtonExists = true;
+                    break 2;
+                }
+            }
+        }
+
+        if (!$updateButtonExists) {
+            $insertPosition = max(count($adminKeyboardData['keyboard']) - 1, 0);
+            array_splice(
+                $adminKeyboardData['keyboard'],
+                $insertPosition,
+                0,
+                [[['text' => $githubUpdateButtonText]]]
+            );
+            $keyboardadmin = json_encode($adminKeyboardData, JSON_UNESCAPED_UNICODE);
+        }
+    }
+}
+
 $miniAppInstructionText = <<<HTML
 📌 آموزش فعالسازی مینی اپ در ربات BotFather
 
@@ -27,7 +56,57 @@ $miniAppInstructionText = <<<HTML
 <code>https://{$domainhostsEscaped}/app/</code>
 HTML;
 
-if (in_array($text, $textadmin) || $datain == "admin") {
+if ($text === $githubUpdateButtonText) {
+    if (($adminrulecheck['rule'] ?? '') !== 'administrator') {
+        sendmessage($from_id, '⛔ شما اجازه بروزرسانی ربات را ندارید.', $keyboardadmin, 'HTML');
+        return;
+    }
+
+    @set_time_limit(0);
+    @ignore_user_abort(true);
+
+    sendmessage(
+        $from_id,
+        "⏳ در حال دریافت آخرین فایل‌های شاخه <code>main</code> از GitHub هستم.\n\nفقط فایل <code>config.php</code> فعلی حفظ می‌شود.",
+        null,
+        'HTML'
+    );
+
+    $updateOutput = [];
+    $updateExitCode = 0;
+    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
+    $updateResult = trim(implode("\n", $updateOutput));
+
+    if ($updateExitCode === 0 && strpos($updateResult, 'UPDATE_SUCCESS:') !== false) {
+        $versionPosition = strrpos($updateResult, 'UPDATE_SUCCESS:');
+        $newVersion = trim(substr($updateResult, $versionPosition + strlen('UPDATE_SUCCESS:')));
+        if ($newVersion === '') {
+            $newVersion = 'main';
+        }
+
+        sendmessage(
+            $from_id,
+            "✅ بروزرسانی با موفقیت انجام شد.\n\n📦 نسخه: <code>" . htmlspecialchars($newVersion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n🔒 فایل <code>config.php</code> تغییر نکرد.",
+            $keyboardadmin,
+            'HTML'
+        );
+        return;
+    }
+
+    if (strpos($updateResult, 'UPDATE_ALREADY_RUNNING') !== false) {
+        sendmessage($from_id, '⚠️ یک بروزرسانی دیگر در حال اجرا است.', $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    sendmessage(
+        $from_id,
+        "❌ بروزرسانی انجام نشد. در صورت شروع جایگزینی، بکاپ قبلی به‌صورت خودکار برگردانده شده است.\n\n<pre>{$safeUpdateResult}</pre>",
+        $keyboardadmin,
+        'HTML'
+    );
+    return;
+} elseif (in_array($text, $textadmin) || $datain == "admin") {
     if ($datain == "admin")
         deletemessage($from_id, $message_id);
     if ($buyreport == "0" || $otherservice == "0" || $otherreport == "0" || $paymentreports == "0" || $reporttest == "0" || $errorreport == "0") {
