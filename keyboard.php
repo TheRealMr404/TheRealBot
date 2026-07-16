@@ -188,7 +188,7 @@ $keyboardadmin = json_encode([
         [['text' => $textbotlang['Admin']['btnkeyboardadmin']['managruser']],['text' => "🏬 تنظیمات فروشگاه"]],
         [['text' => "💎 مالی"]],
         [['text' => "🤙 بخش پشتیبانی"],['text' => "📚 بخش آموزش"]],
-        [['text' => "📬 گزارش ربات"],['text' => "🛠 قابلیت های پنل"]],
+        [['text' => "♻️ آپدیت ربات"],['text' => "🛠 قابلیت های پنل"]],
         [['text' => "⚙️ تنظیمات عمومی"],['text' => "💵 رسید های تایید نشده"]],
         [['text' => $textbotlang['users']['backbtn']]]
     ],
