@@ -7637,7 +7637,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 
     sendmessage(
         $from_id,
-        "⏳ در حال دریافت آخرین نسخه از GitHub...\n\nفقط فایل <code>config.php</code> فعلی حفظ می‌شود.",
+        "ربات در حال آپدیت لطفا منتظر بمانید",
         null,
         'HTML'
     );
