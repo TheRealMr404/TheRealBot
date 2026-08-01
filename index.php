@@ -657,7 +657,7 @@ $pagination_buttons = [
         'icon_custom_emoji_id' => 5258236805890710909
     ]
 ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']];
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice' , 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
