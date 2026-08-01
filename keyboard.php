@@ -662,7 +662,7 @@ $json_list_remove_helpـlink = json_encode($helpappremove);
     'text' => '🌍 '.$result['name_panel'],
     'callback_data' => "location_{$result['code_panel']}",
     'style'=>'primary',
-    'icon_custom_emoji_id'=> 5193203441886831796
+    'icon_custom_emoji_id'=> 5258236805890710909
 ];
         }
          if (count($temp_row) == 2) {
@@ -765,7 +765,7 @@ $list_marzban_panel_userschange = json_encode($list_marzban_panel_users_change);
     $list_marzban_panel_usertest = ['inline_keyboard' => []];
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         if($result['hide_user'] != null and in_array($from_id,json_decode($result['hide_user'],true)))continue;
-            $list_marzban_panel_usertest['inline_keyboard'][] = [['text' => $result['name_panel'], 'callback_data' => "locationtest_{$result['code_panel']}", 'style'=>'success' , 'icon_custom_emoji_id'=> 5193203441886831796]
+            $list_marzban_panel_usertest['inline_keyboard'][] = [['text' => $result['name_panel'], 'callback_data' => "locationtest_{$result['code_panel']}", 'style'=>'success' , 'icon_custom_emoji_id'=> 5258236805890710909]
             ];
     }
 $list_marzban_panel_usertest['inline_keyboard'][] = [
@@ -1189,7 +1189,7 @@ $supportoption = json_encode([
                 ['text' => $datatextbot['text_fq'], 'callback_data' => "fqQuestions", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5192955974461169679] ,
                 ['text' => "پشتیبانی", 'callback_data' => "support", 'style'=>'success' , 'icon_custom_emoji_id'=> 5958488325370155278],
             ],[
-                ['text' => "بازگشت به منوی اصلی" ,'callback_data' => "backuser" , 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796]
+                ['text' => "بازگشت به منوی اصلی" ,'callback_data' => "backuser" , 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]
             ],
  
         ]
@@ -1467,7 +1467,7 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
     if ($statuscustom)$product['inline_keyboard'][] = [['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => $customvolume]
     ];
     $product['inline_keyboard'][] = [
-        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $backuser, 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $backuser, 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
     ];
     return json_encode($product);
 }
