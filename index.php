@@ -714,16 +714,20 @@ $pagination_buttons = [
             ];
         }
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page'
-        ]
-    ];
+$pagination_buttons = [
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $backuser = [
         [
             'text' => "🔙 بازگشت به منوی اصلی",
