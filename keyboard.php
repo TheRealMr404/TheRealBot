@@ -172,8 +172,8 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
 
 $keyboardPanel = json_encode([
     'inline_keyboard' => [
-        [['text' => $datatextbot['text_Discount'] ,'callback_data' => "Discount", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5193085063998224234],
-        ['text' => $datatextbot['text_Add_Balance'] ,'callback_data' => "Add_Balance", 'style'=>'success' , 'icon_custom_emoji_id'=> 6251456007499682133]
+        [['text' => $datatextbot['text_Discount'] ,'callback_data' => "Discount", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5224635807855296510],
+        ['text' => $datatextbot['text_Add_Balance'] ,'callback_data' => "Add_Balance", 'style'=>'success' , 'icon_custom_emoji_id'=> 5348418461838098123]
         ],
         [['text' => $textbotlang['users']['backbtn'] ,'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]],
     ],
@@ -927,7 +927,7 @@ if ($table_exists) {
 $payment = json_encode([
     'inline_keyboard' => [
         [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetservice", 'style'=>'success' , 'icon_custom_emoji_id'=> 5440841102871517055]],
-        [['text' => "ثبت کد تخفیف", 'callback_data' => "aptdc", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5193085063998224234]],
+        [['text' => "ثبت کد تخفیف", 'callback_data' => "aptdc", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5224635807855296510]],
         [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]]
     ]
 ]);
