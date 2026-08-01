@@ -92,8 +92,8 @@ window.toast = function (msg, type, dur) {
 var _confirmCb = null;
 
 window.showConfirm = function (msg, cb, title) {
-    document.getElementById('confirm-title').textContent = title || t('jsConfirmTitle');
-    document.getElementById('confirm-msg').textContent   = msg   || t('jsConfirmMsg');
+    document.getElementById('confirm-title').textContent = title || 'تأیید عملیات';
+    document.getElementById('confirm-msg').textContent   = msg   || 'آیا اطمینان دارید؟';
     _confirmCb = cb;
     document.getElementById('confirm-veil').classList.add('open');
 };
@@ -116,7 +116,7 @@ document.querySelectorAll('[data-confirm]').forEach(function (el) {
     el.addEventListener('click', function (e) {
         e.preventDefault();
         var href = el.href;
-        showConfirm(el.dataset.confirm || t('jsConfirmDefault'), function () {
+        showConfirm(el.dataset.confirm || 'این عملیات قابل بازگشت نیست. ادامه؟', function () {
             _lb.start();
             window.location.href = href;
         });

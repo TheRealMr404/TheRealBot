@@ -39,7 +39,7 @@ try {
 } catch (Exception $e) {
 }
 
-$pageTitle = $textbotlang['panel']['dashboardTitle'];
+$pageTitle = 'داشبورد';
 $activeNav = 'dashboard';
 $showPageHead = false;
 include __DIR__ . '/inc/layout_head.php';
@@ -47,31 +47,31 @@ include __DIR__ . '/inc/layout_head.php';
 
 <div class="stats fade-up">
     <div class="stat">
-        <div class="stat-label"><?= $textbotlang['panel']['dashTotalUsers'] ?></div>
+        <div class="stat-label">کل کاربران</div>
         <div class="stat-num"><?= number_format($totalUsers) ?></div>
-        <div class="stat-meta"><?= $newToday > 0 ? '<span class="up">+' . $newToday . $textbotlang['panel']['dashTodaySpan'] : $textbotlang['panel']['dashNoChange'] ?>
+        <div class="stat-meta"><?= $newToday > 0 ? '<span class="up">+' . $newToday . ' امروز</span>' : 'بدون تغییر' ?>
         </div>
     </div>
     <div class="stat ok">
-        <div class="stat-label"><?= $textbotlang['panel']['dashTotalRevenue'] ?></div>
+        <div class="stat-label">درآمد کل</div>
         <div class="stat-num">
             <?= $totalRevenue >= 1_000_000
-                ? number_format($totalRevenue / 1_000_000, 1) . $textbotlang['panel']['dashUnitMillionToman']
-                : number_format($totalRevenue) . $textbotlang['panel']['dashUnitToman'] ?>
+                ? number_format($totalRevenue / 1_000_000, 1) . '<small>M ت</small>'
+                : number_format($totalRevenue) . '<small>ت</small>' ?>
         </div>
-        <div class="stat-meta"><?= $textbotlang['panel']['dashTotalSales'] ?></div>
+        <div class="stat-meta">مجموع فروش</div>
     </div>
     <div class="stat warn">
-        <div class="stat-label"><?= $textbotlang['panel']['dashActiveService'] ?></div>
+        <div class="stat-label">سرویس فعال</div>
         <div class="stat-num"><?= number_format($activeNow) ?></div>
     </div>
     <div class="stat <?= $pendingPay > 0 ? 'no' : '' ?>">
-        <div class="stat-label"><?= $pendingPay > 0 ? $textbotlang['panel']['dashPendingPayment'] : $textbotlang['panel']['dashTodayTransaction'] ?></div>
+        <div class="stat-label"><?= $pendingPay > 0 ? 'پرداخت در انتظار' : 'تراکنش امروز' ?></div>
         <div class="stat-num" style="<?= $pendingPay > 0 ? 'color:var(--no)' : '' ?>">
             <?= number_format($pendingPay > 0 ? $pendingPay : $txToday) ?>
         </div>
         <div class="stat-meta">
-            <?= $pendingPay > 0 ? $textbotlang['panel']['dashReviewLink'] : $textbotlang['panel']['dashStatusRegistered'] ?>
+            <?= $pendingPay > 0 ? '<a href="payment.php" style="color:var(--no)">بررسی ←</a>' : 'ثبت‌شده' ?>
         </div>
     </div>
 </div>
@@ -80,19 +80,19 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d1">
         <div class="card-head">
             <div>
-                <div class="card-title"><?= $textbotlang['panel']['dashRecentOrders'] ?></div>
-                <div class="card-subtitle"><?= count($recentInvoices) ?> <?= $textbotlang['panel']['dashRecentItem'] ?></div>
+                <div class="card-title">آخرین سفارشات</div>
+                <div class="card-subtitle"><?= count($recentInvoices) ?> مورد اخیر</div>
             </div>
-            <a href="invoice.php" class="btn-link" style="font-size:.78rem"><?= $textbotlang['panel']['dashViewAll'] ?></a>
+            <a href="invoice.php" class="btn-link" style="font-size:.78rem">همه ←</a>
         </div>
         <div class="tbl-wrap">
             <table class="tbl-sm">
                 <thead>
                     <tr>
-                        <th><?= $textbotlang['panel']['dashColUser'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColProduct'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColAmount'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColStatus'] ?></th>
+                        <th>کاربر</th>
+                        <th>محصول</th>
+                        <th>مبلغ</th>
+                        <th>وضعیت</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,17 +100,17 @@ include __DIR__ . '/inc/layout_head.php';
                         <tr>
                             <td colspan="4">
                                 <div class="empty" style="padding:24px">
-                                    <p><?= $textbotlang['panel']['dashNoOrdersYet'] ?></p>
+                                    <p>سفارشی ثبت نشده</p>
                                 </div>
                             </td>
                         </tr>
                     <?php else:
                         $statusMap = [
-                            'active' => ['tag-ok', $textbotlang['panel']['dashStatusActive']],
-                            'end_of_time' => ['tag-warn', $textbotlang['panel']['dashStatusExpired']],
-                            'end_of_volume' => ['tag-no', $textbotlang['panel']['dashStatusVolumeFinished']],
-                            'sendedwarn' => ['tag-warn', $textbotlang['panel']['dashStatusWarning']],
-                            'send_on_hold' => ['tag-plain', $textbotlang['panel']['dashStatusWaiting']],
+                            'active' => ['tag-ok', 'فعال'],
+                            'end_of_time' => ['tag-warn', 'منقضی'],
+                            'end_of_volume' => ['tag-no', 'اتمام حجم'],
+                            'sendedwarn' => ['tag-warn', 'اخطار'],
+                            'send_on_hold' => ['tag-plain', 'در انتظار'],
                         ];
                         foreach ($recentInvoices as $inv):
                             [$tagClass, $label] = $statusMap[$inv['Status'] ?? ''] ?? ['tag-plain', $inv['Status'] ?? '—'];
@@ -122,7 +122,7 @@ include __DIR__ . '/inc/layout_head.php';
                                     <?= htmlspecialchars(trunc($inv['name_product'] ?? '—', 20)) ?>
                                 </td>
                                 <td class="cn" style="white-space:nowrap">
-                                    <?= number_format((int) ($inv['price_product'] ?? 0)) ?> <span class="cf"><?= $textbotlang['panel']['dashTomanShort'] ?></span>
+                                    <?= number_format((int) ($inv['price_product'] ?? 0)) ?> <span class="cf">ت</span>
                                 </td>
                                 <td><span class="tag <?= $tagClass ?>"><?= $label ?></span></td>
                             </tr>
@@ -135,19 +135,19 @@ include __DIR__ . '/inc/layout_head.php';
     <div class="card fade-up d2">
         <div class="card-head">
             <div>
-                <div class="card-title"><?= $textbotlang['panel']['dashRecentUsers'] ?></div>
-                <div class="card-subtitle"><?= count($recentUsers) ?> <?= $textbotlang['panel']['dashRecentItem2'] ?></div>
+                <div class="card-title">آخرین کاربران</div>
+                <div class="card-subtitle"><?= count($recentUsers) ?> مورد اخیر</div>
             </div>
-            <a href="users.php" class="btn-link" style="font-size:.78rem"><?= $textbotlang['panel']['dashViewAll2'] ?></a>
+            <a href="users.php" class="btn-link" style="font-size:.78rem">همه ←</a>
         </div>
         <div class="tbl-wrap">
             <table class="tbl-sm">
                 <thead>
                     <tr>
-                        <th><?= $textbotlang['panel']['dashColId'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColName'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColBalance'] ?></th>
-                        <th><?= $textbotlang['panel']['dashColGroup'] ?></th>
+                        <th>آیدی</th>
+                        <th>نام</th>
+                        <th>موجودی</th>
+                        <th>گروه</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -155,7 +155,7 @@ include __DIR__ . '/inc/layout_head.php';
                         <tr>
                             <td colspan="4">
                                 <div class="empty" style="padding:24px">
-                                    <p><?= $textbotlang['panel']['dashNoUsersYet'] ?></p>
+                                    <p>کاربری ثبت نشده</p>
                                 </div>
                             </td>
                         </tr>
@@ -182,11 +182,11 @@ include __DIR__ . '/inc/layout_head.php';
                                     <?php endif; ?>
                                 </td>
                                 <td class="cn" style="white-space:nowrap">
-                                    <?= number_format((int) ($u['Balance'] ?? 0)) ?> <span class="cf"><?= $textbotlang['panel']['dashTomanShort2'] ?></span>
+                                    <?= number_format((int) ($u['Balance'] ?? 0)) ?> <span class="cf">ت</span>
                                 </td>
                                 <td>
                                     <?php if ($isBlocked): ?>
-                                        <span class="tag tag-no" style="font-size:.65rem"><?= $textbotlang['panel']['dashLabelBlocked'] ?></span>
+                                        <span class="tag tag-no" style="font-size:.65rem">مسدود</span>
                                     <?php else: ?>
                                         <span class="tag <?= user_role_tag($agent) ?>" style="font-size:.65rem">
                                             <?= user_role_label($agent) ?>

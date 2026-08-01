@@ -7,12 +7,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add')
   csrf_check_post();
   $name = trim($_POST['name_product'] ?? '');
   if ($name === '') {
-    flash('error', $textbotlang['panel']['productNameRequired']);
+    flash('error', 'نام محصول الزامی است.');
     header('Location: product.php');
     exit;
   }
   if (db_count($pdo, "SELECT COUNT(*) FROM product WHERE name_product = ?", [$name])) {
-    flash('error', $textbotlang['panel']['productNameExists']);
+    flash('error', 'محصولی با این نام قبلاً ثبت شده.');
     header('Location: product.php');
     exit;
   }
@@ -23,9 +23,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add')
       "INSERT INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,one_buy_status) VALUES (?,?,?,?,?,?,?,'no_reset',?,?,'{}','0')",
       [$name, $code, (int) ($_POST['price_product'] ?? 0), (int) ($_POST['volume_product'] ?? 0), (int) ($_POST['time_product'] ?? 0), $_POST['namepanel'] ?? '', $_POST['agent_product'] ?? '', $_POST['note_product'] ?? '', $_POST['cetegory_product'] ?? '']
     );
-    flash('success', $textbotlang['panel']['productAddedPrefix'] . $name . $textbotlang['panel']['productAddedSuffix']);
+    flash('success', 'محصول «' . $name . '» اضافه شد.');
   } catch (Exception $e) {
-    flash('error', $textbotlang['panel']['productDbError'] . $e->getMessage());
+    flash('error', 'خطای پایگاه داده: ' . $e->getMessage());
   }
   header('Location: product.php');
   exit;
@@ -42,9 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
         "UPDATE product SET name_product=?,price_product=?,Volume_constraint=?,Service_time=?,Location=?,agent=?,note=?,category=? WHERE id=?",
         [$name, (int) ($_POST['price_product'] ?? 0), (int) ($_POST['volume_product'] ?? 0), (int) ($_POST['time_product'] ?? 0), $_POST['namepanel'] ?? '', $_POST['agent_product'] ?? '', $_POST['note_product'] ?? '', $_POST['cetegory_product'] ?? '', $pid]
       );
-      flash('success', $textbotlang['panel']['productEdited']);
+      flash('success', 'محصول ویرایش شد.');
     } catch (Exception $e) {
-      flash('error', $textbotlang['panel']['productErrorPrefix'] . $e->getMessage());
+      flash('error', 'خطا: ' . $e->getMessage());
     }
   }
   header('Location: product.php');
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
 if (isset($_GET['delete'])) {
   csrf_check_get();
   db_query($pdo, "DELETE FROM product WHERE id = ?", [(int) $_GET['delete']]);
-  flash('success', $textbotlang['panel']['productDeleted']);
+  flash('success', 'محصول حذف شد.');
   header('Location: product.php');
   exit;
 }
@@ -66,15 +66,15 @@ try {
 }
 $products = db_fetchAll($pdo, "SELECT * FROM product ORDER BY id");
 
-$pageTitle = $textbotlang['panel']['productsTitle'];
-$pageLede = $textbotlang['panel']['productsSubtitle'];
+$pageTitle = 'محصولات';
+$pageLede = 'فهرست محصولات قابل فروش و مدیریت آن‌ها.';
 $activeNav = 'product';
 include __DIR__ . '/inc/layout_head.php';
 ?>
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px" class="fade-up">
-  <div style="font-size:.85rem;color:var(--mute)"><?= count($products) ?> <?= $textbotlang['panel']['productsHeading'] ?></div>
-  <button class="btn btn-primary" onclick="openModal('addModal')"><?= icon('plus', 14) ?> <?= $textbotlang['panel']['productAddProductBtn'] ?></button>
+  <div style="font-size:.85rem;color:var(--mute)"><?= count($products) ?> محصول ثبت‌شده</div>
+  <button class="btn btn-primary" onclick="openModal('addModal')"><?= icon('plus', 14) ?> افزودن محصول</button>
 </div>
 
 <div class="card fade-up d1">
@@ -89,16 +89,17 @@ include __DIR__ . '/inc/layout_head.php';
         <circle cx="155" cy="125" r="22" fill="var(--accent-s)" stroke="var(--accent)" stroke-width="2" />
         <path d="M147 125h16M155 117v16" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" />
       </svg>
-      <p><?= $textbotlang['panel']['productColName'] ?></p>
+      <p>هنوز محصولی ثبت نکرده‌اید</p>
       <button class="btn btn-primary" style="margin-top:14px" onclick="openModal('addModal')"><?= icon('plus', 14) ?>
-        <?= $textbotlang['panel']['productColVolume'] ?></button>
+        اضافه
+        کردن اولین محصول</button>
     </div>
   <?php else: ?>
     <div class="toolbar">
-      <div class="toolbar-title"><?= $textbotlang['panel']['productColTime'] ?> <small>(<?= count($products) ?>)</small></div>
+      <div class="toolbar-title">فهرست محصولات <small>(<?= count($products) ?>)</small></div>
       <div class="search-box" style="min-width:220px">
         <?= icon('search', 14) ?>
-        <input type="text" placeholder="<?= htmlspecialchars($textbotlang['panel']['productSearchPlaceholder']) ?>" data-filter="prodTbl">
+        <input type="text" placeholder="جستجو..." data-filter="prodTbl">
         <button type="button" class="search-clear">✕</button>
       </div>
     </div>
@@ -107,14 +108,14 @@ include __DIR__ . '/inc/layout_head.php';
         <thead>
           <tr>
             <th>#</th>
-            <th><?= $textbotlang['panel']['productColPrice'] ?></th>
-            <th><?= $textbotlang['panel']['productColActions'] ?></th>
-            <th><?= $textbotlang['panel']['productNoProductFound'] ?></th>
-            <th><?= $textbotlang['panel']['productNoProductYet'] ?></th>
-            <th><?= $textbotlang['panel']['productAddProductTitle'] ?></th>
-            <th><?= $textbotlang['panel']['productEditProductTitle'] ?></th>
-            <th><?= $textbotlang['panel']['productFieldProductName'] ?></th>
-            <th><?= $textbotlang['panel']['productFieldVolumeGb'] ?></th>
+            <th>نام محصول</th>
+            <th>قیمت</th>
+            <th>حجم</th>
+            <th>مدت</th>
+            <th>پنل</th>
+            <th>دسته</th>
+            <th>کد</th>
+            <th>عملیات</th>
           </tr>
         </thead>
         <tbody>
@@ -123,9 +124,9 @@ include __DIR__ . '/inc/layout_head.php';
             <tr>
               <td class="cf"><?= $i++ ?></td>
               <td class="cs"><?= htmlspecialchars($p['name_product'] ?? '') ?></td>
-              <td class="cn cs"><?= number_format((int) ($p['price_product'] ?? 0)) ?> <span class="cf"><?= $textbotlang['panel']['productFieldServiceDays'] ?></span></td>
+              <td class="cn cs"><?= number_format((int) ($p['price_product'] ?? 0)) ?> <span class="cf">ت</span></td>
               <td class="cn"><?= htmlspecialchars($p['Volume_constraint'] ?? '—') ?> <span class="cf">GB</span></td>
-              <td class="cn"><?= htmlspecialchars($p['Service_time'] ?? '—') ?> <span class="cf"><?= $textbotlang['panel']['productFieldPriceToman'] ?></span></td>
+              <td class="cn"><?= htmlspecialchars($p['Service_time'] ?? '—') ?> <span class="cf">روز</span></td>
               <td class="cf"><?= htmlspecialchars(trunc($p['Location'] ?? '—', 16)) ?></td>
               <td><?php if (!empty($p['category'])): ?><span
                     class="tag tag-info"><?= htmlspecialchars($p['category']) ?></span><?php else: ?><span
@@ -133,13 +134,13 @@ include __DIR__ . '/inc/layout_head.php';
               <td class="cm" style="font-size:.72rem"><?= htmlspecialchars($p['code_product'] ?? '') ?></td>
               <td>
                 <div style="display:flex;gap:5px">
-                  <button class="btn btn-ghost btn-sm btn-icon" title="<?= htmlspecialchars($textbotlang['panel']['productEditBtn']) ?>"
+                  <button class="btn btn-ghost btn-sm btn-icon" title="ویرایش"
                     onclick="openEditModal(<?= htmlspecialchars(json_encode($p), ENT_QUOTES) ?>)">
                     <?= icon('edit', 13) ?>
                   </button>
                   <a href="product.php?delete=<?= (int) $p['id'] ?>&_csrf=<?= csrf_token() ?>"
-                    class="btn btn-no btn-sm btn-icon" title="<?= htmlspecialchars($textbotlang['panel']['productDeleteBtn']) ?>"
-                    data-confirm="<?= htmlspecialchars(sprintf($textbotlang['panel']['productConfirmDeleteProduct'], $p['name_product'])) ?>">
+                    class="btn btn-no btn-sm btn-icon" title="حذف"
+                    data-confirm="حذف محصول «<?= htmlspecialchars($p['name_product']) ?>»؟">
                     <?= icon('trash', 13) ?>
                   </a>
                 </div>
@@ -155,7 +156,7 @@ include __DIR__ . '/inc/layout_head.php';
 <div class="modal-veil" id="addModal">
   <div class="modal">
     <div class="modal-head">
-      <h3><?= $textbotlang['panel']['productFieldProductType'] ?></h3>
+      <h3>افزودن محصول جدید</h3>
       <button class="modal-x" onclick="closeModal('addModal')"><?= icon('close', 14) ?></button>
     </div>
     <form method="POST">
@@ -164,29 +165,29 @@ include __DIR__ . '/inc/layout_head.php';
         <input type="hidden" name="action" value="add">
         <div class="form-grid">
           <div class="field full">
-            <label><?= $textbotlang['panel']['productFieldDescription'] ?></label>
-            <input type="text" name="name_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productNameExample']) ?>" required>
+            <label>نام محصول *</label>
+            <input type="text" name="name_product" class="input" placeholder="مثلاً: ۵۰ گیگ یک ماهه" required>
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productSaveBtn'] ?></label>
-            <input type="number" name="price_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productZeroValue']) ?>" min="0">
+            <label>قیمت (تومان)</label>
+            <input type="number" name="price_product" class="input" placeholder="۰" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productVolumeGbSuffix'] ?></label>
-            <input type="number" name="volume_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productFiftyValue']) ?>" min="0">
+            <label>حجم (GB)</label>
+            <input type="number" name="volume_product" class="input" placeholder="۵۰" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productCancelBtn'] ?></label>
-            <input type="number" name="time_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productThirtyValue']) ?>" min="0">
+            <label>مدت (روز)</label>
+            <input type="number" name="time_product" class="input" placeholder="۳۰" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productFieldLocation'] ?></label>
-            <input type="text" name="cetegory_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productTypeExample']) ?>">
+            <label>دسته‌بندی</label>
+            <input type="text" name="cetegory_product" class="input" placeholder="VPN، پکیج، ...">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productFieldCategory'] ?></label>
+            <label>پنل</label>
             <select name="namepanel" class="select">
-              <option value=""><?= $textbotlang['panel']['productFieldNote'] ?></option>
+              <option value="">— انتخاب نشده —</option>
               <?php foreach ($panels as $pl): ?>
                 <option value="<?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>">
                   <?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>
@@ -194,22 +195,22 @@ include __DIR__ . '/inc/layout_head.php';
             </select>
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productColId'] ?></label>
+            <label>نمایندگی</label>
             <select name="agent_product" class="select">
-              <option value="f"><?= $textbotlang['panel']['productColType'] ?></option>
-              <option value="n"><?= $textbotlang['panel']['productColLocation'] ?></option>
-              <option value="n2"><?= $textbotlang['panel']['productColCategory'] ?></option>
+              <option value="f">کاربر عادی</option>
+              <option value="n">نماینده</option>
+              <option value="n2">نماینده پیشرفته</option>
             </select>
           </div>
           <div class="field full">
-            <label><?= $textbotlang['panel']['productColDescription'] ?></label>
-            <input type="text" name="note_product" class="input" placeholder="<?= htmlspecialchars($textbotlang['panel']['productDescriptionOptional']) ?>">
+            <label>توضیحات</label>
+            <input type="text" name="note_product" class="input" placeholder="توضیحات اختیاری">
           </div>
         </div>
       </div>
       <div class="modal-foot">
-        <button type="submit" class="btn btn-primary"><?= icon('plus', 13) ?> <?= $textbotlang['panel']['productColNote'] ?></button>
-        <button type="button" class="btn btn-ghost" onclick="closeModal('addModal')"><?= $textbotlang['panel']['productColCreatedAt'] ?></button>
+        <button type="submit" class="btn btn-primary"><?= icon('plus', 13) ?> ذخیره محصول</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('addModal')">انصراف</button>
       </div>
     </form>
   </div>
@@ -218,7 +219,7 @@ include __DIR__ . '/inc/layout_head.php';
 <div class="modal-veil" id="editModal">
   <div class="modal">
     <div class="modal-head">
-      <h3><?= $textbotlang['panel']['productDetailTitle'] ?></h3>
+      <h3>ویرایش محصول</h3>
       <button class="modal-x" onclick="closeModal('editModal')"><?= icon('close', 14) ?></button>
     </div>
     <form method="POST">
@@ -228,29 +229,29 @@ include __DIR__ . '/inc/layout_head.php';
         <input type="hidden" name="edit_id" id="edit_id">
         <div class="form-grid">
           <div class="field full">
-            <label><?= $textbotlang['panel']['productDetailName'] ?></label>
+            <label>نام محصول *</label>
             <input type="text" name="name_product" id="edit_name" class="input" required>
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productDetailVolume'] ?></label>
+            <label>قیمت (تومان)</label>
             <input type="number" name="price_product" id="edit_price" class="input" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productVolumeGbSuffix'] ?></label>
+            <label>حجم (GB)</label>
             <input type="number" name="volume_product" id="edit_volume" class="input" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productDetailTime'] ?></label>
+            <label>مدت (روز)</label>
             <input type="number" name="time_product" id="edit_time" class="input" min="0">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productDetailPrice'] ?></label>
+            <label>دسته‌بندی</label>
             <input type="text" name="cetegory_product" id="edit_cat" class="input">
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productDetailType'] ?></label>
+            <label>پنل</label>
             <select name="namepanel" id="edit_panel" class="select">
-              <option value=""><?= $textbotlang['panel']['productDetailLocation'] ?></option>
+              <option value="">— انتخاب نشده —</option>
               <?php foreach ($panels as $pl): ?>
                 <option value="<?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>">
                   <?= htmlspecialchars($pl['name_panel'] ?? $pl['id']) ?>
@@ -258,22 +259,22 @@ include __DIR__ . '/inc/layout_head.php';
             </select>
           </div>
           <div class="field">
-            <label><?= $textbotlang['panel']['productDetailCategory'] ?></label>
+            <label>نمایندگی</label>
             <select name="agent_product" id="edit_agent" class="select">
-              <option value="f"><?= $textbotlang['panel']['productDetailDescription'] ?></option>
-              <option value="n"><?= $textbotlang['panel']['productDetailNote'] ?></option>
-              <option value="n2"><?= $textbotlang['panel']['productCloseBtn'] ?></option>
+              <option value="f">کاربر عادی</option>
+              <option value="n">نماینده</option>
+              <option value="n2">نماینده پیشرفته</option>
             </select>
           </div>
           <div class="field full">
-            <label><?= $textbotlang['panel']['productUnlimitedLabel'] ?></label>
+            <label>توضیحات</label>
             <input type="text" name="note_product" id="edit_note" class="input">
           </div>
         </div>
       </div>
       <div class="modal-foot">
-        <button type="submit" class="btn btn-primary"><?= icon('check', 13) ?> <?= $textbotlang['panel']['productDayUnit'] ?></button>
-        <button type="button" class="btn btn-ghost" onclick="closeModal('editModal')"><?= $textbotlang['panel']['productTomanUnit'] ?></button>
+        <button type="submit" class="btn btn-primary"><?= icon('check', 13) ?> ذخیره تغییرات</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('editModal')">انصراف</button>
       </div>
     </form>
   </div>
