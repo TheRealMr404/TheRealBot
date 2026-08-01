@@ -4642,7 +4642,7 @@ $textonebuy
 ";
     $paymentDiscount = json_encode([
         'inline_keyboard' => [
-            [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
+            [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount" , 'style'=>'success' , 'icon_custom_emoji_id'=> 5440841102871517055]],
         ]
     ]);
     $parametrsendvalue = $text . "_" . $info_product['price_product'];
