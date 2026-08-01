@@ -7180,7 +7180,7 @@ $text_porsant
         'text' => $textbotlang['users']['page']['previous'],
         'callback_data' => 'previous_page_extends',
         'style' => 'primary',
-        'icon_custom_emoji_id' => 5260450573768990626
+        'icon_custom_emoji_id' => 5258236805890710909
     ]
 ];
     $backuser = [
