@@ -7642,19 +7642,23 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         'HTML'
     );
 
-    $updateOutput = [];
-    $updateExitCode = 0;
-    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
+    // $updateOutput = [];
+    // $updateExitCode = 0;
+    // exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
 
     $updateResult = trim(implode("\n", $updateOutput));
-    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    // $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
     if ($updateExitCode === 0) {
         $updateMessage = "✅ بروزرسانی ربات با موفقیت انجام شد.";
-        
+        if ($safeUpdateResult !== '') {
+            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
+        }
     } else {
         $updateMessage = "❌ بروزرسانی ربات ناموفق بود.";
-        
+        if ($safeUpdateResult !== '') {
+            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
+        }
     }
 
     sendmessage($from_id, $updateMessage, $keyboardadmin, 'HTML');

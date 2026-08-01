@@ -3737,7 +3737,6 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
 $textscore
 $textinvite
 
-📆 $dateacc → ⏰ $timeacc
 ";
     if ($datain == "account") {
         Editmessagetext($from_id, $message_id, $text_account, $keyboardPanel, 'HTML');
