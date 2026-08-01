@@ -4538,9 +4538,9 @@ $textonebuy
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
 } elseif ($datain == "aptdc") {
-    sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
+    savedata('save', 'invoice_message_id', $message_id);
+    Editmessagetext($from_id, $message_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id, $backuser);
-    deletemessage($from_id, $message_id);
 } elseif ($user['step'] == "getcodesellDiscount") {
     $userdate = json_decode($user['Processing_value'], true);
     if (!isset($userdate['name_panel'])) {
@@ -4645,6 +4645,7 @@ $textonebuy
             [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
         ]
     ]);
+    Editmessagetext($from_id, $userdate['invoice_message_id'], $textin, $paymentDiscount, 'HTML');
     $parametrsendvalue = $text . "_" . $info_product['price_product'];
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     sendmessage($from_id, $textin, $paymentDiscount, 'HTML');
