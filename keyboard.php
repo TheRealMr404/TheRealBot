@@ -1174,7 +1174,7 @@ if($setting['statussupportpv'] == "onpvsupport"){
     $supportoption = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => $datatextbot['text_fq'], 'callback_data' => "fqQuestions", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5958488325370155278] ,
+                ['text' => $datatextbot['text_fq'], 'callback_data' => "fqQuestions", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5429571366384842791] ,
                 ['text' => "ارسال پیام به پشتیبانی", 'url' => "https://t.me/{$setting['id_support']}", 'style'=>'success'    ],
             ],[
                 ['text' => "🔙 بازگشت به منوی اصلی" ,'callback_data' => "backuser", 'style'=>'danger']
@@ -1186,8 +1186,8 @@ if($setting['statussupportpv'] == "onpvsupport"){
 $supportoption = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => $datatextbot['text_fq'], 'callback_data' => "fqQuestions", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5192955974461169679] ,
-                ['text' => "پشتیبانی", 'callback_data' => "support", 'style'=>'success' , 'icon_custom_emoji_id'=> 5958488325370155278],
+                ['text' => $datatextbot['text_fq'], 'callback_data' => "fqQuestions", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5429571366384842791] ,
+                ['text' => "پشتیبانی", 'callback_data' => "support", 'style'=>'success' , 'icon_custom_emoji_id'=> 5258093637450866522],
             ],[
                 ['text' => "بازگشت به منوی اصلی" ,'callback_data' => "backuser" , 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]
             ],
