@@ -658,8 +658,12 @@ $json_list_remove_helpـlink = json_encode($helpappremove);
         if ($users['step'] == "getusernameinfo") {
             $temp_row[] = ['text' => $result['name_panel'], 'callback_data' => "locationnotuser_{$result['code_panel']}"];
         } else {
-            $temp_row[] = ['text' => $result['name_panel'], 'callback_data' => "location_{$result['code_panel']}" , 'style'=>'danger',
-            'icon_custom_emoji_id'=> 5193203441886831796];
+            $temp_row[] = [
+    'text' => '🌍 '.$result['name_panel'],
+    'callback_data' => "location_{$result['code_panel']}",
+    'style'=>'primary',
+    'icon_custom_emoji_id'=> 5193203441886831796
+];
         }
          if (count($temp_row) == 2) {
             $list_marzban_panel_users['inline_keyboard'][] = $temp_row;
