@@ -7240,21 +7240,28 @@ $text_porsant
         }
     }
     $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends'
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page_extends'
-        ]
-    ];
-    $backuser = [
-        [
-            'text' => $textbotlang['users']['backbtn'],
-            'callback_data' => 'backuser'
-        ]
-    ];
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page_extends',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page_extends',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
+
+$backuser = [
+    [
+        'text' => $textbotlang['users']['backbtn'],
+        'callback_data' => 'backuser',
+        'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
