@@ -685,7 +685,7 @@ $json_list_remove_helpـlink = json_encode($helpappremove);
         if($result['hide_user'] != null and in_array($from_id,json_decode($result['hide_user'],true)))continue;
         if ($users['step'] == "getusernameinfo") {
             $list_marzban_panel_users['inline_keyboard'][] = [
-                ['text' => $result['name_panel'], 'callback_data' => "locationnotuser_{$result['code_panel']}"]
+                ['text' => $result['name_panel'], 'callback_data' => "locationnotuser_{$result['code_panel']}" , 'style' => 'primary']
             ];
         }
         else{
