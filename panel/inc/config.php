@@ -3,6 +3,9 @@
 require __DIR__ . '/../../config.php';
 require __DIR__ . '/../../function.php';
 
+// Panel UI language strings (loaded from lang/fa.php via languagechange())
+$textbotlang = languagechange();
+
 function db_query(PDO $pdo, string $sql, array $params = []): PDOStatement
 {
     $stmt = $pdo->prepare($sql);
@@ -59,19 +62,21 @@ function csrf_token(): string
 
 function csrf_check_post(): void
 {
+    global $textbotlang;
     $token = $_POST['_csrf'] ?? '';
     if (!hash_equals($_SESSION['csrf'] ?? '', $token)) {
         http_response_code(403);
-        die('درخواست نامعتبر.');
+        die($textbotlang['panel']['configInvalidRequest']);
     }
 }
 
 function csrf_check_get(): void
 {
+    global $textbotlang;
     $token = $_GET['_csrf'] ?? '';
     if (!hash_equals($_SESSION['csrf'] ?? '', $token)) {
         http_response_code(403);
-        die('درخواست نامعتبر.');
+        die($textbotlang['panel']['configInvalidRequest']);
     }
 }
 
@@ -126,11 +131,12 @@ function clear_login_rate(string $ip): void
 
 function user_role_label(string $agent): string
 {
+    global $textbotlang;
     return match ($agent) {
-        'n' => 'نماینده',
-        'n2' => 'نماینده پیشرفته',
-        'all' => 'دسترسی کامل',
-        default => 'کاربر عادی',
+        'n' => $textbotlang['panel']['configRoleN'],
+        'n2' => $textbotlang['panel']['configRoleN2'],
+        'all' => $textbotlang['panel']['configRoleAll'],
+        default => $textbotlang['panel']['configRoleDefault'],
     };
 }
 

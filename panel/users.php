@@ -52,8 +52,8 @@ try {
 } catch (Exception $e) {
 }
 
-$pageTitle = 'کاربران';
-$pageLede = 'فهرست کاربران ربات.';
+$pageTitle = $textbotlang['panel']['usersTitle'];
+$pageLede = $textbotlang['panel']['usersSubtitle'];
 $activeNav = 'users';
 include __DIR__ . '/inc/layout_head.php';
 ?>
@@ -61,45 +61,45 @@ include __DIR__ . '/inc/layout_head.php';
 <div class="card fade-up">
     <div class="toolbar">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="toolbar-title">کاربران <small>(<?= number_format($total) ?>)</small></div>
+            <div class="toolbar-title"><?= $textbotlang['panel']['usersHeading'] ?> <small>(<?= number_format($total) ?>)</small></div>
 
             <?php if ($blockedCount > 0): ?>
-                <a href="?status=block" class="tag tag-no" style="cursor:pointer"><?= $blockedCount ?> مسدود</a>
+                <a href="?status=block" class="tag tag-no" style="cursor:pointer"><?= $blockedCount ?> <?= $textbotlang['panel']['usersColId'] ?></a>
             <?php endif; ?>
             <?php if ($agentCount > 0): ?>
-                <a href="?role=n" class="tag tag-info" style="cursor:pointer"><?= $agentCount ?> نماینده</a>
+                <a href="?role=n" class="tag tag-info" style="cursor:pointer"><?= $agentCount ?> <?= $textbotlang['panel']['usersColName'] ?></a>
             <?php endif; ?>
             <?php if ($agentAdvCount > 0): ?>
-                <a href="?role=n2" class="tag tag-warn" style="cursor:pointer"><?= $agentAdvCount ?> نماینده پیشرفته</a>
+                <a href="?role=n2" class="tag tag-warn" style="cursor:pointer"><?= $agentAdvCount ?> <?= $textbotlang['panel']['usersColUsername'] ?></a>
             <?php endif; ?>
         </div>
 
         <form method="GET" id="usersForm" class="toolbar-end">
             <select name="status" class="select" style="width:auto"
                 onchange="document.getElementById('usersForm').submit()">
-                <option value="">همه وضعیت‌ها</option>
-                <option value="active" <?= $status === 'active' ? 'selected' : '' ?>>فعال</option>
-                <option value="block" <?= $status === 'block' ? 'selected' : '' ?>>مسدود</option>
+                <option value=""><?= $textbotlang['panel']['usersColBalance'] ?></option>
+                <option value="active" <?= $status === 'active' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColGroup'] ?></option>
+                <option value="block" <?= $status === 'block' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColStatus'] ?></option>
             </select>
 
             <select name="role" class="select" style="width:auto"
                 onchange="document.getElementById('usersForm').submit()">
-                <option value="">همه گروه‌ها</option>
-                <option value="f" <?= $role === 'f' ? 'selected' : '' ?>>کاربر عادی</option>
-                <option value="n" <?= $role === 'n' ? 'selected' : '' ?>>نماینده</option>
-                <option value="n2" <?= $role === 'n2' ? 'selected' : '' ?>>نماینده پیشرفته</option>
+                <option value=""><?= $textbotlang['panel']['usersColActions'] ?></option>
+                <option value="f" <?= $role === 'f' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColJoinDate'] ?></option>
+                <option value="n" <?= $role === 'n' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColPhone'] ?></option>
+                <option value="n2" <?= $role === 'n2' ? 'selected' : '' ?>><?= $textbotlang['panel']['usersColCustomName'] ?></option>
             </select>
 
             <div class="search-box" style="min-width:260px">
                 <?= icon('search', 15) ?>
-                <input type="text" name="q" placeholder="آیدی، یوزرنیم، نام سفارشی، شماره..."
+                <input type="text" name="q" placeholder="<?= $textbotlang['panel']['usersSearchUserPlaceholder'] ?>"
                     value="<?= htmlspecialchars($search) ?>" autocomplete="off">
                 <button type="button" class="search-clear">✕</button>
-                <button type="submit" class="search-btn">جستجو</button>
+                <button type="submit" class="search-btn"><?= $textbotlang['panel']['usersAllGroups'] ?></button>
             </div>
 
             <?php if ($search || $status || $role): ?>
-                <a href="users.php" class="btn-link" style="font-size:.78rem;white-space:nowrap">پاک کردن</a>
+                <a href="users.php" class="btn-link" style="font-size:.78rem;white-space:nowrap"><?= $textbotlang['panel']['usersAllStatuses'] ?></a>
             <?php endif; ?>
         </form>
     </div>
@@ -109,14 +109,14 @@ include __DIR__ . '/inc/layout_head.php';
             <thead>
                 <tr>
                     <th style="width:36px">#</th>
-                    <th>آیدی</th>
-                    <th>یوزرنیم</th>
-                    <th>نام سفارشی</th>
-                    <th>شماره</th>
-                    <th>موجودی</th>
-                    <th>امتیاز</th>
-                    <th>ثبت‌نام</th>
-                    <th>گروه</th>
+                    <th><?= $textbotlang['panel']['usersSearchBtn'] ?></th>
+                    <th><?= $textbotlang['panel']['usersClearBtn'] ?></th>
+                    <th><?= $textbotlang['panel']['usersGroupFreeUser'] ?></th>
+                    <th><?= $textbotlang['panel']['usersGroupNormalAgent'] ?></th>
+                    <th><?= $textbotlang['panel']['usersGroupAdvancedAgent'] ?></th>
+                    <th><?= $textbotlang['panel']['usersStatusActiveFilter'] ?></th>
+                    <th><?= $textbotlang['panel']['usersStatusBlockedFilter'] ?></th>
+                    <th><?= $textbotlang['panel']['usersPaginationPrev'] ?></th>
                     <th style="width:72px"></th>
                 </tr>
             </thead>
@@ -131,7 +131,7 @@ include __DIR__ . '/inc/layout_head.php';
                                     <path d="M62 105 Q100 88 138 105" stroke="var(--bds)" stroke-width="8"
                                         stroke-linecap="round" fill="none" />
                                 </svg>
-                                <p><?= $search ? 'نتیجه‌ای یافت نشد' : 'هنوز کاربری ثبت نشده' ?></p>
+                                <p><?= $search ? $textbotlang['panel']['usersNoResultFound'] : $textbotlang['panel']['usersNoUserYet'] ?></p>
                             </div>
                         </td>
                     </tr>
@@ -162,7 +162,7 @@ include __DIR__ . '/inc/layout_head.php';
                                 <?= (!empty($u['number']) && $u['number'] !== 'none') ? htmlspecialchars($u['number']) : '—' ?>
                             </td>
                             <td class="cn cs" style="white-space:nowrap">
-                                <?= number_format((int) ($u['Balance'] ?? 0)) ?> <span class="cf">ت</span>
+                                <?= number_format((int) ($u['Balance'] ?? 0)) ?> <span class="cf"><?= $textbotlang['panel']['usersPaginationNext'] ?></span>
                             </td>
                             <td class="cn">
                                 <?= (int) ($u['score'] ?? 0) > 0
@@ -172,7 +172,7 @@ include __DIR__ . '/inc/layout_head.php';
                             <td class="cf"><?= safe_date($u['register'] ?? null) ?></td>
                             <td>
                                 <?php if ($isBlocked): ?>
-                                    <span class="tag tag-no">مسدود</span>
+                                    <span class="tag tag-no"><?= $textbotlang['panel']['usersTotalCountLabel'] ?></span>
                                 <?php else: ?>
                                     <span class="tag <?= user_role_tag($agent) ?>">
                                         <?= user_role_label($agent) ?>
@@ -182,19 +182,19 @@ include __DIR__ . '/inc/layout_head.php';
                             <td>
                                 <div style="display:flex;gap:4px">
                                     <a href="user.php?id=<?= (int) $u['id'] ?>" class="btn btn-ghost btn-sm btn-icon"
-                                        title="مشاهده">
+                                        title="<?= htmlspecialchars($textbotlang['panel']['usersViewBtn']) ?>">
                                         <?= icon('eye', 14) ?>
                                     </a>
                                     <?php if ($isBlocked): ?>
                                         <a href="user_action.php?action=unblock&id=<?= (int) $u['id'] ?>&_csrf=<?= csrf_token() ?>&back=users.php"
-                                            class="btn btn-ok btn-sm btn-icon" title="رفع مسدودیت"
-                                            data-confirm="رفع مسدودیت کاربر <?= htmlspecialchars($name ?: $u['id']) ?>؟">
+                                            class="btn btn-ok btn-sm btn-icon" title="<?= htmlspecialchars($textbotlang['panel']['usersUnblockBtn']) ?>"
+                                            data-confirm="<?= htmlspecialchars(sprintf($textbotlang['panel']['usersConfirmUnblockUser'], $name, $u['id'])) ?>">
                                             <?= icon('check', 13) ?>
                                         </a>
                                     <?php else: ?>
                                         <a href="user_action.php?action=block&id=<?= (int) $u['id'] ?>&_csrf=<?= csrf_token() ?>&back=users.php"
-                                            class="btn btn-no btn-sm btn-icon" title="مسدود کردن"
-                                            data-confirm="مسدود کردن کاربر <?= htmlspecialchars($name ?: $u['id']) ?>؟">
+                                            class="btn btn-no btn-sm btn-icon" title="<?= htmlspecialchars($textbotlang['panel']['usersBlockBtn']) ?>"
+                                            data-confirm="<?= htmlspecialchars(sprintf($textbotlang['panel']['usersConfirmBlockUser'], $name, $u['id'])) ?>">
                                             <?= icon('block', 13) ?>
                                         </a>
                                     <?php endif; ?>
@@ -207,7 +207,7 @@ include __DIR__ . '/inc/layout_head.php';
     </div>
 
     <div class="tbl-foot">
-        <span><?= number_format($total) ?> کاربر · صفحه <?= $page ?> از <?= $totalPages ?></span>
+        <span><?= number_format($total) ?> <?= $textbotlang['panel']['usersColReferrer'] ?> <?= $page ?> <?= $textbotlang['panel']['usersColAffiliateCount'] ?> <?= $totalPages ?></span>
         <div class="pager">
             <?php
             $qs = fn($p) => '?q=' . urlencode($search)
