@@ -693,7 +693,7 @@ $json_list_remove_helpـlink = json_encode($helpappremove);
     'text' => $result['name_panel'],
     'callback_data' => "location_{$result['code_panel']}",
     'style' => 'primary',
-    'icon_custom_emoji_id' => 5958508069334813629
+    'icon_custom_emoji_id' => 5958508069334813628
 ]];
         }
     }
