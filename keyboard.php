@@ -692,8 +692,8 @@ $json_list_remove_helpـlink = json_encode($helpappremove);
             $list_marzban_panel_users['inline_keyboard'][] = [[
     'text' => $result['name_panel'],
     'callback_data' => "location_{$result['code_panel']}",
-    'style' => 'danger',
-    'icon_custom_emoji_id' => 5193203441886831796
+    'style' => 'primary',
+    'icon_custom_emoji_id' => 5958508069334813629
 ]];
         }
     }
