@@ -7651,14 +7651,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 
     if ($updateExitCode === 0) {
         $updateMessage = "✅ بروزرسانی ربات با موفقیت انجام شد.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
+        
     } else {
         $updateMessage = "❌ بروزرسانی ربات ناموفق بود.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
+        
     }
 
     sendmessage($from_id, $updateMessage, $keyboardadmin, 'HTML');
