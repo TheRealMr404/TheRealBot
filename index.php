@@ -7097,8 +7097,10 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
+                    'text' => $row['username'] . $data,
+                    'callback_data' => "extend_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -7160,8 +7162,10 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
+                    'text' => $row['username'] . $data,
+                    'callback_data' => "extend_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -7169,8 +7173,10 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
+                    'text' => $row['username'] . $data,
+                    'callback_data' => "extend_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -7224,8 +7230,10 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
+                    'text' => $row['username'] . $data,
+                    'callback_data' => "extend_" . $row['id_invoice'],
+                    'style' => 'primary',
+                     'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -7233,8 +7241,10 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
+                    'text' => $row['username'] . $data,
+                    'callback_data' => "extend_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
