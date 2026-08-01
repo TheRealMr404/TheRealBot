@@ -3724,10 +3724,13 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
 <tg-emoji emoji-id=\"5454371323595744068\">🪪</tg-emoji> اطلاعات حساب کاربری شما :
 
 <tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> نام: <code>$first_name</code>
+<br>
 <tg-emoji emoji-id=\"5258274739041883702\">🪪</tg-emoji> شناسه کاربری: <code>$from_id</code>
+<br>
 <tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> موجودی کیف پول: <code>$Balanceuser</code> تومان
+<br>
 <tg-emoji emoji-id=\"5348136664738839786\">🔖</tg-emoji> سطح کاربری: <code>$groupuser</code>
-
+<br>
 
 $textscore
 $textinvite
