@@ -4540,9 +4540,6 @@ $textonebuy
 } elseif ($datain == "aptdc") {
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id);
-    deletemessage($from_id, $message_id);
-
-    step('getcodesellDiscount', $from_id);
 } elseif ($user['step'] == "getcodesellDiscount") {
     $userdate = json_decode($user['Processing_value'], true);
     if (!isset($userdate['name_panel'])) {
