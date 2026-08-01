@@ -552,8 +552,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "product_" . $row['id_invoice']
+                    'text' => $row['username'],
+                    'callback_data' => "product_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5359719332542718652
                 ],
             ];
         }
@@ -620,8 +622,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "product_" . $row['id_invoice']
+                    'text' => $row['username'],
+                    'callback_data' => "product_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5359719332542718652
                 ],
             ];
         }
@@ -629,8 +633,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . "✨",
-                    'callback_data' => "product_" . $row['id_invoice']
+                    'text' => $row['username'],
+                    'callback_data' => "product_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5359719332542718652
                 ],
             ];
         }
@@ -638,13 +644,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 $pagination_buttons = [
     [
         'text' => $textbotlang['users']['page']['next'],
-        'callback_data' => 'next_page_extends',
+        'callback_data' => 'next_page',
         'style' => 'success',
         'icon_custom_emoji_id' => 5260450573768990626
     ],
     [
         'text' => $textbotlang['users']['page']['previous'],
-        'callback_data' => 'previous_page_extends',
+        'callback_data' => 'previous_page',
         'style' => 'primary',
         'icon_custom_emoji_id' => 5258236805890710909
     ]
@@ -689,8 +695,10 @@ $pagination_buttons = [
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . $data . "✨",
-                    'callback_data' => "product_" . $row['id_invoice']
+                    'text' => $row['username'],
+                    'callback_data' => "product_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5359719332542718652
                 ],
             ];
         }
@@ -698,8 +706,10 @@ $pagination_buttons = [
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => "✨" . $row['username'] . "✨",
-                    'callback_data' => "product_" . $row['id_invoice']
+                    'text' => $row['username'],
+                    'callback_data' => "product_" . $row['id_invoice'],
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5359719332542718652
                 ],
             ];
         }
