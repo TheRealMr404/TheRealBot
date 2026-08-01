@@ -3446,7 +3446,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             ];
         }
         $helpidos['inline_keyboard'][] = [
-            ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909],
+            ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5193203441886831796],
         ];
         $json_list_help = json_encode($helpidos);
         if ($datain == "helpbtns") {
@@ -4538,14 +4538,9 @@ $textonebuy
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
 } elseif ($datain == "aptdc") {
-
-    Editmessagetext(
-        $from_id,
-        $message_id,
-        $textbotlang['users']['Discount']['getcodesell'],
-        $backuser,
-        'HTML'
-    );
+    sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
+    step('getcodesellDiscount', $from_id);
+    deletemessage($from_id, $message_id);
 
     step('getcodesellDiscount', $from_id);
 } elseif ($user['step'] == "getcodesellDiscount") {
