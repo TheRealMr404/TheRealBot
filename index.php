@@ -3721,19 +3721,14 @@ $text";
 https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     $text_account = "
-<tg-emoji emoji-id=\"5901968192137334943\"></tg-emoji> اطلاعات حساب کاربری شما :
+<tg-emoji emoji-id=\"5454371323595744068\"></tg-emoji> اطلاعات حساب کاربری شما :
+
+<tg-emoji emoji-id=\"5258011929993026890\"></tg-emoji> نام: <code>$first_name</code>
+<tg-emoji emoji-id=\"5258274739041883702\"></tg-emoji> شناسه کاربری: <code>$from_id</code>
+پ<tg-emoji emoji-id=\"5283232570660634549\"></tg-emoji> موجودی کیف پول: <code>$Balanceuser</code> تومان
+<tg-emoji emoji-id=\"5348136664738839786\"></tg-emoji> سطح کاربری: <code>$groupuser</code>
 
 
-🪪 شناسه کاربری: <code>$from_id</code>
-👤 نام: <code>$first_name</code>
-👨‍👩‍👦 کد معرف شما : <code>{$user['codeInvitation']}</code>
-📱 شماره تماس :$numberphone
-⌚️زمان ثبت نام : $userjoin
-💰 موجودی: $Balanceuser تومان
-🛒 تعداد سرویس های خریداری شده : $countorder عدد
-📑 تعداد فاکتور های پرداخت شده : $countpayment عدد
-🤝 تعداد زیر مجموعه های شما : {$user['affiliatescount']} نفر
-🔖 گروه کاربری : $groupuser
 $textscore
 $textinvite
 
