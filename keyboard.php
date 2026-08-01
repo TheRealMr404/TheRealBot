@@ -175,7 +175,7 @@ $keyboardPanel = json_encode([
         [['text' => $datatextbot['text_Discount'] ,'callback_data' => "Discount", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5193085063998224234],
         ['text' => $datatextbot['text_Add_Balance'] ,'callback_data' => "Add_Balance", 'style'=>'success' , 'icon_custom_emoji_id'=> 6251456007499682133]
         ],
-        [['text' => $textbotlang['users']['backbtn'] ,'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796]],
+        [['text' => $textbotlang['users']['backbtn'] ,'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]],
     ],
     'resize_keyboard' => true
 ]);
@@ -608,7 +608,7 @@ if($setting['linkappstatus'] == "1"){
     ];    
     }
 $helpcwtgory['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];
 $json_list_helpـcategory = json_encode($helpcwtgory);
 
@@ -622,7 +622,7 @@ $json_list_helpـcategory = json_encode($helpcwtgory);
             ];
         }
 $helpapp['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];
 $json_list_helpـlink = json_encode($helpapp);
 //------------------  [ help app admin ]----------------//
@@ -706,7 +706,7 @@ $list_marzban_panel_users['inline_keyboard'][] = [
 ];
 }else{
 $list_marzban_panel_users['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];  
 }
 $list_marzban_panel_user = json_encode($list_marzban_panel_users);
@@ -723,7 +723,7 @@ $list_marzban_panel_user = json_encode($list_marzban_panel_users);
             ];
     }
 $list_marzban_panel_users_om['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];
 $list_marzban_panel_userom = json_encode($list_marzban_panel_users_om);
 
@@ -769,7 +769,7 @@ $list_marzban_panel_userschange = json_encode($list_marzban_panel_users_change);
             ];
     }
 $list_marzban_panel_usertest['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];
 $list_marzban_usertest = json_encode($list_marzban_panel_usertest);
 
@@ -928,13 +928,13 @@ $payment = json_encode([
     'inline_keyboard' => [
         [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetservice", 'style'=>'success' , 'icon_custom_emoji_id'=> 5440841102871517055]],
         [['text' => "ثبت کد تخفیف", 'callback_data' => "aptdc", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5193085063998224234]],
-        [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796]]
+        [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]]
     ]
 ]);
 $paymentom = json_encode([
     'inline_keyboard' => [
         [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetservice"]],
-        [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser" , 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796]]
+        [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser" , 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]]
     ]
 ]);
 $change_product = json_encode([
@@ -1402,7 +1402,7 @@ if ($table_exists) {
             ];
     }
 $list_departman['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5193203441886831796],
+    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
 ];
 $list_departman = json_encode($list_departman);
 $active_panell =  json_encode([
