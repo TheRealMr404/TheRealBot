@@ -3446,7 +3446,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             ];
         }
         $helpidos['inline_keyboard'][] = [
-            ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5193203441886831796],
+            ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909],
         ];
         $json_list_help = json_encode($helpidos);
         if ($datain == "helpbtns") {
