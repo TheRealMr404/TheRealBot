@@ -490,32 +490,11 @@ if ($user['joinchannel'] != "active") {
 }
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
-    // ارسال ایموجی پریمیوم
-    $send = sendmessage(
-        $from_id,
-        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
-        null,
-        "HTML"
-    );
+    sendmessage($from_id, '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>', null, "html");
 
     sleep(1);
 
-    // تبدیل همان پیام به متن استارت
-    Editmessagetext(
-        $from_id,
-        $send['result']['message_id'],
-        $datatextbot['text_start'],
-        null,
-        "HTML"
-    );
-
-    // آوردن دکمه‌ها مثل قبل
-    sendmessage(
-        $from_id,
-        $datatextbot['text_start'],
-        $keyboard,
-        "HTML"
-    );
+    sendmessage($from_id, $datatextbot['text_start'], $keyboard, "html");
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
@@ -524,6 +503,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     step('home', $from_id);
     return;
 }
+
  elseif ($text == "version") {
     sendmessage($from_id, $version, null, 'html');
 } elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser") {
