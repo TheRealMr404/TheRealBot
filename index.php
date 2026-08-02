@@ -492,7 +492,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sendmessage($from_id, '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>', null, "html");
 
-    sleep(1);
+    sleep(0.5);
 
     sendmessage($from_id, $datatextbot['text_start'], $keyboard, "html");
 
