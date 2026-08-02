@@ -487,15 +487,33 @@ if ($user['joinchannel'] != "active") {
             return;
         }
     }
-}
 if ($text == "/start" || $datain == "start" || $text == "start") {
-    sendmessage($from_id, $datatextbot['text_start'], $keyboard, "html");
+
+    $loading = sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
+
+    sleep(2);
+
+    // ادیت همان پیام
+    bot('editMessageText', [
+        'chat_id' => $from_id,
+        'message_id' => $loading['result']['message_id'],
+        'text' => $datatextbot['text_start'],
+        'parse_mode' => "HTML",
+        'reply_markup' => json_encode($keyboard)
+    ]);
+
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
     step('home', $from_id);
     return;
+}
 } elseif ($text == "version") {
     sendmessage($from_id, $version, null, 'html');
 } elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser") {

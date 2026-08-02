@@ -1461,7 +1461,7 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
             $result['name_product'] = $namekeyboard;
         }
         $product['inline_keyboard'][] = [
-                ['text' =>  $result['name_product'], 'callback_data' => "{$datakeyboard}{$result['code_product']}{$valuetow}", 'style'=>'success' , 'icon_custom_emoji_id'=> 5323761960829862762]
+                ['text' =>  $result['name_product'], 'callback_data' => "{$datakeyboard}{$result['code_product']}{$valuetow}", 'style'=>'primary' , 'icon_custom_emoji_id'=> 5323761960829862762]
             ];
     }
     if ($statuscustom)$product['inline_keyboard'][] = [['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => $customvolume]
