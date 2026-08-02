@@ -3225,6 +3225,12 @@ $textconnect
     $stmt->execute();
     $stmt->close();
 } elseif ($text == $datatextbot['text_usertest'] || $datain == "usertestbtn" || $text == "usertest") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5900197901107204867">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     if (!check_active_btn($setting['keyboardmain'], "text_usertest")) {
         sendmessage($from_id, "📌 سرویس تست در حال حاضر در دسترس نیست .", null, 'HTML');
         return;
