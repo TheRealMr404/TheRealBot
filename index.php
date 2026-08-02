@@ -494,20 +494,22 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $from_id,
         '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
         null,
-        "html"
+        "HTML"
     );
-
-    $message_id = $send['result']['message_id'];
 
     sleep(1);
 
-    telegram('editmessagetext', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => $datatextbot['text_start'],
-        'reply_markup' => $keyboard,
-        'parse_mode' => 'HTML',
-    ]);
+    if (isset($send['ok']) && $send['ok']) {
+
+        Editmessagetext(
+            $from_id,
+            $send['result']['message_id'],
+            $datatextbot['text_start'],
+            $keyboard,
+            "HTML"
+        );
+
+    }
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
