@@ -499,17 +499,15 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sleep(1);
 
-    if (isset($send['ok']) && $send['ok']) {
+    $result = Editmessagetext(
+        $from_id,
+        $send['result']['message_id'],
+        $datatextbot['text_start'],
+        $keyboard,
+        "HTML"
+    );
 
-        Editmessagetext(
-            $from_id,
-            $send['result']['message_id'],
-            $datatextbot['text_start'],
-            $keyboard,
-            "HTML"
-        );
-
-    }
+    file_put_contents("edit_error.txt", json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
