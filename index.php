@@ -3770,6 +3770,13 @@ $textinvite
     step('home', $from_id);
     return;
 } elseif (($text == $datatextbot['text_sell'] || $datain == "buy" || $datain == "buyback" || $text == "/buy" || $text == "buy") && $statusnote) {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
+    
     if ($setting['get_number'] == "onAuthenticationphone" && $user['step'] != "get_number" && $user['number'] == "none") {
         sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
         step('get_number', $from_id);
