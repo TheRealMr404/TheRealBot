@@ -490,11 +490,24 @@ if ($user['joinchannel'] != "active") {
 }
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
-    sendmessage($from_id, '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>', null, "html");
+    $send = sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+        null,
+        "html"
+    );
 
-    sleep(0.5);
+    $message_id = $send['result']['message_id'];
 
-    sendmessage($from_id, $datatextbot['text_start'], $keyboard, "html");
+    sleep(1);
+
+    telegram('editmessagetext', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'text' => $datatextbot['text_start'],
+        'reply_markup' => $keyboard,
+        'parse_mode' => 'HTML',
+    ]);
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
