@@ -487,25 +487,26 @@ if ($user['joinchannel'] != "active") {
             return;
         }
     }
+}
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $send = bot('sendMessage', [
-    'chat_id' => $from_id,
-    'text' => '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
-    'parse_mode' => 'HTML'
-]);
+        'chat_id' => $from_id,
+        'text' => '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+        'parse_mode' => 'HTML'
+    ]);
 
-$message_id = $send['result']['message_id'];
+    $message_id = $send['result']['message_id'];
 
-sleep(2);
+    sleep(1);
 
-bot('editMessageText', [
-    'chat_id' => $from_id,
-    'message_id' => $message_id,
-    'text' => $datatextbot['text_start'],
-    'parse_mode' => 'HTML',
-    'reply_markup' => json_encode($keyboard)
-]);
+    bot('editMessageText', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'text' => $datatextbot['text_start'],
+        'parse_mode' => 'HTML',
+        'reply_markup' => json_encode($keyboard)
+    ]);
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
@@ -514,7 +515,7 @@ bot('editMessageText', [
     step('home', $from_id);
     return;
 }
-} elseif ($text == "version") {
+ elseif ($text == "version") {
     sendmessage($from_id, $version, null, 'html');
 } elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser") {
     if ($datain == "backuser")
