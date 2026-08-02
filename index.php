@@ -3461,6 +3461,12 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         ]);
     }
 } elseif ($text == $datatextbot['text_help'] || $datain == "helpbtn" || $datain == "helpbtns" || $text == "/help" || $text == "help") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5348054995935706813">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     if (!check_active_btn($setting['keyboardmain'], "text_help")) {
         sendmessage($from_id, $textbotlang['users']['help']['disablehelp'], null, 'HTML');
         return;
@@ -3571,6 +3577,12 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     }
 } elseif ($text == $datatextbot['text_support'] || $datain == "supportbtns" || $text == "/support") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5348090777308251395">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     if (!check_active_btn($setting['keyboardmain'], "text_support")) {
         sendmessage($from_id, "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
