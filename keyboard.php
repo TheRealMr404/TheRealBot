@@ -765,7 +765,7 @@ $list_marzban_panel_userschange = json_encode($list_marzban_panel_users_change);
     $list_marzban_panel_usertest = ['inline_keyboard' => []];
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         if($result['hide_user'] != null and in_array($from_id,json_decode($result['hide_user'],true)))continue;
-            $list_marzban_panel_usertest['inline_keyboard'][] = [['text' => $result['name_panel'], 'callback_data' => "locationtest_{$result['code_panel']}", 'style'=>'success' , 'icon_custom_emoji_id'=> 5258236805890710909]
+            $list_marzban_panel_usertest['inline_keyboard'][] = [['text' => $result['name_panel'], 'callback_data' => "locationtest_{$result['code_panel']}", 'style'=>'primary']
             ];
     }
 $list_marzban_panel_usertest['inline_keyboard'][] = [
