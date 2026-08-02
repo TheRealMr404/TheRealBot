@@ -490,6 +490,7 @@ if ($user['joinchannel'] != "active") {
 }
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
+    // ارسال ایموجی پریمیوم
     $send = sendmessage(
         $from_id,
         '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
@@ -499,6 +500,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sleep(1);
 
+    // تبدیل همان پیام به متن استارت
     Editmessagetext(
         $from_id,
         $send['result']['message_id'],
@@ -507,10 +509,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         "HTML"
     );
 
-    // آوردن دکمه‌ها
+    // آوردن دکمه‌ها مثل قبل
     sendmessage(
         $from_id,
-        " ",
+        $datatextbot['text_start'],
         $keyboard,
         "HTML"
     );
