@@ -2105,3 +2105,32 @@ function parseConfigs($input)
 
     return $configs;
 }
+
+function convertCustomEmojiToHTML($message)
+{
+    if (!isset($message['entities']) || !isset($message['text'])) {
+        return $message['text'] ?? '';
+    }
+
+    $text = $message['text'];
+
+    foreach (array_reverse($message['entities']) as $entity) {
+
+        if ($entity['type'] == 'custom_emoji') {
+
+            $offset = $entity['offset'];
+            $length = $entity['length'];
+            $emoji_id = $entity['custom_emoji_id'];
+
+            $emoji = mb_substr($text, $offset, $length);
+
+            $tag = '<tg-emoji emoji-id="'.$emoji_id.'">'.$emoji.'</tg-emoji>';
+
+            $text = mb_substr($text, 0, $offset)
+                . $tag .
+                mb_substr($text, $offset + $length);
+        }
+    }
+
+    return $text;
+}

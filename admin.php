@@ -1571,8 +1571,12 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
+       $savetext = convertCustomEmojiToHTML($update['message']);
+
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $text, "id_text", "textrequestagent");
+
+    update("textbot", "text", $savetext, "id_text", "textrequestagent");
+
     step('home', $from_id);
 } elseif ($text == "متن دکمه  نمایندگی" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textpanelagent']}</code>", $backadmin, 'HTML');
