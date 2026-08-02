@@ -89,6 +89,9 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
           <a href="payment.php" class="nav-item <?= $activeNav === 'payment' ? 'active' : '' ?>" title="تراکنش‌ها">
             <span class="nav-icon"><?= icon('card') ?></span><span class="nav-label">تراکنش‌ها</span>
           </a>
+          <a href="keyboard.php" class="nav-item <?= $activeNav === 'keyboard' ? 'active' : '' ?>" title="چیدمان کیبورد">
+            <span class="nav-icon"><?= icon('card') ?></span><span class="nav-label">چیدمان کیبورد</span>
+          </a>
         </div>
         <div class="nav-section">
           <div class="nav-heading">پنل</div>
