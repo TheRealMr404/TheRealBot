@@ -489,23 +489,23 @@ if ($user['joinchannel'] != "active") {
     }
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
-    $loading = sendmessage(
-        $from_id,
-        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
-        null,
-        "HTML"
-    );
+    $send = bot('sendMessage', [
+    'chat_id' => $from_id,
+    'text' => '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+    'parse_mode' => 'HTML'
+]);
 
-    sleep(2);
+$message_id = $send['result']['message_id'];
 
-    // ادیت همان پیام
-    bot('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $loading['result']['message_id'],
-        'text' => $datatextbot['text_start'],
-        'parse_mode' => "HTML",
-        'reply_markup' => json_encode($keyboard)
-    ]);
+sleep(2);
+
+bot('editMessageText', [
+    'chat_id' => $from_id,
+    'message_id' => $message_id,
+    'text' => $datatextbot['text_start'],
+    'parse_mode' => 'HTML',
+    'reply_markup' => json_encode($keyboard)
+]);
 
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
