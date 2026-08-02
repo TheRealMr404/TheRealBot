@@ -3711,6 +3711,12 @@ $text";
 } elseif ($datain == "fqQuestions") {
     sendmessage($from_id, $datatextbot['text_dec_fq'], null, 'HTML');
 } elseif ($text == $datatextbot['accountwallet'] || $datain == "account" || $text == "/wallet") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5258204546391351475">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     $dateacc = jdate('Y/m/d');
     $current_time = time();
     $timeacc = jdate('H:i:s', $current_time);
@@ -6598,6 +6604,12 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['back'], $keyboard, 'HTML');
 } elseif ($text == $datatextbot['text_affiliates'] || $datain == "affiliatesbtn") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5258513401784573443">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     if (!check_active_btn($setting['keyboardmain'], "text_affiliates")) {
         sendmessage($from_id, "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
@@ -7113,6 +7125,12 @@ $text_porsant
     $price = $rates['USD'];
     sendmessage($from_id, sprintf($textbotlang['users']['pricearze']['tether-price'], $price), null, 'HTML');
 } elseif ($text == $datatextbot['text_extend'] or $datain == "extendbtn") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5348418461838098123">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
