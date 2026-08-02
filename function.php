@@ -2122,26 +2122,37 @@ function convertCustomEmojiToHTML($message)
             $length = $entity['length'];
             $emoji_id = $entity['custom_emoji_id'];
 
-            $emoji = mb_substr($text, $offset, $length);
+            // تبدیل متن به آرایه UTF-16
+            $utf16 = mb_convert_encoding($text, 'UTF-16LE', 'UTF-8');
 
-            // فاصله‌های بعد از ایموجی را جدا نگه می‌داریم
-            $space = '';
-            while ($offset + $length < mb_strlen($text)) {
-                $nextChar = mb_substr($text, $offset + $length, 1);
+            // پیدا کردن موقعیت ایموجی در UTF-16
+            $start = $offset * 2;
+            $len = $length * 2;
 
-                if (preg_match('/\s/u', $nextChar)) {
-                    $space .= $nextChar;
-                    $length++;
-                } else {
-                    break;
-                }
-            }
+            $emoji_utf16 = substr($utf16, $start, $len);
 
-            $tag = '<tg-emoji emoji-id="'.$emoji_id.'">'.$emoji.'</tg-emoji>'.$space;
+            // تبدیل دوباره به UTF-8
+            $emoji = mb_convert_encoding($emoji_utf16, 'UTF-8', 'UTF-16LE');
 
-            $text = mb_substr($text, 0, $offset)
-                . $tag .
-                mb_substr($text, $offset + $length);
+            // حذف فاصله اضافی داخل تگ
+            $emoji = trim($emoji);
+
+            // جایگزینی درست در متن
+            $before = mb_convert_encoding(
+                substr($utf16, 0, $start),
+                'UTF-8',
+                'UTF-16LE'
+            );
+
+            $after = mb_convert_encoding(
+                substr($utf16, $start + $len),
+                'UTF-8',
+                'UTF-16LE'
+            );
+
+            $tag = '<tg-emoji emoji-id="'.$emoji_id.'">'.$emoji.'</tg-emoji>';
+
+            $text = $before . $tag . $after;
         }
     }
 
