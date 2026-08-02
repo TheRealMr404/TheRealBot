@@ -531,6 +531,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "number", $user_phone, "id", $from_id);
     step('home', $from_id);
 } elseif ($text == $datatextbot['text_Purchased_services'] || $datain == "backorder" || $text == "/services") {
+    sendmessage(
+        $from_id,
+        '<tg-emoji emoji-id="5350295774863311434">❤️</tg-emoji>',
+        null,
+        "HTML"
+    );
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
@@ -3793,11 +3799,11 @@ $textinvite
 } elseif ($text == $datatextbot['text_sell'] || $datain == "buy" || $datain == "buybacktow" || $datain == "buyback" || $text == "/buy" || $text == "buy" || $user['step'] == "statusnamecustom") {
     sendmessage(
         $from_id,
-        '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>',
+        '<tg-emoji emoji-id="5258024802010026053">❤️</tg-emoji>',
         null,
         "HTML"
     );
-    
+
     if (!check_active_btn($setting['keyboardmain'], "text_sell")) {
         sendmessage($from_id, "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
