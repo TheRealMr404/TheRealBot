@@ -498,14 +498,15 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     );
 
     sleep(1);
+file_put_contents("keyboard.txt", $keyboard);
 
     $result = Editmessagetext(
-        $from_id,
-        $send['result']['message_id'],
-        $datatextbot['text_start'],
-        $keyboard,
-        "HTML"
-    );
+    $from_id,
+    $send['result']['message_id'],
+    $datatextbot['text_start'],
+    json_encode($keyboard),
+    "HTML"
+);
 
     file_put_contents("edit_error.txt", json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
