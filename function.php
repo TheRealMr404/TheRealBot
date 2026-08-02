@@ -2124,7 +2124,20 @@ function convertCustomEmojiToHTML($message)
 
             $emoji = mb_substr($text, $offset, $length);
 
-            $tag = '<tg-emoji emoji-id="'.$emoji_id.'">'.$emoji.'</tg-emoji>';
+            // فاصله‌های بعد از ایموجی را جدا نگه می‌داریم
+            $space = '';
+            while ($offset + $length < mb_strlen($text)) {
+                $nextChar = mb_substr($text, $offset + $length, 1);
+
+                if (preg_match('/\s/u', $nextChar)) {
+                    $space .= $nextChar;
+                    $length++;
+                } else {
+                    break;
+                }
+            }
+
+            $tag = '<tg-emoji emoji-id="'.$emoji_id.'">'.$emoji.'</tg-emoji>'.$space;
 
             $text = mb_substr($text, 0, $offset)
                 . $tag .
