@@ -3237,7 +3237,7 @@ $textconnect
     }
     $locationproduct = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
     if ($locationproduct == 0) {
-        sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], null, 'HTML');
+        sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpaneltest'], null, 'HTML');
         return;
     }
     if ($locationproduct != 1) {
