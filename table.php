@@ -415,6 +415,7 @@ try {
         addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
         $next_num = $max_row['max_num'] ? (int)$max_row['max_num'] + 1 : 15;

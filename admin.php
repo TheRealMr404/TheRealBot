@@ -7737,7 +7737,27 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     } else {
         sendmessage($from_id, "📌 در این بخش می توانید نود های پنل مرزبان مدیریت کنید.", $keyboardlistsnode, 'HTML');
     }
-} elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
+
+} elseif (strpos($datain, 'setproto_') === 0) {
+    $selected_protocol = str_replace('setproto_', '', $datain);
+    
+    $panel_name = $user['Processing_value'];
+    
+    if ($selected_protocol === 'null') {
+        $db_value = ""; 
+        $display_text = "خالی (Null)";
+    } else {
+        $db_value = $selected_protocol;
+        $display_text = strtoupper($selected_protocol);
+    }
+    
+    update("marzban_panel", "protocol", $db_value, "name_panel", $panel_name);
+    
+    $success_text = "✅ پروتکل این پنل با موفقیت روی حالت " . $display_text . "تنظیم شد.";
+    Editmessagetext($from_id, $message_id, $success_text, null);
+}
+
+elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
     $nodeid = $dataget[1];
     update("user", "Processing_value_one", $nodeid, "id", $from_id);
     $node = Get_Node($user['Processing_value'], $nodeid);
@@ -10629,7 +10649,27 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("DELETE FROM app WHERE name = :name");
     $stmt->bindParam(':name', $text, PDO::PARAM_STR);
     $stmt->execute();
-} elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
+}
+elseif ($text == "تنظیم پروتکل کانفیگ") {
+$keyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => 'VLESS', 'callback_data' => 'setproto_vless'],
+                ['text' => 'VMESS', 'callback_data' => 'setproto_vmess']
+            ],
+            [
+                ['text' => 'Shadowsocks 🔐', 'callback_data' => 'setproto_shadowsocks']
+            ],
+            [
+                ['text' => '✖️ خالی کردن (Null)', 'callback_data' => 'setproto_null']
+            ]
+        ]
+    ]);
+    
+    $text_msg = "⚙️ لطفا پروتکل مورد نظر برای این پنل را انتخاب کنید:\n\n⚠️ نکته: اگر شادوساکس را انتخاب می‌کنید، حتماً تنظیمات اینباند در سرور باید روی Shadowsocks باشد.";
+    sendmessage($from_id, $text_msg, $keyboard, 'HTML');
+}
+elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
         update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
