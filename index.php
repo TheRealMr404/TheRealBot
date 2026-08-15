@@ -5405,8 +5405,8 @@ elseif ($user['step'] == "tun_custom_step_port") {
     $max_vol = intval(json_decode($panel['maxvolume'] ?? '[]', true)[$user['agent']] ?? 500);
 
     $txt = "<tg-emoji emoji-id=\"5350481089817232086\">🔋</tg-emoji> <b>مقدار حجم درخواستی خود را به گیگابایت وارد کنید:</b>\n\n";
-    $txt .= "📌 تعرفه هر گیگابایت: <code>" . number_format($price_per_gb) . "</code> تومان\n";
-    $txt .= "🔹 حداقل حجم: <code>{$min_vol}</code> و حداکثر: <code>{$max_vol}</code> گیگابایت";
+    $txt .= "تعرفه هر گیگابایت: <code>" . number_format($price_per_gb) . "</code> تومان\n";
+    $txt .= "حداقل حجم: <code>{$min_vol}</code> و حداکثر: <code>{$max_vol}</code> گیگابایت";
 
     sendmessage($from_id, $txt, $backuser, 'HTML');
     step("tun_custom_step_vol", $from_id);
@@ -5435,8 +5435,8 @@ elseif ($user['step'] == "tun_custom_step_vol") {
     $max_days = intval(json_decode($panel['maxtime'] ?? '[]', true)[$user['agent']] ?? 365);
 
     $txt_day = "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار سرویس را به روز وارد کنید:</b>\n\n";
-    $txt_day .= "📌 تعرفه هر روز: <code>" . number_format($price_per_day) . "</code> تومان\n";
-    $txt_day .= "🔹 حداقل زمان: <code>{$min_days}</code> و حداکثر: <code>{$max_days}</code> روز";
+    $txt_day .= "تعرفه هر روز: <code>" . number_format($price_per_day) . "</code> تومان\n";
+    $txt_day .= "حداقل زمان: <code>{$min_days}</code> و حداکثر: <code>{$max_days}</code> روز";
 
     sendmessage($from_id, $txt_day, $backuser, 'HTML');
     step("tun_custom_step_days", $from_id);
@@ -5465,19 +5465,18 @@ elseif ($user['step'] == "tun_custom_step_days") {
     savedata("save", "tun_custom_days", $days);
     savedata("save", "tun_custom_price", $total_price);
 
-    $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
-    $inv .= "📍 <b>سرور:</b> {$panel_name}\n";
-    $inv .= "🚪 <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
-    $inv .= "🌐 <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
-    $inv .= "📦 <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
-    $inv .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n";
-    $inv .= "💰 <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv .= "💵 <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
-
+   $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
+$inv .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>سرور:</b> {$panel_name}\n";
+$inv .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
+$inv .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
+$inv .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
+$inv .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n";
+$inv .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+$inv .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
     $keys = json_encode([
         'inline_keyboard' => [
-            [['text' => "💳 پرداخت و ساخت پورت", 'callback_data' => "confirm_pay_tun_custom", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "🔙 انصراف", 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+            [['text' => "پرداخت و ساخت پورت", 'callback_data' => "confirm_pay_tun_custom", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "برگشت", 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
         ]
     ]);
 
