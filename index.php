@@ -775,9 +775,6 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال' 
         : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
-    $txt = "<tg-emoji emoji-id=\"5348324054161967894\">❤️</tg-emoji>";
-    $txt = "<tg-emoji emoji-id=\"5350719542106540014\">❤️</tg-emoji>";
-
     $txt .= "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور::</b> <code>{$server_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
