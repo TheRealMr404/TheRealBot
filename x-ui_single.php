@@ -206,172 +206,158 @@ function removeClient($location, $username)
 }
 
 //-----------------------port forwrad------------------------//
-function addTunnelForward($namepanel, $listenPort, $targetAddress, $destinationPort, $remark = "Tunnel", $Expire = 0, $TotalGB = 0)
-{
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    login($marzban_list_get['code_panel']);
-    
-    // زمان انقضا بر حسب میلی‌ثانیه و حجم به بایت
-    $timeservice = ($Expire > 0) ? ($Expire * 1000) : 0;
-    $totalTraffic = ($TotalGB > 0) ? ($TotalGB * 1073741824) : 0;
+function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
+    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$panel) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
 
-    // ساختار دقیق settings طبق UI پنل سنایی
-    $settings = array(
-        "targetAddress"   => trim($targetAddress),
-        "destinationPort" => intval($destinationPort),
-        "network"         => "TCP,UDP",
-        "followRedirect"  => false,
-        "sockopt"         => false
-    );
+    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
+    if (!$login['cookie']) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
+    }
 
-    $inbound_data = array(
-        "up"             => 0,
-        "down"           => 0,
-        "total"          => $totalTraffic,
-        "remark"         => $remark . "-Port-" . $listenPort,
-        "enable"         => true,
-        "expiryTime"     => $timeservice,
-        "listen"         => "",
-        "port"           => intval($listenPort),
-        "protocol"       => "tunnel",
-        "settings"       => json_encode($settings),
-        "streamSettings" => json_encode(array(
-            "network"  => "tcp",
+    $settings = [
+        "address"        => trim((string)$target_ip),
+        "port"           => intval($target_port),
+        "portMap"        => new stdClass(),
+        "network"        => "tcp,udp",
+        "followRedirect" => false
+    ];
+
+    $sniffing = [
+        "enabled"      => false,
+        "destOverride" => [
+            "http",
+            "tls",
+            "quic",
+            "fakedns"
+        ],
+        "metadataOnly" => false,
+        "routeOnly"    => false
+    ];
+
+    $postData = [
+        "up"                   => 0,
+        "down"                 => 0,
+        "total"                => ($total_gb > 0) ? intval($total_gb) * 1073741824 : 0,
+        "remark"               => $remark,
+        "enable"               => true,
+        "expiryTime"           => ($expire_time > 0) ? intval($expire_time) * 1000 : 0,
+        "trafficReset"         => "never",
+        "lastTrafficResetTime" => 0,
+        "listen"               => "",
+        "port"                 => intval($listen_port),
+        "protocol"             => "tunnel",
+        "settings"             => json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+        "streamSettings"       => json_encode([
+            "network"  => "raw",
             "security" => "none"
-        )),
-        "sniffing"       => json_encode(array(
-            "enabled"      => false,
-            "destOverride" => array()
-        ))
-    );
+        ], JSON_UNESCAPED_SLASHES),
+        "sniffing"             => json_encode($sniffing, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
+    ];
 
-    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/add';
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie('cookie.txt');
-    $response = $req->post(json_encode($inbound_data));
-    @unlink('cookie.txt');
-
-    return $response;
+    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/add';
+    return sanaei_request($url, $postData, $login['cookie'], 'POST');
 }
 
+function updateTunnelForward($name_panel, $inbound_id, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
+    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$panel) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
 
-function updateTunnelForward($namepanel, $inbound_id, $listenPort, $targetAddress, $destinationPort, $remark = "Tunnel", $Expire = 0, $TotalGB = 0)
-{
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    login($marzban_list_get['code_panel']);
-    
-    // زمان انقضا بر حسب میلی‌ثانیه و حجم به بایت
-    $timeservice = ($Expire > 0) ? ($Expire * 1000) : 0;
-    $totalTraffic = ($TotalGB > 0) ? ($TotalGB * 1073741824) : 0;
+    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
+    if (!$login['cookie']) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
+    }
 
-    $settings = array(
-        "targetAddress"   => trim($targetAddress),
-        "destinationPort" => intval($destinationPort),
-        "network"         => "TCP,UDP",
-        "followRedirect"  => false,
-        "sockopt"         => false
-    );
+    $settings = [
+        "address"        => trim((string)$target_ip),
+        "port"           => intval($target_port),
+        "portMap"        => new stdClass(),
+        "network"        => "tcp,udp",
+        "followRedirect" => false
+    ];
 
-    $inbound_data = array(
-        "up"             => 0,
-        "down"           => 0,
-        "total"          => $totalTraffic,
-        "remark"         => $remark . "-Port-" . $listenPort,
-        "enable"         => true,
-        "expiryTime"     => $timeservice,
-        "listen"         => "",
-        "port"           => intval($listenPort),
-        "protocol"       => "tunnel",
-        "settings"       => json_encode($settings),
-        "streamSettings" => json_encode(array(
-            "network"  => "tcp",
+    $sniffing = [
+        "enabled"      => false,
+        "destOverride" => [
+            "http",
+            "tls",
+            "quic",
+            "fakedns"
+        ],
+        "metadataOnly" => false,
+        "routeOnly"    => false
+    ];
+
+    $postData = [
+        "up"                   => 0,
+        "down"                 => 0,
+        "total"                => ($total_gb > 0) ? intval($total_gb) * 1073741824 : 0,
+        "remark"               => $remark,
+        "enable"               => true,
+        "expiryTime"           => ($expire_time > 0) ? intval($expire_time) * 1000 : 0,
+        "trafficReset"         => "never",
+        "lastTrafficResetTime" => 0,
+        "listen"               => "",
+        "port"                 => intval($listen_port),
+        "protocol"             => "tunnel",
+        "settings"             => json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+        "streamSettings"       => json_encode([
+            "network"  => "raw",
             "security" => "none"
-        )),
-        "sniffing"       => json_encode(array(
-            "enabled"      => false,
-            "destOverride" => array()
-        ))
-    );
+        ], JSON_UNESCAPED_SLASHES),
+        "sniffing"             => json_encode($sniffing, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
+    ];
 
-    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/update/' . intval($inbound_id);
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie('cookie.txt');
-    $response = $req->post(json_encode($inbound_data));
-    @unlink('cookie.txt');
-
-    return $response;
+    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/update/' . intval($inbound_id);
+    return sanaei_request($url, $postData, $login['cookie'], 'POST');
 }
 
+function removeTunnelForward($name_panel, $inbound_id) {
+    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$panel) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
 
-function removeTunnelForward($namepanel, $inbound_id)
-{
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    login($marzban_list_get['code_panel']);
+    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
+    if (!$login['cookie']) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
+    }
 
-    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/del/' . intval($inbound_id);
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie('cookie.txt');
-    $response = $req->post(array());
-    @unlink('cookie.txt');
-
-    return $response;
+    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/del/' . intval($inbound_id);
+    return sanaei_request($url, [], $login['cookie'], 'POST');
 }
 
-function getInboundsList($namepanel)
-{
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    login($marzban_list_get['code_panel']);
+function getInboundsList($name_panel) {
+    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$panel) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
 
-    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/list';
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
+    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
+    if (!$login['cookie']) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
+    }
 
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie('cookie.txt');
-    $response = $req->get();
-    @unlink('cookie.txt');
-
-    return $response;
+    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/list';
+    return sanaei_request($url, [], $login['cookie'], 'GET');
 }
 
+function resetTunnelTraffic($name_panel, $inbound_id) {
+    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$panel) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
 
-function resetTunnelTraffic($namepanel, $inbound_id)
-{
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
-    login($marzban_list_get['code_panel']);
+    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
+    if (!$login['cookie']) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
+    }
 
-    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/resetAllTraffics/' . intval($inbound_id);
-    $headers = array(
-        'Accept: application/json',
-        'Content-Type: application/json',
-    );
-
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->setCookie('cookie.txt');
-    $response = $req->post(array());
-    @unlink('cookie.txt');
-
-    return $response;
+    // اندپوینت اختصاصی سنایی برای صفر کردن ترافیک یک پورت خاص
+    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/resetInboundTraffics/' . intval($inbound_id);
+    return sanaei_request($url, [], $login['cookie'], 'POST');
 }
