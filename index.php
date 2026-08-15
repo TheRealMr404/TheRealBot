@@ -704,7 +704,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     ];
     $backbtn = [
         [
-            'text' => "🔙 بازگشت",
+            'text' => "بازگشت",
             'callback_data' => 'backorder',
             'style' => 'danger',
             'icon_custom_emoji_id' => 5258236805890710909
@@ -726,7 +726,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     if (empty($tunnels)) {
         Editmessagetext($from_id, $message_id, "ℹ️ شما در حال حاضر هیچ پورت تانل فعالی ندارید.", json_encode([
-            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => "backorder", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]]
+            'inline_keyboard' => [[['text' => "بازگشت", 'callback_data' => "backorder", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]]
         ]), 'HTML');
         return;
     }
@@ -745,7 +745,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
     $keyboard[] = [
         [
-            'text' => "🔙 بازگشت",
+            'text' => "بازگشت",
             'callback_data' => "backorder",
             'style' => 'danger',
             'icon_custom_emoji_id' => 5258236805890710909
@@ -771,27 +771,33 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
 
-    $txt = "🔌 <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
-    $txt .= "📍 <b>سرور ایران:</b> <code>{$server_host}</code>\n";
-    $txt .= "🚪 <b>پورت سرور ایران:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $txt .= "🌐 <b>مقصد (سرور خارج):</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt .= "📊 <b>حجم مجاز:</b> {$volume_text}\n";
-    $txt .= "⏳ <b>تاریخ انقضا:</b> {$expire_text}\n";
-    $txt .= "📌 <b>وضعیت اتصال:</b> " . ($tunnel['status'] == 'active' ? "فعال ✅" : "غیرفعال ❌") . "\n";
+   $status_badge = ($tunnel['status'] == 'active') 
+        ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال' 
+        : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
+    $txt = "<tg-emoji emoji-id=\"5348324054161967894\">❤️</tg-emoji>";
+    $txt = "<tg-emoji emoji-id=\"5350719542106540014\">❤️</tg-emoji>";
+
+    $txt .= "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
+    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور::</b> <code>{$server_host}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5348090777308251395\">⏳</tg-emoji> <b>تاریخ انقضا:</b> {$expire_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت اتصال:</b> {$status_badge}\n";
     $tun_keyboard = json_encode([
         'inline_keyboard' => [
             [
                 [
-                    'text' => "✏️ ویرایش آی‌پی و پورت خارج",
+                    'text' => "ویرایش آی‌پی و پورت خارج",
                     'callback_data' => "edit_tunnel_target_" . $tunnel['id'],
-                    'style' => 'success',
+                    'style' => 'primary',
                     'icon_custom_emoji_id' => 5429571366384842791
                 ]
             ],
             [
                 [
-                    'text' => "🔙 بازگشت به لیست پورت‌ها",
+                    'text' => "بازگشت به لیست پورت‌ها",
                     'callback_data' => "my_tunnels_list",
                     'style' => 'danger',
                     'icon_custom_emoji_id' => 5258236805890710909
@@ -1195,7 +1201,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
         $backuser = [
             [
-                'text' => "🔙 بازگشت به منوی اصلی",
+                'text' => "بازگشت به منوی اصلی",
                 'callback_data' => 'backuser'
             ]
         ];
@@ -4566,7 +4572,7 @@ elseif ($user['step'] == "tunnel_step_port") {
 
     $invoice_text = "🧾 <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
     $invoice_text .= "📦 <b>پلن انتخابی:</b> {$product['name_product']}\n";
-    $invoice_text .= "📍 <b>لوکیشن سرور ایران:</b> {$panel_name}\n";
+    $invoice_text .= "📍 <b>لوکیشن سرور :</b> {$panel_name}\n";
     $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
     $invoice_text .= "🚪 <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد ✅)\n";
     $invoice_text .= "📊 <b>حجم مجاز:</b> {$volume}\n";
@@ -4578,7 +4584,7 @@ elseif ($user['step'] == "tunnel_step_port") {
     $invoice_keyboard = json_encode([
         'inline_keyboard' => [
             [['text' => "✅ تایید و پرداخت", 'callback_data' => "confirm_pay_tunnel"]],
-            [['text' => "🔙 انصراف و بازگشت", 'callback_data' => "backuser"]]
+            [['text' => "انصراف و بازگشت", 'callback_data' => "backuser"]]
         ]
     ]);
 
