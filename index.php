@@ -5514,7 +5514,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
 
     if (isset($resData['success']) && $resData['success'] === true) {
         $inbound_id = $resData['obj']['id'];
-        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);[cite: 1]
+        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
 
         $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
         $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $vol, $expire_timestamp]);
@@ -5522,7 +5522,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
         $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null" 
             ? trim($panel_details['linksubx']) 
-            : parse_url($panel_details['url_panel'], PHP_URL_HOST);[cite: 1]
+            : parse_url($panel_details['url_panel'], PHP_URL_HOST);
 
         $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
         $success_msg .= "📍 <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
