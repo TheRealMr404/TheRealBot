@@ -5465,14 +5465,14 @@ elseif ($user['step'] == "tun_custom_step_days") {
     savedata("save", "tun_custom_days", $days);
     savedata("save", "tun_custom_price", $total_price);
 
-   $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
-$inv .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>سرور:</b> {$panel_name}\n";
-$inv .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
-$inv .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
-$inv .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
-$inv .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n";
-$inv .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-$inv .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
+    $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
+    $inv .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>سرور:</b> {$panel_name}\n";
+    $inv .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
+    $inv .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
+    $inv .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
+    $inv .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n";
+    $inv .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
     $keys = json_encode([
         'inline_keyboard' => [
             [['text' => "پرداخت و ساخت پورت", 'callback_data' => "confirm_pay_tun_custom", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
@@ -5526,7 +5526,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
         $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$listen_port}</code>\n";
         $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$target_port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($vol > 0 ? "{$vol} گیگابایت" : "نامحدود") . "\n";
         $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n\n";
         $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
