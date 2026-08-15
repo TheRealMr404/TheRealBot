@@ -4575,6 +4575,36 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
         Editmessagetext($from_id, $message_id, "✅ <b>پورت {$tunnel['listen_port']} با موفقیت از سرور سنایی و ربات حذف گردید.</b>", null, 'HTML');
     }
 
+
+
+} elseif ($text == "🌐 تنظیم آی‌پی/دامنه تانل" && $adminrulecheck['rule'] == "administrator") {
+    $current_panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    $current_host = !empty($current_panel['linksubx']) ? $current_panel['linksubx'] : "تنظیم نشده";
+    
+    $txt = "🌐 <b>تنظیم آی‌پی یا دامنه سرور ایران (تانل)</b>\n\n";
+    $txt .= "📌 این آدرس پس از خرید به همراه پورت به خریدار نمایش داده می‌شود.\n";
+    $txt .= "🔹 <b>مقدار فعلی:</b> <code>{$current_host}</code>\n\n";
+    $txt .= "لطفاً آی‌پی سرور ایران یا دامنه متصل به آن را بدون پورت و بدون http ارسال کنید:\n";
+    $txt .= "مثال: <code>185.120.45.10</code> یا <code>iran.domain.com</code>";
+    
+    sendmessage($from_id, $txt, $backadmin, 'HTML');
+    step('set_tunnel_server_host', $from_id);
+
+// ذخیره مقدار ارسالی در دیتابیس
+} elseif ($user['step'] == "set_tunnel_server_host") {
+    $host = trim(str_replace(['http://', 'https://', '/'], '', $text));
+    
+    if (empty($host)) {
+        sendmessage($from_id, "❌ لطفاً یک آی‌پی یا دامنه معتبر ارسال کنید:", $backadmin, 'HTML');
+        return;
+    }
+
+    update("marzban_panel", "linksubx", $host, "name_panel", $user['Processing_value']);
+    $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    
+    outtypepanel($typepanel['type'], "✅ <b>آدرس سرور تانل با موفقیت ذخیره گردید:</b>\n<code>{$host}</code>");
+    step('home', $from_id);
+
 } elseif ($text == "🔗 ویرایش آدرس پنل" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['geturlnew'], $backadmin, 'HTML');
     step('GeturlNew', $from_id);
