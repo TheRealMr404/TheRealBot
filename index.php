@@ -779,7 +779,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
     $txt .= "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
-    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور::</b> <code>{$server_host}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور::</b> <code>{$current_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume_text}\n";
