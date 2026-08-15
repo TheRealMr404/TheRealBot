@@ -795,13 +795,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
             [
                 [
-                    'text' => "🔋 خرید حجم اضافه",
+                    'text' => "خرید حجم اضافه",
                     'callback_data' => "tun_add_vol_" . $tunnel['id'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359664288241829619
                 ],
                 [
-                    'text' => "⏳ تمدید زمان پورت",
+                    'text' => "تمدید زمان پورت",
                     'callback_data' => "tun_extend_time_" . $tunnel['id'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5251392805569321464
@@ -851,9 +851,9 @@ elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
 
     savedata("clear", "tun_action_id", $tunnel_id);
 
-    $txt_get_vol = "<tg-emoji emoji-id=\"5359664288241829619\">🔋</tg-emoji> <b>خرید حجم اضافه برای پورت تانل:</b>\n\n";
-    $txt_get_vol .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $txt_get_vol .= "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> تعرفه هر گیگابایت: <code>" . number_format($extra_price) . "</code> تومان\n\n";
+    $txt_get_vol = "<tg-emoji emoji-id=\"5350481089817232086\">🔋</tg-emoji> <b>خرید حجم اضافه برای پورت تانل:</b>\n\n";
+    $txt_get_vol .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt_get_vol .= "<tg-emoji emoji-id=\"5348418461838098123\">📌</tg-emoji> تعرفه هر گیگابایت: <code>" . number_format($extra_price) . "</code> تومان\n\n";
     $txt_get_vol .= "لطفاً مقدار حجم مورد نظر خود را به <b>گیگابایت</b> ارسال کنید:";
 
     sendmessage($from_id, $txt_get_vol, $backuser, 'HTML');
@@ -864,7 +864,7 @@ elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
 elseif ($user['step'] == "tun_get_extra_vol") {
     $vol = intval($text);
     if ($vol < 1) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
         return;
     }
 
@@ -880,16 +880,16 @@ elseif ($user['step'] == "tun_get_extra_vol") {
     savedata("save", "tun_vol_amount", $vol);
     savedata("save", "tun_vol_price", $total_price);
 
-    $inv_text = "<tg-emoji emoji-id=\"5226656353744862682\">🧾</tg-emoji> <b>پیش‌فاکتور افزایش حجم پورت تانل</b>\n\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5359664288241829619\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5215420556089776398\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
+    $inv_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور افزایش حجم پورت تانل</b>\n\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
 
     $keys = json_encode([
         'inline_keyboard' => [
-            [['text' => "💳 پرداخت و افزایش حجم", 'callback_data' => "tun_confirm_pay_vol", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "🔙 بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+            [['text' => "پرداخت و افزایش حجم", 'callback_data' => "tun_confirm_pay_vol", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
         ]
     ]);
 
@@ -941,8 +941,8 @@ elseif ($datain == "tun_confirm_pay_vol") {
         update("tunnel_orders", "total_gb", $new_total_gb, "id", $tunnel_id);
 
         $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>حجم پورت با موفقیت افزایش یافت.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5359664288241829619\">➕</tg-emoji> <b>حجم افزوده شده:</b> {$vol} گیگابایت\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"553503745918081589271\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5350481089817232086\">➕</tg-emoji> <b>حجم افزوده شده:</b> {$vol} گیگابایت\n";
         $succ_txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل جدید:</b> <code>{$new_total_gb} گیگابایت</code>";
 
         Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
@@ -972,9 +972,9 @@ elseif (preg_match('/^tun_extend_time_(\d+)$/', $datain, $matches)) {
 
     savedata("clear", "tun_action_id", $tunnel_id);
 
-    $txt_get_time = "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>تمدید زمان پورت تانل:</b>\n\n";
-    $txt_get_time .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $txt_get_time .= "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> تعرفه هر روز تمدید: <code>" . number_format($extra_time_price) . "</code> تومان\n\n";
+    $txt_get_time = "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>تمدید زمان پورت تانل:</b>\n\n";
+    $txt_get_time .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt_get_time .= "<tg-emoji emoji-id=\"5348418461838098123\">📌</tg-emoji> تعرفه هر روز تمدید: <code>" . number_format($extra_time_price) . "</code> تومان\n\n";
     $txt_get_time .= "لطفاً تعداد روز مورد نظر برای تمدید را ارسال کنید:";
 
     sendmessage($from_id, $txt_get_time, $backuser, 'HTML');
@@ -985,7 +985,7 @@ elseif (preg_match('/^tun_extend_time_(\d+)$/', $datain, $matches)) {
 elseif ($user['step'] == "tun_get_extra_days") {
     $days = intval($text);
     if ($days < 1) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> لطفاً عددی بزرگتر از صفر (تعداد روز) وارد کنید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً عددی بزرگتر از صفر (تعداد روز) وارد کنید:", $backuser, 'HTML');
         return;
     }
 
@@ -1001,16 +1001,16 @@ elseif ($user['step'] == "tun_get_extra_days") {
     savedata("save", "tun_days_amount", $days);
     savedata("save", "tun_days_price", $total_price);
 
-    $inv_text = "<tg-emoji emoji-id=\"5226656353744862682\">🧾</tg-emoji> <b>پیش‌فاکتور تمدید زمان پورت تانل</b>\n\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت تمدید:</b> {$days} روز\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5215420556089776398\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
+    $inv_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور تمدید زمان پورت تانل</b>\n\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت تمدید:</b> {$days} روز\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
 
     $keys = json_encode([
         'inline_keyboard' => [
-            [['text' => "💳 پرداخت و تمدید زمان", 'callback_data' => "tun_confirm_pay_time", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "🔙 بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+            [['text' => "پرداخت و تمدید زمان", 'callback_data' => "tun_confirm_pay_time", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
         ]
     ]);
 
@@ -1065,9 +1065,9 @@ elseif ($datain == "tun_confirm_pay_time") {
 
         $expire_formatted = jdate('Y/m/d H:i', $new_expire_time);
         $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت تمدید گردید.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت افزوده شده:</b> {$days} روز\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5348090777308251395\">📅</tg-emoji> <b>تاریخ انقضای جدید:</b> <code>{$expire_formatted}</code>";
+        $succ_txt .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت افزوده شده:</b> {$days} روز\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5348270285466385224\">📅</tg-emoji> <b>تاریخ انقضای جدید:</b> <code>{$expire_formatted}</code>";
 
         Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
     } else {
