@@ -655,7 +655,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json, 'html');
     }
 
-// هندلر باز کردن لیست کانفیگ‌ها بعد از زدن دکمه شیشه‌ای
+    // هندلر باز کردن لیست کانفیگ‌ها بعد از زدن دکمه شیشه‌ای
 } elseif ($datain == "my_configs_list") {
     $pages = 1;
     update("user", "pagenumber", $pages, "id", $from_id);
@@ -718,7 +718,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboard_json = json_encode($keyboardlists);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
-// ۳. بخش پورت‌های تانل
+    // ۳. بخش پورت‌های تانل
 } elseif ($datain == "my_tunnels_list") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE user_id = ? AND status != 'removed' ORDER BY id DESC");
     $stmt->execute([$from_id]);
@@ -733,7 +733,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     $keyboard = [];
     foreach ($tunnels as $tun) {
-        $btn_text = "🔌 پورت: {$tun['listen_port']} | لوکیشن: {$tun['name_panel']}";
+        $btn_text = "پورت: {$tun['listen_port']} | لوکیشن: {$tun['name_panel']}";
         $keyboard[] = [
             [
                 'text' => $btn_text,
@@ -752,7 +752,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ]
     ];
 
-    Editmessagetext($from_id, $message_id, "📋 <b>لیست پورت‌های تانل شما:</b>\nبرای مشاهده مشخصات یا ویرایش آی‌پی مقصد، روی پورت کلیک کنید:", json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+    $tunnel_list_text = "<tg-emoji emoji-id=\"5350295774863311434\">📋</tg-emoji> <b>لیست پورت‌های تانل شما:</b>\n\n";
+    $tunnel_list_text .= "<tg-emoji emoji-id=\"5350626912546865231\">⚠️</tg-emoji> برای مشاهده مشخصات یا ویرایش آی‌پی مقصد، روی پورت کلیک کنید:";
+
+    Editmessagetext($from_id, $message_id, $tunnel_list_text, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
 
 } elseif (preg_match('/^view_tunnel_(\d+)/', $datain, $matches)) {
     $tunnel_id = intval($matches[1]);
@@ -771,8 +774,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
 
-   $status_badge = ($tunnel['status'] == 'active') 
-        ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال' 
+    $status_badge = ($tunnel['status'] == 'active')
+        ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال'
         : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
     $txt .= "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
@@ -860,7 +863,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     step("home", $from_id);
-    } elseif ($datain == 'next_page') {
+} elseif ($datain == 'next_page') {
     $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
@@ -4437,12 +4440,13 @@ $textinvite
         savedata("save", "tunnel_product_code", $prodcut);
         savedata("save", "tunnel_panel", $marzban_list_get['name_panel']);
         deletemessage($from_id, $message_id);
-        sendmessage($from_id, "🌐 لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n<i>مثال: 185.120.45.10</i>", $backuser, 'HTML');
+        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> <i>مثال: 185.120.45.10</i>";
+        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
         step("tunnel_step_ip", $from_id);
         return;
     }
     if ($marzban_list_get['status'] == "disable") {
-        sendmessage($from_id, "❌ این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
+        sendmessage($from_id, "این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
         step("home", $from_id);
         return;
     }
@@ -4524,7 +4528,9 @@ elseif ($user['step'] == "tunnel_step_ip") {
     }
 
     savedata("save", "tunnel_target_ip", $ip);
-    sendmessage($from_id, "🔌 لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n<i>مثال: 443 یا 2053 یا 8080</i>", $backuser, 'HTML');
+    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> <i>مثال: 32485 یا 8080</i>";
+
+    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
     step("tunnel_step_port", $from_id);
 }
 
@@ -4567,21 +4573,35 @@ elseif ($user['step'] == "tunnel_step_port") {
     $price = number_format($product['price_product']);
     $volume = $product['Volume_constraint'] > 0 ? "{$product['Volume_constraint']} گیگابایت" : "نامحدود";
 
-    $invoice_text = "🧾 <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
-    $invoice_text .= "📦 <b>پلن انتخابی:</b> {$product['name_product']}\n";
-    $invoice_text .= "📍 <b>لوکیشن سرور :</b> {$panel_name}\n";
-    $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
-    $invoice_text .= "🚪 <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد ✅)\n";
-    $invoice_text .= "📊 <b>حجم مجاز:</b> {$volume}\n";
-    $invoice_text .= "⏳ <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
-    $invoice_text .= "💰 <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
-    $invoice_text .= "💵 <b>موجودی کیف پول شما:</b> " . number_format($user['Balance']) . " تومان\n\n";
-    $invoice_text .= "آیا اطلاعات فوق مورد تایید است؟";
+$invoice_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>پلن انتخابی:</b> {$product['name_product']}\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>لوکیشن سرور :</b> {$panel_name}\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد <tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji>)\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume}\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی کیف پول شما:</b> " . number_format($user['Balance']) . " تومان\n\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5350572310627632617\">📌</tg-emoji> آیا اطلاعات فوق مورد تایید است؟";
 
     $invoice_keyboard = json_encode([
         'inline_keyboard' => [
-            [['text' => "✅ تایید و پرداخت", 'callback_data' => "confirm_pay_tunnel"]],
-            [['text' => "انصراف و بازگشت", 'callback_data' => "backuser"]]
+            [
+                [
+                    'text' => "تایید و پرداخت",
+                    'callback_data' => "confirm_pay_tunnel",
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5350572310627632617
+                ]
+            ],
+            [
+                [
+                    'text' => "انصراف و بازگشت",
+                    'callback_data' => "backuser",
+                    'style' => 'danger',
+                    'icon_custom_emoji_id' => 5258236805890710909
+                ]
+            ]
         ]
     ]);
 
