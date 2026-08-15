@@ -4440,7 +4440,7 @@ $textinvite
         savedata("save", "tunnel_product_code", $prodcut);
         savedata("save", "tunnel_panel", $marzban_list_get['name_panel']);
         deletemessage($from_id, $message_id);
-        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> <i>مثال: 185.120.45.10</i>";
+        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n <i>مثال: 185.120.45.10</i>";
         sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
         step("tunnel_step_ip", $from_id);
         return;
@@ -4528,7 +4528,7 @@ elseif ($user['step'] == "tunnel_step_ip") {
     }
 
     savedata("save", "tunnel_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> <i>مثال: 32485 یا 8080</i>";
+    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n <i>مثال: 32485 یا 8080</i>";
 
     sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
     step("tunnel_step_port", $from_id);
