@@ -1270,6 +1270,11 @@ $keyboardtypepanel = json_encode([
             ['text' => "ibsng", 'callback_data' => 'typepanel#ibsng'],
             ['text' => "میکروتیک", 'callback_data' => 'typepanel#mikrotik']
         ],
+
+        [
+            ['text' => "فروش پورت (سنایی)", 'callback_data' => 'typepanel#x-ui_tunnel']
+        ],
+
         [
             ['text' => $textbotlang['Admin']['backadmin'] , 'callback_data' => 'admin']
         ]

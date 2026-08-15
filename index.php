@@ -4182,6 +4182,15 @@ $textinvite
         $prodcut = $dataget[1];
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+   
+    if ($marzban_list_get['type'] == "x-ui_tunnel") {
+        savedata("save", "tunnel_product_code", $prodcut);
+        savedata("save", "tunnel_panel", $marzban_list_get['name_panel']);
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, "🌐 لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n<i>مثال: 185.120.45.10</i>", $backuser, 'HTML');
+        step("tunnel_step_ip", $from_id);
+        return;
+    }
     if ($marzban_list_get['status'] == "disable") {
         sendmessage($from_id, "❌ این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
         step("home", $from_id);
@@ -4255,6 +4264,74 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
+  }  // مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
+elseif ($user['step'] == "tunnel_step_ip") {
+    $ip = trim($text);
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً یک آی‌پی IPv4 معتبر ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tunnel_target_ip", $ip);
+    sendmessage($from_id, "🔌 لطفاً <b>پورت سرور خارج</b> را ارسال کنید (پورتی که کانفیگ روی سرور خارج شما فعال است):\n\n<i>مثال: 443 یا 2053</i>", $backuser, 'HTML');
+    step("tunnel_step_target_port", $from_id);
+}
+
+// مرحله ۲: دریافت پورت سرور خارج
+elseif ($user['step'] == "tunnel_step_target_port") {
+    $port = intval($text);
+    if ($port < 1 || $port > 65535) {
+        sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tunnel_target_port", $port);
+    sendmessage($from_id, "🚪 لطفاً <b>پورت سرور ایران</b> را وارد کنید (پورتی که می‌خواهید روی سرور ایران باز شود):\n\n<i>پیشنهاد: عددی بین ۲۰۰۰۰ تا ۶۰۰۰۰</i>", $backuser, 'HTML');
+    step("tunnel_step_listen_port", $from_id);
+}
+
+// مرحله ۳: دریافت پورت ایران و صدور پیش‌فاکتور
+elseif ($user['step'] == "tunnel_step_listen_port") {
+    $listen_port = intval($text);
+    if ($listen_port < 1024 || $listen_port > 65535) {
+        sendmessage($from_id, "❌ پورت سرور ایران باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tunnel_listen_port", $listen_port);
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $product_code = $userdata['tunnel_product_code'];
+    $panel_name = $userdata['tunnel_panel'];
+    $target_ip = $userdata['tunnel_target_ip'];
+    $target_port = $userdata['tunnel_target_port'];
+
+    $product = select("product", "*", "code_product", $product_code, "select");
+    $price = number_format($product['price_product']);
+    $volume = $product['Volume_constraint'] > 0 ? "{$product['Volume_constraint']} گیگابایت" : "نامحدود";
+
+    $invoice_text = "🧾 <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
+    $invoice_text .= "📦 <b>پلن انتخابی:</b> {$product['name_product']}\n";
+    $invoice_text .= "📍 <b>لوکیشن سرور ایران:</b> {$panel_name}\n";
+    $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$target_port}</code>\n";
+    $invoice_text .= "🚪 <b>پورت ایران:</b> <code>{$listen_port}</code>\n";
+    $invoice_text .= "📊 <b>حجم مجاز:</b> {$volume}\n";
+    $invoice_text .= "⏳ <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
+    $invoice_text .= "💰 <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
+    $invoice_text .= "💵 <b>موجودی کیف پول شما:</b> " . number_format($user['Balance']) . " تومان\n\n";
+    $invoice_text .= "آیا اطلاعات فوق مورد تایید است؟";
+
+    $invoice_keyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => "✅ تایید و پرداخت", 'callback_data' => "confirm_pay_tunnel"]],
+            [['text' => "🔙 انصراف و بازگشت", 'callback_data' => "backuser"]]
+        ]
+    ]);
+
+    sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
+    step("home", $from_id);
+
+
 } elseif ($user['step'] == "payment" && $datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount") {
     $userdate = json_decode($user['Processing_value'], true);
     telegram('editMessageReplyMarkup', [
@@ -4603,6 +4680,66 @@ $textonebuy
     }
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
+}
+elseif ($datain == "confirm_pay_tunnel") {
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['tunnel_panel'];
+    $target_ip = $userdata['tunnel_target_ip'];
+    $target_port = intval($userdata['tunnel_target_port']);
+    $listen_port = intval($userdata['tunnel_listen_port']);
+    $product_code = $userdata['tunnel_product_code'];
+
+    $product = select("product", "*", "code_product", $product_code, "select");
+    $price = intval($product['price_product']);
+    $total_gb = intval($product['Volume_constraint']);
+    $days = intval($product['Service_time']);
+
+    // بررسی موجودی کیف پول
+    if ($user['Balance'] < $price && $user['agent'] != "n2") {
+        sendmessage($from_id, "❌ <b>موجودی کیف پول شما کافی نیست.</b>\nلطفاً ابتدا از بخش کیف پول، موجودی خود را افزایش دهید.", $keyboard, 'HTML');
+        return;
+    }
+
+    Editmessagetext($from_id, $message_id, "♻️ در حال ساخت و راه‌اندازی پورت اختصاصی شما...", null);
+
+    $expire_timestamp = ($days > 0) ? (time() + ($days * 86400)) : 0;
+
+    // ارسال درخواست ساخت پورت فوروارد به پنل سنایی
+    $response = addTunnelForward($panel_name, $listen_port, $target_ip, $target_port, "User_{$from_id}", $expire_timestamp, $total_gb);
+    $resData = json_decode($response['body'], true);
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        $inbound_id = $resData['obj']['id'];
+
+        // کسر هزینه از کیف پول
+        $new_balance = $user['Balance'] - $price;
+        update("user", "Balance", $new_balance, "id", $from_id);
+
+        // ثبت سفارش در جدول تانل
+        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$from_id, $panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $total_gb, $expire_timestamp]);
+
+        // استخراج آدرس سرور ایران
+        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+        $server_host = parse_url($panel_details['url_panel'], PHP_URL_HOST);
+
+        $success_msg = "✅ <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
+        $success_msg .= "📍 <b>سرور ایران:</b> <code>{$server_host}</code>\n";
+        $success_msg .= "🚪 <b>پورت سرور ایران:</b> <code>{$listen_port}</code>\n";
+        $success_msg .= "🌐 <b>مقصد (سرور خارج):</b> <code>{$target_ip}:{$target_port}</code>\n";
+        $success_msg .= "📦 <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
+        $success_msg .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n\n";
+        $success_msg .= "💡 <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
+
+        sendmessage($from_id, $success_msg, $keyboard, 'HTML');
+    } else {
+        $err = $resData['msg'] ?? 'خطا در برقراری ارتباط با سرور';
+        sendmessage($from_id, "❌ <b>خطا در ساخت تانل:</b>\n<code>{$err}</code>\n\nاحتمالاً پورت <code>{$listen_port}</code> روی سرور اشغال است. لطفاً مجدداً مراحل را طی کرده و پورت دیگری انتخاب فرمایید.", $keyboard, 'HTML');
+    }
+
+    step("home", $from_id);
+
+
 } elseif ($datain == "aptdc") {
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id);

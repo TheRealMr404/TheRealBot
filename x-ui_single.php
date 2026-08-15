@@ -204,3 +204,174 @@ function removeClient($location, $username)
     unlink('cookie.txt');
     return $response;
 }
+
+//-----------------------port forwrad------------------------//
+function addTunnelForward($namepanel, $listenPort, $targetAddress, $destinationPort, $remark = "Tunnel", $Expire = 0, $TotalGB = 0)
+{
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    login($marzban_list_get['code_panel']);
+    
+    // زمان انقضا بر حسب میلی‌ثانیه و حجم به بایت
+    $timeservice = ($Expire > 0) ? ($Expire * 1000) : 0;
+    $totalTraffic = ($TotalGB > 0) ? ($TotalGB * 1073741824) : 0;
+
+    // ساختار دقیق settings طبق UI پنل سنایی
+    $settings = array(
+        "targetAddress"   => trim($targetAddress),
+        "destinationPort" => intval($destinationPort),
+        "network"         => "TCP,UDP",
+        "followRedirect"  => false,
+        "sockopt"         => false
+    );
+
+    $inbound_data = array(
+        "up"             => 0,
+        "down"           => 0,
+        "total"          => $totalTraffic,
+        "remark"         => $remark . "-Port-" . $listenPort,
+        "enable"         => true,
+        "expiryTime"     => $timeservice,
+        "listen"         => "",
+        "port"           => intval($listenPort),
+        "protocol"       => "tunnel",
+        "settings"       => json_encode($settings),
+        "streamSettings" => json_encode(array(
+            "network"  => "tcp",
+            "security" => "none"
+        )),
+        "sniffing"       => json_encode(array(
+            "enabled"      => false,
+            "destOverride" => array()
+        ))
+    );
+
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/add';
+    $headers = array(
+        'Accept: application/json',
+        'Content-Type: application/json',
+    );
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(json_encode($inbound_data));
+    @unlink('cookie.txt');
+
+    return $response;
+}
+
+
+function updateTunnelForward($namepanel, $inbound_id, $listenPort, $targetAddress, $destinationPort, $remark = "Tunnel", $Expire = 0, $TotalGB = 0)
+{
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    login($marzban_list_get['code_panel']);
+    
+    // زمان انقضا بر حسب میلی‌ثانیه و حجم به بایت
+    $timeservice = ($Expire > 0) ? ($Expire * 1000) : 0;
+    $totalTraffic = ($TotalGB > 0) ? ($TotalGB * 1073741824) : 0;
+
+    $settings = array(
+        "targetAddress"   => trim($targetAddress),
+        "destinationPort" => intval($destinationPort),
+        "network"         => "TCP,UDP",
+        "followRedirect"  => false,
+        "sockopt"         => false
+    );
+
+    $inbound_data = array(
+        "up"             => 0,
+        "down"           => 0,
+        "total"          => $totalTraffic,
+        "remark"         => $remark . "-Port-" . $listenPort,
+        "enable"         => true,
+        "expiryTime"     => $timeservice,
+        "listen"         => "",
+        "port"           => intval($listenPort),
+        "protocol"       => "tunnel",
+        "settings"       => json_encode($settings),
+        "streamSettings" => json_encode(array(
+            "network"  => "tcp",
+            "security" => "none"
+        )),
+        "sniffing"       => json_encode(array(
+            "enabled"      => false,
+            "destOverride" => array()
+        ))
+    );
+
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/update/' . intval($inbound_id);
+    $headers = array(
+        'Accept: application/json',
+        'Content-Type: application/json',
+    );
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(json_encode($inbound_data));
+    @unlink('cookie.txt');
+
+    return $response;
+}
+
+
+function removeTunnelForward($namepanel, $inbound_id)
+{
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    login($marzban_list_get['code_panel']);
+
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/del/' . intval($inbound_id);
+    $headers = array(
+        'Accept: application/json',
+        'Content-Type: application/json',
+    );
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(array());
+    @unlink('cookie.txt');
+
+    return $response;
+}
+
+function getInboundsList($namepanel)
+{
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    login($marzban_list_get['code_panel']);
+
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/list';
+    $headers = array(
+        'Accept: application/json',
+        'Content-Type: application/json',
+    );
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->get();
+    @unlink('cookie.txt');
+
+    return $response;
+}
+
+
+function resetTunnelTraffic($namepanel, $inbound_id)
+{
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
+    login($marzban_list_get['code_panel']);
+
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/resetAllTraffics/' . intval($inbound_id);
+    $headers = array(
+        'Accept: application/json',
+        'Content-Type: application/json',
+    );
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(array());
+    @unlink('cookie.txt');
+
+    return $response;
+}
