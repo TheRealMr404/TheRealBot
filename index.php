@@ -768,8 +768,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-    $panel_details = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $server_host = parse_url($panel_details['url_panel'], PHP_URL_HOST);
+  $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+
+    if (!empty($panel['linksubx']) && $panel['linksubx'] != "null") {
+        $server_host = trim($panel['linksubx']);
+    } else {
+        $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
+    }
 
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
@@ -778,8 +783,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال'
         : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
-    $txt .= "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
-    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور::</b> <code>{$current_host}</code>\n";
+    $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
+    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume_text}\n";
