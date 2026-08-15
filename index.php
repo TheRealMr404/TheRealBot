@@ -829,6 +829,324 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
 
+} 
+
+// ==================== ۱. بخش خرید حجم اضافه تانل ====================
+
+// کلیک روی دکمه «خرید حجم اضافه»
+elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    
+    $tunnel_id = intval($matches[1]);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
+        return;
+    }
+
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $price_map = json_decode($panel['priceextravolume'] ?? '[]', true);
+    $extra_price = $price_map[$user['agent']] ?? 5000;
+
+    savedata("clear", "tun_action_id", $tunnel_id);
+
+    $txt_get_vol = "<tg-emoji emoji-id=\"5359664288241829619\">🔋</tg-emoji> <b>خرید حجم اضافه برای پورت تانل:</b>\n\n";
+    $txt_get_vol .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt_get_vol .= "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> تعرفه هر گیگابایت: <code>" . number_format($extra_price) . "</code> تومان\n\n";
+    $txt_get_vol .= "لطفاً مقدار حجم مورد نظر خود را به <b>گیگابایت</b> ارسال کنید:";
+
+    sendmessage($from_id, $txt_get_vol, $backuser, 'HTML');
+    step("tun_get_extra_vol", $from_id);
+}
+
+// دریافت عدد حجم از کاربر
+elseif ($user['step'] == "tun_get_extra_vol") {
+    $vol = intval($text);
+    if ($vol < 1) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $price_map = json_decode($panel['priceextravolume'] ?? '[]', true);
+    $unit_price = $price_map[$user['agent']] ?? 5000;
+    $total_price = $vol * $unit_price;
+
+    savedata("save", "tun_vol_amount", $vol);
+    savedata("save", "tun_vol_price", $total_price);
+
+    $inv_text = "<tg-emoji emoji-id=\"5226656353744862682\">🧾</tg-emoji> <b>پیش‌فاکتور افزایش حجم پورت تانل</b>\n\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5359664288241829619\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5215420556089776398\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
+
+    $keys = json_encode([
+        'inline_keyboard' => [
+            [['text' => "💳 پرداخت و افزایش حجم", 'callback_data' => "tun_confirm_pay_vol", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "🔙 بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+        ]
+    ]);
+
+    sendmessage($from_id, $inv_text, $keys, 'HTML');
+    step("home", $from_id);
+}
+
+// تایید پرداخت حجم اضافه
+elseif ($datain == "tun_confirm_pay_vol") {
+    $userdata = json_decode($user['Processing_value'], true);
+    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
+    $vol = intval($userdata['tun_vol_amount'] ?? 0);
+    $price = intval($userdata['tun_vol_price'] ?? 0);
+
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    if (!$tunnel || $vol <= 0) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ نشست نامعتبر است.", 'show_alert' => true]);
+        return;
+    }
+
+    if ($user['Balance'] < $price && $user['agent'] != "n2") {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
+        return;
+    }
+
+    $new_total_gb = intval($tunnel['total_gb']) + $vol;
+
+    $res = updateTunnelForward(
+        $tunnel['name_panel'],
+        $tunnel['inbound_id'],
+        $tunnel['listen_port'],
+        $tunnel['target_ip'],
+        $tunnel['target_port'],
+        "User_{$from_id}",
+        $tunnel['expire_time'],
+        $new_total_gb
+    );
+
+    $resData = [];
+    if (isset($res['body'])) {
+        $resData = json_decode($res['body'], true);
+    } elseif (is_string($res)) {
+        $resData = json_decode($res, true);
+    }
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
+        update("tunnel_orders", "total_gb", $new_total_gb, "id", $tunnel_id);
+
+        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>حجم پورت با موفقیت افزایش یافت.</b>\n\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5359664288241829619\">➕</tg-emoji> <b>حجم افزوده شده:</b> {$vol} گیگابایت\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل جدید:</b> <code>{$new_total_gb} گیگابایت</code>";
+
+        Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
+    } else {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در برقراری ارتباط با سرور سنایی.", 'show_alert' => true]);
+    }
+    step("home", $from_id);
+}
+
+// ==================== ۲. بخش تمدید زمان تانل ====================
+
+// کلیک روی دکمه «تمدید زمان پورت»
+elseif (preg_match('/^tun_extend_time_(\d+)$/', $datain, $matches)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+
+    $tunnel_id = intval($matches[1]);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
+        return;
+    }
+
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $price_map = json_decode($panel['priceextratime'] ?? '[]', true);
+    $extra_time_price = $price_map[$user['agent']] ?? 2000;
+
+    savedata("clear", "tun_action_id", $tunnel_id);
+
+    $txt_get_time = "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>تمدید زمان پورت تانل:</b>\n\n";
+    $txt_get_time .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt_get_time .= "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> تعرفه هر روز تمدید: <code>" . number_format($extra_time_price) . "</code> تومان\n\n";
+    $txt_get_time .= "لطفاً تعداد روز مورد نظر برای تمدید را ارسال کنید:";
+
+    sendmessage($from_id, $txt_get_time, $backuser, 'HTML');
+    step("tun_get_extra_days", $from_id);
+}
+
+// دریافت تعداد روز از کاربر
+elseif ($user['step'] == "tun_get_extra_days") {
+    $days = intval($text);
+    if ($days < 1) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> لطفاً عددی بزرگتر از صفر (تعداد روز) وارد کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $price_map = json_decode($panel['priceextratime'] ?? '[]', true);
+    $unit_price = $price_map[$user['agent']] ?? 2000;
+    $total_price = $days * $unit_price;
+
+    savedata("save", "tun_days_amount", $days);
+    savedata("save", "tun_days_price", $total_price);
+
+    $inv_text = "<tg-emoji emoji-id=\"5226656353744862682\">🧾</tg-emoji> <b>پیش‌فاکتور تمدید زمان پورت تانل</b>\n\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت تمدید:</b> {$days} روز\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv_text .= "<tg-emoji emoji-id=\"5215420556089776398\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
+
+    $keys = json_encode([
+        'inline_keyboard' => [
+            [['text' => "💳 پرداخت و تمدید زمان", 'callback_data' => "tun_confirm_pay_time", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "🔙 بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+        ]
+    ]);
+
+    sendmessage($from_id, $inv_text, $keys, 'HTML');
+    step("home", $from_id);
+}
+
+// تایید پرداخت تمدید زمان
+elseif ($datain == "tun_confirm_pay_time") {
+    $userdata = json_decode($user['Processing_value'], true);
+    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
+    $days = intval($userdata['tun_days_amount'] ?? 0);
+    $price = intval($userdata['tun_days_price'] ?? 0);
+
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    if (!$tunnel || $days <= 0) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ نشست نامعتبر است.", 'show_alert' => true]);
+        return;
+    }
+
+    if ($user['Balance'] < $price && $user['agent'] != "n2") {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
+        return;
+    }
+
+    $current_expire = (intval($tunnel['expire_time']) > time()) ? intval($tunnel['expire_time']) : time();
+    $new_expire_time = $current_expire + ($days * 86400);
+
+    $res = updateTunnelForward(
+        $tunnel['name_panel'],
+        $tunnel['inbound_id'],
+        $tunnel['listen_port'],
+        $tunnel['target_ip'],
+        $tunnel['target_port'],
+        "User_{$from_id}",
+        $new_expire_time,
+        $tunnel['total_gb']
+    );
+
+    $resData = [];
+    if (isset($res['body'])) {
+        $resData = json_decode($res['body'], true);
+    } elseif (is_string($res)) {
+        $resData = json_decode($res, true);
+    }
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
+        update("tunnel_orders", "expire_time", $new_expire_time, "id", $tunnel_id);
+        update("tunnel_orders", "status", "active", "id", $tunnel_id);
+
+        $expire_formatted = jdate('Y/m/d H:i', $new_expire_time);
+        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت تمدید گردید.</b>\n\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت افزوده شده:</b> {$days} روز\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5348090777308251395\">📅</tg-emoji> <b>تاریخ انقضای جدید:</b> <code>{$expire_formatted}</code>";
+
+        Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
+    } else {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در برقراری ارتباط با سرور سنایی.", 'show_alert' => true]);
+    }
+    step("home", $from_id);
+}
+
+// ==================== ۳. بخش ویرایش آی‌پی و پورت خارج ====================
+
+// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج»
+elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+
+    $tunnel_id = intval($matches[1]);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
+        return;
+    }
+
+    savedata("clear", "tun_edit_id", $tunnel_id);
+
+    $txt_edit = "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>ویرایش مقصد تانل (سرور خارج):</b>\n\n";
+    $txt_edit .= "🔹 <b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n\n";
+    $txt_edit .= "لطفاً آی‌پی و پورت جدید سرور خارج را به فرمت زیر ارسال کنید:\n";
+    $txt_edit .= "<code>IP:Port</code> (مثال: <code>45.12.34.56:443</code>)";
+
+    sendmessage($from_id, $txt_edit, $backuser, 'HTML');
+    step("tun_get_new_target", $from_id);
+}
+
+// دریافت IP:Port جدید و ذخیره در پنل
+elseif ($user['step'] == "tun_get_new_target") {
+    $parts = explode(':', trim($text));
+    if (count($parts) != 2 || empty($parts[0]) || !is_numeric($parts[1]) || intval($parts[1]) < 1 || intval($parts[1]) > 65535) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> فرمت ارسالی نامعتبر است. لطفاً مجدداً ارسال کنید:\nمثال: <code>45.12.34.56:443</code>", $backuser, 'HTML');
+        return;
+    }
+
+    $new_ip = trim($parts[0]);
+    $new_port = intval($parts[1]);
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $tunnel_id = intval($userdata['tun_edit_id'] ?? 0);
+    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
+
+    $res = updateTunnelForward(
+        $tunnel['name_panel'],
+        $tunnel['inbound_id'],
+        $tunnel['listen_port'],
+        $new_ip,
+        $new_port,
+        "User_{$from_id}",
+        $tunnel['expire_time'],
+        $tunnel['total_gb']
+    );
+
+    $resData = [];
+    if (isset($res['body'])) {
+        $resData = json_decode($res['body'], true);
+    } elseif (is_string($res)) {
+        $resData = json_decode($res, true);
+    }
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        update("tunnel_orders", "target_ip", $new_ip, "id", $tunnel_id);
+        update("tunnel_orders", "target_port", $new_port, "id", $tunnel_id);
+
+        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مقصد سرور خارج با موفقیت تغییر یافت.</b>\n\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>";
+
+        sendmessage($from_id, $succ_txt, $keyboard, 'HTML');
+    } else {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در ارتباط با سرور سنایی.", $keyboard, 'HTML');
+    }
+    step("home", $from_id);
+
 } elseif (preg_match('/^edit_tunnel_target_(\d+)/', $datain, $matches)) {
     $tunnel_id = intval($matches[1]);
     update("user", "Processing_value_one", $tunnel_id, "id", $from_id);
@@ -4635,155 +4953,6 @@ elseif ($user['step'] == "tunnel_step_port") {
     ]);
 
     sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
-    step("home", $from_id);
-
-
-  // ==================== بخش تمدید زمان پورت تانل ====================
-
-// ۱. کلیک روی دکمه «تمدید زمان پورت»
-} elseif (preg_match('/^tun_extend_time_(\d+)/', $datain, $matches)) {
-    $tunnel_id = intval($matches[1]);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-    
-    if (!$tunnel) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ پورت مورد نظر یافت نشد.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_list = json_decode($panel['priceextratime'], true);
-    $extra_time_price = $price_list[$user['agent']] ?? 2000;
-
-    // پاکسازی و ذخیره شناسه پورت برای استپ بعدی
-    savedata("clear", "tun_action_id", $tunnel_id);
-
-    $txt_get_time = "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>تعداد روز مورد نظر برای تمدید را وارد کنید:</b>\n\n";
-    $txt_get_time .= "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> تعرفه هر روز تمدید: <code>" . number_format($extra_time_price) . "</code> تومان\n";
-    $txt_get_time .= "<i>(به عنوان مثال برای ۱ ماه عدد 30 را ارسال کنید)</i>";
-
-    sendmessage($from_id, $txt_get_time, $backuser, 'HTML');
-    step("tun_get_extra_days", $from_id);
-
-// ۲. دریافت عدد روز از کاربر و نمایش پیش‌فاکتور
-} elseif ($user['step'] == "tun_get_extra_days") {
-    $days = intval($text);
-    if ($days < 1) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> لطفاً یک عدد معتبر (تعداد روز بزرگتر از صفر) ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id']);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-    
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ خطایی رخ داد، لطفاً از بخش سرویس‌های من مجدداً تلاش کنید.", $keyboard, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_list = json_decode($panel['priceextratime'], true);
-    $unit_price = $price_list[$user['agent']] ?? 2000;
-    $total_price = $days * $unit_price;
-
-    savedata("save", "tun_days_amount", $days);
-    savedata("save", "tun_days_price", $total_price);
-
-    $inv_text = "<tg-emoji emoji-id=\"5226656353744862682\">🧾</tg-emoji> <b>پیش‌فاکتور تمدید زمان پورت تانل</b>\n\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5323761960829862762\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت زمان تمدید:</b> {$days} روز\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5283232570660634549\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5215420556089776398\">💵</tg-emoji> <b>موجودی حساب شما:</b> " . number_format($user['Balance']) . " تومان";
-
-    $keys = json_encode([
-        'inline_keyboard' => [
-            [['text' => "💳 تایید و پرداخت", 'callback_data' => "tun_confirm_pay_time", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "🔙 انصراف و بازگشت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
-        ]
-    ]);
-
-    sendmessage($from_id, $inv_text, $keys, 'HTML');
-    step("home", $from_id);
-}
-
-// ۳. تایید نهایی پرداخت و اعمال تاریخ جدید در سرور سنایی و دیتابیس
-elseif ($datain == "tun_confirm_pay_time") {
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
-    $days = intval($userdata['tun_days_amount'] ?? 0);
-    $price = intval($userdata['tun_days_price'] ?? 0);
-
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel || $days <= 0) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ نشست منقضی شده است. مجدداً اقدام کنید.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    if ($user['Balance'] < $price && $user['agent'] != "n2") {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ موجودی کیف پول شما برای این عملیات کافی نیست.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    // اگر تاریخ انقضای پورت هنوز باقی مانده باشد، به همان اضافه می‌شود؛ اگر گذشته باشد، از همین لحظه محاسبه می‌شود
-    $base_time = (intval($tunnel['expire_time']) > time()) ? intval($tunnel['expire_time']) : time();
-    $new_expire_time = $base_time + ($days * 86400);
-
-    $res = updateTunnelForward(
-        $tunnel['name_panel'],
-        $tunnel['inbound_id'],
-        $tunnel['listen_port'],
-        $tunnel['target_ip'],
-        $tunnel['target_port'],
-        "User_{$from_id}",
-        $new_expire_time,
-        $tunnel['total_gb']
-    );
-
-    // بررسی دقیق خروجی درخواست
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        // ۱. کسر موجودی از کیف پول کاربر
-        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
-
-        // ۲. آپدیت زمان انقضا و فعال کردن وضعیت در جدول سفارشات
-        update("tunnel_orders", "expire_time", $new_expire_time, "id", $tunnel_id);
-        update("tunnel_orders", "status", "active", "id", $tunnel_id);
-
-        $expire_formatted = jdate('Y/m/d H:i', $new_expire_time);
-        
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت تمدید گردید.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5323761960829862762\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5251392805569321464\">⏳</tg-emoji> <b>مدت افزوده شده:</b> {$days} روز\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5348090777308251395\">📅</tg-emoji> <b>تاریخ انقضای جدید:</b> <code>{$expire_formatted}</code>";
-
-        Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
-    } else {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ خطای سرور: " . ($resData['msg'] ?? 'عدم موفقیت در بروزرسانی سنایی'),
-            'show_alert' => true
-        ]);
-    }
     step("home", $from_id);
 
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
