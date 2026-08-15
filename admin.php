@@ -10859,13 +10859,13 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -10881,7 +10881,7 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard"])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard" , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],
