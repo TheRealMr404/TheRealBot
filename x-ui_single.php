@@ -277,56 +277,68 @@ function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $
     return $response;
 }
 
-function updateTunnelForward($panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $remark, $expire_time = 0, $total_gb = 0)
-{
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-    $cookie = login($panel['code_panel'], false);
+function updateTunnelForward($panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+    if (!$marzban_list_get) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
+    
+    login($marzban_list_get['code_panel']);
 
-    // تبدیل حجم به بایت و زمان به میلی‌ثانیه مخصوص سنایی
-    $total_bytes = ($total_gb > 0) ? ($total_gb * 1024 * 1024 * 1024) : 0;
-    $expiry_time_ms = ($expire_time > 0) ? ($expire_time * 1000) : 0;
-
-    $inbound_settings = [
-        "up" => 0,
-        "down" => 0,
-        "total" => $total_bytes,
-        "remark" => $remark,
-        "enable" => true,
-        "expiryTime" => $expiry_time_ms,
-        "listen" => "",
-        "port" => intval($listen_port),
-        "protocol" => "dokodemo-door",
-        "settings" => json_encode([
-            "address" => $target_ip,
-            "port" => intval($target_port),
-            "network" => "tcp,udp",
-            "followRedirect" => false
-        ]),
-        "streamSettings" => json_encode([
-            "network" => "tcp",
-            "security" => "none",
-            "tcpSettings" => [
-                "acceptProxyProtocol" => false,
-                "header" => ["type" => "none"]
-            ]
-        ]),
-        "sniffing" => json_encode(["enabled" => false, "destOverride" => []])
+    $settings = [
+        "address"        => trim((string)$target_ip),
+        "port"           => intval($target_port),
+        "portMap"        => new stdClass(),
+        "network"        => "tcp,udp",
+        "followRedirect" => false
     ];
 
-    $url = rtrim($panel['url_panel'], '/') . "/panel/api/inbounds/update/" . intval($inbound_id);
-    
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($inbound_settings));
-    curl_setopt($ch, CURLOPT_COOKIE, $cookie['cookie'] ?? '');
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $sniffing = [
+        "enabled"      => false,
+        "destOverride" => [
+            "http",
+            "tls",
+            "quic",
+            "fakedns"
+        ],
+        "metadataOnly" => false,
+        "routeOnly"    => false
+    ];
 
-    return ['status' => $http_code, 'body' => $response];
+    $postData = [
+        "up"                   => 0,
+        "down"                 => 0,
+        "total"                => ($total_gb > 0) ? intval($total_gb) * 1073741824 : 0,
+        "remark"               => $remark,
+        "enable"               => true,
+        "expiryTime"           => ($expire_time > 0) ? intval($expire_time) * 1000 : 0,
+        "trafficReset"         => "never",
+        "lastTrafficResetTime" => 0,
+        "listen"               => "",
+        "port"                 => intval($listen_port),
+        "protocol"             => "tunnel",
+        "settings"             => json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT),
+        "streamSettings"       => json_encode([
+            "network"  => "raw",
+            "security" => "none"
+        ], JSON_UNESCAPED_SLASHES),
+        "sniffing"             => json_encode($sniffing, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
+    ];
+
+    $url = rtrim($marzban_list_get['url_panel'], '/') . '/panel/api/inbounds/update/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(json_encode($postData, JSON_UNESCAPED_SLASHES));
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
 
 function removeTunnelForward($name_panel, $inbound_id) {
