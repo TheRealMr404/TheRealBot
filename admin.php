@@ -4577,7 +4577,7 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
 
 
 
-} elseif ($text == "🌐 تنظیم آی‌پی/دامنه تانل" && $adminrulecheck['rule'] == "administrator") {
+} elseif ($text == "🌐 تنظیم آی‌پی/دامنه سرور" && $adminrulecheck['rule'] == "administrator") {
     $current_panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $current_host = !empty($current_panel['linksubx']) ? $current_panel['linksubx'] : "تنظیم نشده";
     
