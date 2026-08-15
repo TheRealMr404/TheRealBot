@@ -4576,11 +4576,11 @@ elseif ($user['step'] == "tunnel_step_port") {
 $invoice_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>پلن انتخابی:</b> {$product['name_product']}\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>لوکیشن سرور :</b> {$panel_name}\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد <tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji>)\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>سرور (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume}\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
+    $invoice_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> {$price} تومان\n\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی کیف پول شما:</b> " . number_format($user['Balance']) . " تومان\n\n";
     $invoice_text .= "<tg-emoji emoji-id=\"5350572310627632617\">📌</tg-emoji> آیا اطلاعات فوق مورد تایید است؟";
 
