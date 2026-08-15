@@ -4682,6 +4682,15 @@ $textinvite
 } elseif ($datain == "customsellvolume") {
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+
+if ($marzban_list_get['type'] == "x-ui_tunnel") {
+        deletemessage($from_id, $message_id);
+        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>خرید پورت دلخواه تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
+        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
+        step("tun_custom_step_ip", $from_id);
+        return;
+    }
+
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = $eextraprice[$user['agent']];
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -4754,6 +4763,7 @@ $textinvite
         deletemessage($from_id, $message_id);
     }
     sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
+
 } elseif ($user['step'] == "endstepuser" || $user['step'] == "endstepusers" || preg_match('/prodcutservice_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuser") {
     $userdate = json_decode($user['Processing_value'], true);
     if ($user['step'] == "getvolumecustomuser") {
@@ -5355,6 +5365,179 @@ $textonebuy
     step("home", $from_id);
 
 
+} // مرحله ۱ خرید دلخواه تانل: دریافت آی‌پی
+elseif ($user['step'] == "tun_custom_step_ip") {
+    $ip = trim($text);
+    if (!isValidPublicIpv4($ip)) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tun_custom_target_ip", $ip);
+    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (عددی بین ۱۰۲۴ تا ۶۵۵۳۵):";
+    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
+    step("tun_custom_step_port", $from_id);
+}
+
+// مرحله ۲ خرید دلخواه تانل: دریافت و بررسی پورت
+elseif ($user['step'] == "tun_custom_step_port") {
+    $port = intval($text);
+    if ($port < 1024 || $port > 65535) {
+        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['name_panel'];
+
+    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
+    $stmt->execute([$panel_name, $port]);
+    if ($stmt->rowCount() > 0) {
+        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً رزرو شده است.</b> لطفاً پورت دیگری بفرستید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tun_custom_port", $port);
+
+    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+    $price_vol_map = json_decode($panel['pricecustomvolume'] ?? '[]', true);
+    $price_per_gb = $price_vol_map[$user['agent']] ?? 5000;
+    $min_vol = intval(json_decode($panel['mainvolume'] ?? '[]', true)[$user['agent']] ?? 1);
+    $max_vol = intval(json_decode($panel['maxvolume'] ?? '[]', true)[$user['agent']] ?? 500);
+
+    $txt = "<tg-emoji emoji-id=\"5350481089817232086\">🔋</tg-emoji> <b>مقدار حجم درخواستی خود را به گیگابایت وارد کنید:</b>\n\n";
+    $txt .= "📌 تعرفه هر گیگابایت: <code>" . number_format($price_per_gb) . "</code> تومان\n";
+    $txt .= "🔹 حداقل حجم: <code>{$min_vol}</code> و حداکثر: <code>{$max_vol}</code> گیگابایت";
+
+    sendmessage($from_id, $txt, $backuser, 'HTML');
+    step("tun_custom_step_vol", $from_id);
+}
+
+// مرحله ۳ خرید دلخواه تانل: دریافت حجم و درخواست روز
+elseif ($user['step'] == "tun_custom_step_vol") {
+    $vol = intval($text);
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['name_panel'];
+    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+
+    $min_vol = intval(json_decode($panel['mainvolume'] ?? '[]', true)[$user['agent']] ?? 1);
+    $max_vol = intval(json_decode($panel['maxvolume'] ?? '[]', true)[$user['agent']] ?? 500);
+
+    if (!ctype_digit($text) || $vol < $min_vol || $vol > $max_vol) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> حجم نامعتبر است (بین {$min_vol} تا {$max_vol} گیگابایت):", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tun_custom_vol", $vol);
+
+    $price_day_map = json_decode($panel['pricecustomtime'] ?? '[]', true);
+    $price_per_day = $price_day_map[$user['agent']] ?? 2000;
+    $min_days = intval(json_decode($panel['maintime'] ?? '[]', true)[$user['agent']] ?? 1);
+    $max_days = intval(json_decode($panel['maxtime'] ?? '[]', true)[$user['agent']] ?? 365);
+
+    $txt_day = "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار سرویس را به روز وارد کنید:</b>\n\n";
+    $txt_day .= "📌 تعرفه هر روز: <code>" . number_format($price_per_day) . "</code> تومان\n";
+    $txt_day .= "🔹 حداقل زمان: <code>{$min_days}</code> و حداکثر: <code>{$max_days}</code> روز";
+
+    sendmessage($from_id, $txt_day, $backuser, 'HTML');
+    step("tun_custom_step_days", $from_id);
+}
+
+// مرحله ۴ خرید دلخواه تانل: صدور پیش‌فاکتور
+elseif ($user['step'] == "tun_custom_step_days") {
+    $days = intval($text);
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['name_panel'];
+    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+
+    $min_days = intval(json_decode($panel['maintime'] ?? '[]', true)[$user['agent']] ?? 1);
+    $max_days = intval(json_decode($panel['maxtime'] ?? '[]', true)[$user['agent']] ?? 365);
+
+    if (!ctype_digit($text) || $days < $min_days || $days > $max_days) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> مدت زمان نامعتبر است (بین {$min_days} تا {$max_days} روز):", $backuser, 'HTML');
+        return;
+    }
+
+    $vol = intval($userdata['tun_custom_vol']);
+    $price_per_gb = json_decode($panel['pricecustomvolume'] ?? '[]', true)[$user['agent']] ?? 5000;
+    $price_per_day = json_decode($panel['pricecustomtime'] ?? '[]', true)[$user['agent']] ?? 2000;
+    $total_price = ($vol * $price_per_gb) + ($days * $price_per_day);
+
+    savedata("save", "tun_custom_days", $days);
+    savedata("save", "tun_custom_price", $total_price);
+
+    $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
+    $inv .= "📍 <b>سرور:</b> {$panel_name}\n";
+    $inv .= "🚪 <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
+    $inv .= "🌐 <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
+    $inv .= "📦 <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
+    $inv .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n";
+    $inv .= "💰 <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
+    $inv .= "💵 <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
+
+    $keys = json_encode([
+        'inline_keyboard' => [
+            [['text' => "💳 پرداخت و ساخت پورت", 'callback_data' => "confirm_pay_tun_custom", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => "🔙 انصراف", 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
+        ]
+    ]);
+
+    sendmessage($from_id, $inv, $keys, 'HTML');
+    step("home", $from_id);
+}
+
+// مرحله ۵ خرید دلخواه تانل: تایید پرداخت و ایجاد اینباند سنایی
+elseif ($datain == "confirm_pay_tun_custom") {
+    $userdata = json_decode($user['Processing_value'], true);
+
+    $vol = intval($userdata['tun_custom_vol'] ?? 0);
+    $days = intval($userdata['tun_custom_days'] ?? 0);
+    $price = intval($userdata['tun_custom_price'] ?? 0);
+    $panel_name = $userdata['name_panel'];
+    $port = intval($userdata['tun_custom_port'] ?? 0);
+    $target_ip = $userdata['tun_custom_target_ip'] ?? '';
+
+    if ($vol <= 0 || $days <= 0 || empty($target_ip) || $port <= 0) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ اطلاعات ناقص یا منقضی شده است.", 'show_alert' => true]);
+        return;
+    }
+
+    if ($user['Balance'] < $price && $user['agent'] != "n2") {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
+        return;
+    }
+
+    $expire_timestamp = time() + ($days * 86400);
+
+    $res = addTunnelForward($panel_name, $port, $target_ip, $port, "User_{$from_id}", $expire_timestamp, $vol);
+    $resData = json_decode($res['body'] ?? '', true);
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        $inbound_id = $resData['obj']['id'];
+        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);[cite: 1]
+
+        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
+        $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $vol, $expire_timestamp]);
+
+        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null" 
+            ? trim($panel_details['linksubx']) 
+            : parse_url($panel_details['url_panel'], PHP_URL_HOST);[cite: 1]
+
+        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
+        $success_msg .= "📍 <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
+        $success_msg .= "🚪 <b>پورت سرور :</b> <code>{$port}</code>\n";
+        $success_msg .= "🌐 <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
+        $success_msg .= "📦 <b>حجم مجاز:</b> {$vol} گیگابایت\n";
+        $success_msg .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n\n";
+        $success_msg .= "💡 <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
+
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+        Editmessagetext($from_id, $message_id, $success_msg, null, 'HTML');
+    } else {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در ساخت اینباند در سنایی: " . ($resData['msg'] ?? ''), 'show_alert' => true]);
+    }
+    step("home", $from_id);
 } elseif ($datain == "aptdc") {
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id);
