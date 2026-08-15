@@ -4275,20 +4275,14 @@ $text_expie_agent
     step('GetLocationEdit', $from_id);
 } elseif ($user['step'] == "GetLocationEdit") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $text, "select");
-    
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
+if ($marzban_list_get['type'] == "x-ui_tunnel") {
         $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
         $txt_tun = "🔌 <b>پنل پورت تانل متصل است ✅</b>\n\n📍 <b>نام پنل:</b> {$marzban_list_get['name_panel']}\n👥 <b>گروه:</b> {$marzban_list_get['agent']}";
         sendmessage($from_id, $txt_tun, $optionX_ui_tunnel, 'HTML');
-    
-    // ۲. پنل x-ui تک کانفیگ معمولی
-    } if ($marzban_list_get['type'] == "x-ui_single") {
-        $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
-        if ($x_ui_check_connect['success']) {
-            sendmessage($from_id, $textbotlang['Admin']['managepanel']['connectx-ui'], $optionX_ui_single, 'HTML');
-        } else {
-            sendmessage($from_id, "❌ خطای اتصال به پنل", $optionX_ui_single, 'HTML');
-        }
+        
+        update("user", "Processing_value", $text, "id", $from_id);
+        step('home', $from_id);
+        return; // این دستور مانع از اجرای شرط‌های بعدی و ارسال پیام دوم می‌شود
     }
     
     if ($marzban_list_get['type'] == "marzban") {
