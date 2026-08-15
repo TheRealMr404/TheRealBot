@@ -768,7 +768,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         return;
     }
 
-  $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
 
     if (!empty($panel['linksubx']) && $panel['linksubx'] != "null") {
         $server_host = trim($panel['linksubx']);
@@ -829,14 +829,14 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
 
-} 
+}
 
 // ==================== ۱. بخش خرید حجم اضافه تانل ====================
 
 // کلیک روی دکمه «خرید حجم اضافه»
 elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    
+
     $tunnel_id = intval($matches[1]);
     $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
 
@@ -4683,7 +4683,7 @@ $textinvite
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
 
-if ($marzban_list_get['type'] == "x-ui_tunnel") {
+    if ($marzban_list_get['type'] == "x-ui_tunnel") {
         deletemessage($from_id, $message_id);
         $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>خرید پورت دلخواه تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
         sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
@@ -5348,14 +5348,13 @@ $textonebuy
         $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
         $server_host = !empty($panel_details['linksubx']) ? $panel_details['linksubx'] : parse_url($panel_details['url_panel'], PHP_URL_HOST);
 
-        $success_msg = "✅ <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "📍 <b>سرور ایران:</b> <code>{$server_host}</code>\n";
-        $success_msg .= "🚪 <b>پورت سرور ایران:</b> <code>{$listen_port}</code>\n";
-        $success_msg .= "🌐 <b>مقصد (سرور خارج):</b> <code>{$target_ip}:{$target_port}</code>\n";
-        $success_msg .= "📦 <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
-        $success_msg .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n\n";
-        $success_msg .= "💡 <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
-
+        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$listen_port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$target_port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
         sendmessage($from_id, $success_msg, $keyboard, 'HTML');
     } else {
         $err = $resData['msg'] ?? 'خطا در برقراری ارتباط با سرور';
@@ -5520,18 +5519,17 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $vol, $expire_timestamp]);
 
         $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null" 
-            ? trim($panel_details['linksubx']) 
+        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null"
+            ? trim($panel_details['linksubx'])
             : parse_url($panel_details['url_panel'], PHP_URL_HOST);
 
         $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "📍 <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
-        $success_msg .= "🚪 <b>پورت سرور :</b> <code>{$port}</code>\n";
-        $success_msg .= "🌐 <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
-        $success_msg .= "📦 <b>حجم مجاز:</b> {$vol} گیگابایت\n";
-        $success_msg .= "⏳ <b>مدت اعتبار:</b> {$days} روز\n\n";
-        $success_msg .= "💡 <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
-
+        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$listen_port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$target_port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
         Editmessagetext($from_id, $message_id, $success_msg, null, 'HTML');
     } else {
