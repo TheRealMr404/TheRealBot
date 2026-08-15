@@ -529,86 +529,203 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "number", $user_phone, "id", $from_id);
     step('home', $from_id);
 } elseif ($text == $datatextbot['text_Purchased_services'] || $datain == "backorder" || $text == "/services") {
-    sendmessage(
-        $from_id,
-        '<tg-emoji emoji-id="5350295774863311434">❤️</tg-emoji>',
-        null,
-        "HTML"
-    );
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
-    $stmt->bindParam(':id_user', $from_id);
-    $stmt->execute();
-    $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (is_null($invoices) && $setting['NotUser'] == "offnotuser") {
-        sendmessage($from_id, $textbotlang['users']['sell']['service_not_available'], null, 'html');
+    sendmessage($from_id, '<tg-emoji emoji-id="5350295774863311434">❤️</tg-emoji>', null, "HTML");
+
+    // ۱. بررسی وجود پورت تانل فعال برای کاربر
+    $stmt_tun = $pdo->prepare("SELECT COUNT(*) FROM tunnel_orders WHERE user_id = ? AND status != 'removed'");
+    $stmt_tun->execute([$from_id]);
+    $has_tunnel = $stmt_tun->fetchColumn();
+
+    // ۲. اگر کاربر پورت تانل خریده باشد -> نمایش منوی تفکیک‌شده
+    if ($has_tunnel > 0) {
+        $select_menu = json_encode([
+            'inline_keyboard' => [
+                [
+                    [
+                        'text' => "🌐 کانفیگ‌های من",
+                        'callback_data' => "my_configs_list",
+                        'style' => 'primary',
+                        'icon_custom_emoji_id' => 5359719332542718652
+                    ]
+                ],
+                [
+                    [
+                        'text' => "🔌 پورت‌های تانل من",
+                        'callback_data' => "my_tunnels_list",
+                        'style' => 'primary',
+                        'icon_custom_emoji_id' => 5350572310627632617
+                    ]
+                ],
+                [
+                    [
+                        'text' => "بازگشت به منوی اصلی",
+                        'callback_data' => 'backuser',
+                        'style' => 'danger',
+                        'icon_custom_emoji_id' => 5258236805890710909
+                    ]
+                ]
+            ]
+        ]);
+
+        if ($datain == "backorder") {
+            Editmessagetext($from_id, $message_id, "📂 لطفاً بخش مورد نظر خود را جهت مشاهده سرویس‌ها انتخاب کنید:", $select_menu, 'HTML');
+        } else {
+            sendmessage($from_id, "📂 لطفاً بخش مورد نظر خود را جهت مشاهده سرویس‌ها انتخاب کنید:", $select_menu, 'HTML');
+        }
         return;
     }
 
-    $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
-    $page = 1;
-    $items_per_page = 20;
-    $start_index = ($page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => $row['username'],
-                    'callback_data' => "product_" . $row['id_invoice'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5359719332542718652
-                ],
-            ];
-        }
-    } else {
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => $row['username'],
-                    'callback_data' => "product_" . $row['id_invoice'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5359719332542718652
-                ],
-            ];
-        }
+    // ۳. اگر پورت تانلی نداشت -> نمایش مستقیم لیست کانفیگ‌ها
+    update("user", "pagenumber", 1, "id", $from_id);
+    show_user_configs_list($from_id, ($datain == "backorder" ? $message_id : null), 1);
+
+// هندلر کلیک روی «🌐 کانفیگ‌های من»
+} elseif ($datain == "my_configs_list") {
+    update("user", "pagenumber", 1, "id", $from_id);
+    show_user_configs_list($from_id, $message_id, 1);
+
+// هندلر کلیک روی «🔌 پورت‌های تانل من»
+} elseif ($datain == "my_tunnels_list") {
+    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE user_id = ? AND status != 'removed' ORDER BY id DESC");
+    $stmt->execute([$from_id]);
+    $tunnels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($tunnels)) {
+        Editmessagetext($from_id, $message_id, "ℹ️ شما در حال حاضر هیچ پورت تانل فعالی ندارید.", json_encode([
+            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => "backorder", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]]
+        ]), 'HTML');
+        return;
     }
-    $pagination_buttons = [
+
+    $keyboard = [];
+    foreach ($tunnels as $tun) {
+        $btn_text = "🔌 پورت: {$tun['listen_port']} | لوکیشن: {$tun['name_panel']}";
+        $keyboard[] = [
+            [
+                'text' => $btn_text,
+                'callback_data' => "view_tunnel_" . $tun['id'],
+                'style' => 'primary',
+                'icon_custom_emoji_id' => 5350572310627632617
+            ]
+        ];
+    }
+    $keyboard[] = [
         [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]
-    ];
-    $backuser = [
-        [
-            'text' => "بازگشت به منوی اصلی",
-            'callback_data' => 'backuser',
+            'text' => "🔙 بازگشت",
+            'callback_data' => "backorder",
             'style' => 'danger',
             'icon_custom_emoji_id' => 5258236805890710909
         ]
     ];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
+
+    Editmessagetext($from_id, $message_id, "📋 <b>لیست پورت‌های تانل شما:</b>\nبرای مشاهده مشخصات یا ویرایش آی‌پی مقصد، روی پورت کلیک کنید:", json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+
+// مشاهده جزئیات تکی پورت تانل
+} elseif (preg_match('/^view_tunnel_(\d+)/', $datain, $matches)) {
+    $tunnel_id = intval($matches[1]);
+    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE id = ? AND user_id = ? LIMIT 1");
+    $stmt->execute([$tunnel_id, $from_id]);
+    $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ اطلاعات پورت یافت نشد.", null, 'HTML');
+        return;
     }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboardlists['inline_keyboard'][] = $backuser;
-    $keyboard_json = json_encode($keyboardlists);
-    if ($datain == "backorder") {
-        Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
+
+    $panel_details = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+    $server_host = parse_url($panel_details['url_panel'], PHP_URL_HOST);
+
+    $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
+    $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
+
+    $txt = "🔌 <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
+    $txt .= "📍 <b>سرور ایران:</b> <code>{$server_host}</code>\n";
+    $txt .= "🚪 <b>پورت سرور ایران:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt .= "🌐 <b>مقصد (سرور خارج):</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
+    $txt .= "📊 <b>حجم مجاز:</b> {$volume_text}\n";
+    $txt .= "⏳ <b>تاریخ انقضا:</b> {$expire_text}\n";
+    $txt .= "📌 <b>وضعیت اتصال:</b> " . ($tunnel['status'] == 'active' ? "فعال ✅" : "غیرفعال ❌") . "\n";
+
+    $tun_keyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                [
+                    'text' => "✏️ ویرایش آی‌پی و پورت خارج",
+                    'callback_data' => "edit_tunnel_target_" . $tunnel['id'],
+                    'style' => 'success',
+                    'icon_custom_emoji_id' => 5429571366384842791
+                ]
+            ],
+            [
+                [
+                    'text' => "🔙 بازگشت به لیست پورت‌ها",
+                    'callback_data' => "my_tunnels_list",
+                    'style' => 'danger',
+                    'icon_custom_emoji_id' => 5258236805890710909
+                ]
+            ]
+        ]
+    ]);
+
+    Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
+
+// مراحل ویرایش آی‌پی و پورت مقصد
+} elseif (preg_match('/^edit_tunnel_target_(\d+)/', $datain, $matches)) {
+    $tunnel_id = intval($matches[1]);
+    update("user", "Processing_value_one", $tunnel_id, "id", $from_id);
+
+    sendmessage($from_id, "🌐 لطفاً <b>آی‌پی جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
+    step("tunnel_edit_get_ip", $from_id);
+
+} elseif ($user['step'] == "tunnel_edit_get_ip") {
+    $new_ip = trim($text);
+    if (!filter_var($new_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً IPv4 صحیح بفرستید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tunnel_temp_new_ip", $new_ip);
+    sendmessage($from_id, "🔌 لطفاً <b>پورت جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
+    step("tunnel_edit_get_port", $from_id);
+
+} elseif ($user['step'] == "tunnel_edit_get_port") {
+    $new_port = intval($text);
+    if ($new_port < 1 || $new_port > 65535) {
+        sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $tunnel_id = intval($user['Processing_value_one']);
+    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE id = ? AND user_id = ? LIMIT 1");
+    $stmt->execute([$tunnel_id, $from_id]);
+    $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $new_ip = $userdata['tunnel_temp_new_ip'];
+
+    $res = updateTunnelForward(
+        $tunnel['name_panel'],
+        $tunnel['inbound_id'],
+        $tunnel['listen_port'],
+        $new_ip,
+        $new_port,
+        "User_{$from_id}",
+        $tunnel['expire_time'],
+        $tunnel['total_gb']
+    );
+
+    $resData = json_decode($res['body'], true);
+    if (isset($resData['success']) && $resData['success'] === true) {
+        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ? WHERE id = ?");
+        $update_stmt->execute([$new_ip, $new_port, $tunnel_id]);
+
+        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>", $keyboard, 'HTML');
     } else {
-        sendmessage($from_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json, 'html');
+        sendmessage($from_id, "❌ خطا در برقراری ارتباط با سرور یا ذخیره تغییرات.", $keyboard, 'HTML');
     }
-} elseif ($datain == 'next_page') {
+
+    step("home", $from_id);
+    } elseif ($datain == 'next_page') {
     $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
