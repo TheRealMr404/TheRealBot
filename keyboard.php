@@ -1170,6 +1170,24 @@ $optionhiddfy = json_encode([
     ],
     'resize_keyboard' => true
 ]);
+$optionX_ui_tunnel = json_encode([
+    'keyboard' => [
+        [['text' => "⚙️ وضعیت قابلیت ها پنل"]],
+        [['text' => "✍️ نام پنل"], ['text' => "❌ حذف پنل"]],
+        [['text' => "🔐 ویرایش رمز عبور"], ['text' => "👤 ویرایش نام کاربری"]],
+        [['text' => "🔗 ویرایش آدرس پنل"], ['text' => "📍 تغییر گروه کاربری"]],
+        [['text' => "🚨 محدودیت ساخت اکانت"], ['text' => "🔌 مدیریت پورت‌های تانل"]],
+        [['text' => "⚙️ قیمت حجم سرویس دلخواه"], ['text' => "➕ قیمت حجم اضافه"]],
+        [['text' => "⏳ قیمت زمان اضافه"], ['text' => "⏳ قیمت زمان دلخواه"]],
+        [['text' => "📍 حداقل حجم دلخواه"], ['text' => "📍 حداکثر حجم دلخواه"]],
+        [['text' => "📍 حداقل زمان دلخواه"], ['text' => "📍 حداکثر زمان دلخواه"]],
+        [['text' => "🫣 مخفی کردن پنل برای یک کاربر"]],
+        [['text' => "❌ حذف کاربر از لیست مخفی شدگان"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
+    ],
+    'resize_keyboard' => true
+]);
+
 if($setting['statussupportpv'] == "onpvsupport"){
     $supportoption = json_encode([
         'inline_keyboard' => [

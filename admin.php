@@ -4489,6 +4489,82 @@ $text_expie_agent
     update("product", "Location", $text, "Location", $user['Processing_value']);
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
+
+// نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
+} elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
+    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
+    $stmt->execute();
+    $tunnels = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($tunnels)) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5463335865235288297\">📌</tg-emoji> هیچ پورت تانل فعالی در سیستم ثبت نشده است.", $backadmin, 'HTML');
+        return;
+    }
+
+    $keys = ['inline_keyboard' => []];
+    foreach ($tunnels as $tun) {
+        $keys['inline_keyboard'][] = [[
+            'text' => "🚪 پورت: {$tun['listen_port']} | کاربر: {$tun['user_id']}",
+            'callback_data' => "adm_view_tun_" . $tun['id'],
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5350572310627632617
+        ]];
+    }
+    $keys['inline_keyboard'][] = [[
+        'text' => "🔙 بازگشت", 
+        'callback_data' => "admin", 
+        'style' => 'danger', 
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]];
+
+    sendmessage($from_id, "📋 <b>لیست پورت‌های فعال تانل:</b>\nجهت مشاهده جزئیات یا حذف پورت، یکی را انتخاب کنید:", json_encode($keys), 'HTML');
+
+// مشاهده مشخصات پورت و امکان حذف دستی توسط ادمین
+} elseif (preg_match('/^adm_view_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
+    $tun_id = intval($matches[1]);
+    $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
+
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ پورت مورد نظر یافت نشد.", null, 'HTML');
+        return;
+    }
+
+    $txt = "<tg-emoji emoji-id=\"5463335865235288297\">🛠</tg-emoji> <b>مدیریت پورت تانل توسط ادمین:</b>\n\n";
+    $txt .= "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>شناسه خریدار:</b> <code>{$tunnel['user_id']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5429398777419014515\">📍</tg-emoji> <b>لوکیشن پنل:</b> {$tunnel['name_panel']}\n";
+    $txt .= "<tg-emoji emoji-id=\"5323761960829862762\">🚪</tg-emoji> <b>پورت سرور ایران:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5359664288241829619\">📊</tg-emoji> <b>حجم مجاز:</b> {$tunnel['total_gb']} GB\n";
+
+    $adm_keys = json_encode(['inline_keyboard' => [
+        [[
+            'text' => "❌ حذف این پورت از سرور", 
+            'callback_data' => "adm_del_tun_{$tun_id}",
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]],
+        [[
+            'text' => "🔙 بازگشت", 
+            'callback_data' => "admin",
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5429571366384842791
+        ]]
+    ]]);
+
+    Editmessagetext($from_id, $message_id, $txt, $adm_keys, 'HTML');
+
+// اجرای حذف پورت از پنل سنایی و دیتابیس
+} elseif (preg_match('/^adm_del_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
+    $tun_id = intval($matches[1]);
+    $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
+
+    if ($tunnel) {
+        removeTunnelForward($tunnel['name_panel'], $tunnel['inbound_id']);
+        $pdo->prepare("UPDATE tunnel_orders SET status = 'removed' WHERE id = ?")->execute([$tun_id]);
+
+        Editmessagetext($from_id, $message_id, "✅ <b>پورت {$tunnel['listen_port']} با موفقیت از سرور سنایی و ربات حذف گردید.</b>", null, 'HTML');
+    }
+
 } elseif ($text == "🔗 ویرایش آدرس پنل" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['geturlnew'], $backadmin, 'HTML');
     step('GeturlNew', $from_id);
