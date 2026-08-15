@@ -2,6 +2,7 @@
 require_once 'config.php';
 require_once 'request.php';
 ini_set('error_log', 'error_log');
+
 function panel_login_cookie($code_panel)
 {
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
@@ -28,6 +29,7 @@ function panel_login_cookie($code_panel)
     curl_close($curl);
     return $response;
 }
+
 function login($code_panel, $verify = true)
 {
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
@@ -87,6 +89,7 @@ function get_clinets($username, $namepanel)
 
     return $response;
 }
+
 function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subid, $inboundid, $name_product, $note = "")
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
@@ -153,6 +156,7 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
     unlink('cookie.txt');
     return $response;
 }
+
 function updateClient($namepanel, $uuid, array $config)
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel, "select");
@@ -170,6 +174,7 @@ function updateClient($namepanel, $uuid, array $config)
     unlink('cookie.txt');
     return $response;
 }
+
 function ResetUserDataUsagex_uisin($usernamepanel, $namepanel)
 {
     $data_user = get_clinets($usernamepanel, $namepanel);
@@ -188,6 +193,7 @@ function ResetUserDataUsagex_uisin($usernamepanel, $namepanel)
     unlink('cookie.txt');
     return $response;
 }
+
 function removeClient($location, $username)
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
@@ -205,17 +211,15 @@ function removeClient($location, $username)
     return $response;
 }
 
-//-----------------------port forwrad------------------------//
+//-----------------------port forward (Tunnel)------------------------//
+
 function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
-    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-    if (!$panel) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
     }
-
-    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
-    if (!$login['cookie']) {
-        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
-    }
+    
+    login($marzban_list_get['code_panel']);
 
     $settings = [
         "address"        => trim((string)$target_ip),
@@ -257,20 +261,29 @@ function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $
         "sniffing"             => json_encode($sniffing, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
     ];
 
-    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/add';
-    return sanaei_request($url, $postData, $login['cookie'], 'POST');
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/add';
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(json_encode($postData, JSON_UNESCAPED_SLASHES));
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
 
 function updateTunnelForward($name_panel, $inbound_id, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
-    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-    if (!$panel) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
     }
 
-    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
-    if (!$login['cookie']) {
-        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
-    }
+    login($marzban_list_get['code_panel']);
 
     $settings = [
         "address"        => trim((string)$target_ip),
@@ -312,52 +325,90 @@ function updateTunnelForward($name_panel, $inbound_id, $listen_port, $target_ip,
         "sniffing"             => json_encode($sniffing, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)
     ];
 
-    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/update/' . intval($inbound_id);
-    return sanaei_request($url, $postData, $login['cookie'], 'POST');
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/update/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(json_encode($postData, JSON_UNESCAPED_SLASHES));
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
 
 function removeTunnelForward($name_panel, $inbound_id) {
-    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-    if (!$panel) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
     }
 
-    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
-    if (!$login['cookie']) {
-        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
-    }
+    login($marzban_list_get['code_panel']);
 
-    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/del/' . intval($inbound_id);
-    return sanaei_request($url, [], $login['cookie'], 'POST');
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/del/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(array());
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
 
 function getInboundsList($name_panel) {
-    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-    if (!$panel) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
     }
 
-    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
-    if (!$login['cookie']) {
-        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
-    }
+    login($marzban_list_get['code_panel']);
 
-    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/list';
-    return sanaei_request($url, [], $login['cookie'], 'GET');
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/list';
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->get();
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
 
 function resetTunnelTraffic($name_panel, $inbound_id) {
-    $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
-    if (!$panel) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
     }
 
-    $login = sanaei_login($panel['url_panel'], $panel['username_panel'], $panel['password_panel']);
-    if (!$login['cookie']) {
-        return ['body' => json_encode(['success' => false, 'msg' => 'Login to panel failed'])];
-    }
+    login($marzban_list_get['code_panel']);
 
-    // اندپوینت اختصاصی سنایی برای صفر کردن ترافیک یک پورت خاص
-    $url = rtrim($panel['url_panel'], '/') . '/panel/api/inbounds/resetInboundTraffics/' . intval($inbound_id);
-    return sanaei_request($url, [], $login['cookie'], 'POST');
+    $url = $marzban_list_get['url_panel'] . '/panel/api/inbounds/resetInboundTraffics/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->post(array());
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }
