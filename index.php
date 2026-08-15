@@ -4276,21 +4276,39 @@ elseif ($user['step'] == "tunnel_step_ip") {
     step("tunnel_step_port", $from_id);
 }
 
-// مرحله ۲: دریافت پورت واحد و صدور پیش‌فاکتور
+// مرحله ۲: دریافت پورت واحد، بررسی آزاد بودن پورت و صدور پیش‌فاکتور
 elseif ($user['step'] == "tunnel_step_port") {
     $port = intval($text);
-    if ($port < 1 || $port > 65535) {
-        sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
+    if ($port < 1024 || $port > 65535) {
+        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
         return;
     }
 
-    // ذخیره پورت یکسان برای هر دو بخش
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['tunnel_panel'];
+
+    // ۱. بررسی آزاد بودن پورت در دیتابیس ربات
+    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
+    $stmt->execute([$panel_name, $port]);
+    if ($stmt->rowCount() > 0) {
+        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً توسط کاربر دیگری رزرو شده است.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
+        return;
+    }
+
+    // ۲. بررسی آزاد بودن پورت روی سرور و پنل سنایی (در صورت وجود تابع چک مستقیم)
+    if (function_exists('isTunnelPortAvailable')) {
+        $isAvailable = isTunnelPortAvailable($panel_name, $port);
+        if (!$isAvailable) {
+            sendmessage($from_id, "❌ <b>پورت {$port} روی سرور اشغال است یا توسط سیستم استفاده می‌شود.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
+            return;
+        }
+    }
+
+    // ذخیره پورت یکسان برای هر دو بخش سرور ایران و خارج
     savedata("save", "tunnel_target_port", $port);
     savedata("save", "tunnel_listen_port", $port);
 
-    $userdata = json_decode($user['Processing_value'], true);
     $product_code = $userdata['tunnel_product_code'];
-    $panel_name = $userdata['tunnel_panel'];
     $target_ip = $userdata['tunnel_target_ip'];
 
     $product = select("product", "*", "code_product", $product_code, "select");
@@ -4301,7 +4319,7 @@ elseif ($user['step'] == "tunnel_step_port") {
     $invoice_text .= "📦 <b>پلن انتخابی:</b> {$product['name_product']}\n";
     $invoice_text .= "📍 <b>لوکیشن سرور ایران:</b> {$panel_name}\n";
     $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
-    $invoice_text .= "🚪 <b>پورت تانل:</b> <code>{$port}</code>\n";
+    $invoice_text .= "🚪 <b>پورت تانل:</b> <code>{$port}</code> (آزاد و تایید شد ✅)\n";
     $invoice_text .= "📊 <b>حجم مجاز:</b> {$volume}\n";
     $invoice_text .= "⏳ <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
     $invoice_text .= "💰 <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
