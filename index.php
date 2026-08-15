@@ -499,9 +499,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_four", "0", "id", $from_id);
     step('home', $from_id);
     return;
-}
-
- elseif ($text == "version") {
+} elseif ($text == "version") {
     sendmessage($from_id, $version, null, 'html');
 } elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser") {
     if ($datain == "backuser")
@@ -652,29 +650,29 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             ];
         }
     }
-$pagination_buttons = [
-    [
-        'text' => $textbotlang['users']['page']['next'],
-        'callback_data' => 'next_page',
-        'style' => 'success',
-        'icon_custom_emoji_id' => 5260450573768990626
-    ],
-    [
-        'text' => $textbotlang['users']['page']['previous'],
-        'callback_data' => 'previous_page',
-        'style' => 'primary',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
+    $pagination_buttons = [
+        [
+            'text' => $textbotlang['users']['page']['next'],
+            'callback_data' => 'next_page',
+            'style' => 'success',
+            'icon_custom_emoji_id' => 5260450573768990626
+        ],
+        [
+            'text' => $textbotlang['users']['page']['previous'],
+            'callback_data' => 'previous_page',
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
     $backuser = [
-    [
-        'text' => $textbotlang['users']['backbtn'],
-        'callback_data' => 'backuser',
-        'style' => 'danger',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice' , 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]];
+        [
+            'text' => $textbotlang['users']['backbtn'],
+            'callback_data' => 'backuser',
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
@@ -725,21 +723,21 @@ $pagination_buttons = [
             ];
         }
     }
-$pagination_buttons = [
-    [
-        'text' => $textbotlang['users']['page']['next'],
-        'callback_data' => 'next_page',
-        'style' => 'success',
-        'icon_custom_emoji_id' => 5260450573768990626
-    ],
-    [
-        'text' => $textbotlang['users']['page']['previous'],
-        'callback_data' => 'previous_page',
-        'style' => 'primary',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
-     $backuser = [
+    $pagination_buttons = [
+        [
+            'text' => $textbotlang['users']['page']['next'],
+            'callback_data' => 'next_page',
+            'style' => 'success',
+            'icon_custom_emoji_id' => 5260450573768990626
+        ],
+        [
+            'text' => $textbotlang['users']['page']['previous'],
+            'callback_data' => 'previous_page',
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
+    $backuser = [
         [
             'text' => "بازگشت به منوی اصلی",
             'callback_data' => 'backuser',
@@ -4182,7 +4180,7 @@ $textinvite
         $prodcut = $dataget[1];
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-   
+
     if ($marzban_list_get['type'] == "x-ui_tunnel") {
         savedata("save", "tunnel_product_code", $prodcut);
         savedata("save", "tunnel_panel", $marzban_list_get['name_panel']);
@@ -4264,7 +4262,8 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-  }  // مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
+}  // مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
+// مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
 elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
     if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
@@ -4273,38 +4272,26 @@ elseif ($user['step'] == "tunnel_step_ip") {
     }
 
     savedata("save", "tunnel_target_ip", $ip);
-    sendmessage($from_id, "🔌 لطفاً <b>پورت سرور خارج</b> را ارسال کنید (پورتی که کانفیگ روی سرور خارج شما فعال است):\n\n<i>مثال: 443 یا 2053</i>", $backuser, 'HTML');
-    step("tunnel_step_target_port", $from_id);
+    sendmessage($from_id, "🔌 لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n<i>مثال: 443 یا 2053 یا 8080</i>", $backuser, 'HTML');
+    step("tunnel_step_port", $from_id);
 }
 
-// مرحله ۲: دریافت پورت سرور خارج
-elseif ($user['step'] == "tunnel_step_target_port") {
+// مرحله ۲: دریافت پورت واحد و صدور پیش‌فاکتور
+elseif ($user['step'] == "tunnel_step_port") {
     $port = intval($text);
     if ($port < 1 || $port > 65535) {
         sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
         return;
     }
 
+    // ذخیره پورت یکسان برای هر دو بخش
     savedata("save", "tunnel_target_port", $port);
-    sendmessage($from_id, "🚪 لطفاً <b>پورت سرور ایران</b> را وارد کنید (پورتی که می‌خواهید روی سرور ایران باز شود):\n\n<i>پیشنهاد: عددی بین ۲۰۰۰۰ تا ۶۰۰۰۰</i>", $backuser, 'HTML');
-    step("tunnel_step_listen_port", $from_id);
-}
-
-// مرحله ۳: دریافت پورت ایران و صدور پیش‌فاکتور
-elseif ($user['step'] == "tunnel_step_listen_port") {
-    $listen_port = intval($text);
-    if ($listen_port < 1024 || $listen_port > 65535) {
-        sendmessage($from_id, "❌ پورت سرور ایران باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tunnel_listen_port", $listen_port);
+    savedata("save", "tunnel_listen_port", $port);
 
     $userdata = json_decode($user['Processing_value'], true);
     $product_code = $userdata['tunnel_product_code'];
     $panel_name = $userdata['tunnel_panel'];
     $target_ip = $userdata['tunnel_target_ip'];
-    $target_port = $userdata['tunnel_target_port'];
 
     $product = select("product", "*", "code_product", $product_code, "select");
     $price = number_format($product['price_product']);
@@ -4313,8 +4300,8 @@ elseif ($user['step'] == "tunnel_step_listen_port") {
     $invoice_text = "🧾 <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
     $invoice_text .= "📦 <b>پلن انتخابی:</b> {$product['name_product']}\n";
     $invoice_text .= "📍 <b>لوکیشن سرور ایران:</b> {$panel_name}\n";
-    $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$target_port}</code>\n";
-    $invoice_text .= "🚪 <b>پورت ایران:</b> <code>{$listen_port}</code>\n";
+    $invoice_text .= "🌐 <b>سرور خارج (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
+    $invoice_text .= "🚪 <b>پورت تانل:</b> <code>{$port}</code>\n";
     $invoice_text .= "📊 <b>حجم مجاز:</b> {$volume}\n";
     $invoice_text .= "⏳ <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
     $invoice_text .= "💰 <b>مبلغ قابل پرداخت:</b> {$price} تومان\n";
@@ -4330,8 +4317,6 @@ elseif ($user['step'] == "tunnel_step_listen_port") {
 
     sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
     step("home", $from_id);
-
-
 } elseif ($user['step'] == "payment" && $datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount") {
     $userdate = json_decode($user['Processing_value'], true);
     telegram('editMessageReplyMarkup', [
@@ -4680,8 +4665,7 @@ $textonebuy
     }
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
-}
-elseif ($datain == "confirm_pay_tunnel") {
+} elseif ($datain == "confirm_pay_tunnel") {
     $userdata = json_decode($user['Processing_value'], true);
     $panel_name = $userdata['tunnel_panel'];
     $target_ip = $userdata['tunnel_target_ip'];
@@ -4845,8 +4829,8 @@ elseif ($datain == "confirm_pay_tunnel") {
 ";
     $paymentDiscount = json_encode([
         'inline_keyboard' => [
-            [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount" , 'style'=>'success' , 'icon_custom_emoji_id'=> 5350572310627632617]],
-            [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]],
+            [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
+            [['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]],
         ]
     ]);
     $parametrsendvalue = $text . "_" . $info_product['price_product'];
@@ -7388,28 +7372,28 @@ $text_porsant
             ];
         }
     }
- $pagination_buttons = [
-    [
-        'text' => $textbotlang['users']['page']['next'],
-        'callback_data' => 'next_page_extends',
-        'style' => 'success',
-        'icon_custom_emoji_id' => 5260450573768990626
-    ],
-    [
-        'text' => $textbotlang['users']['page']['previous'],
-        'callback_data' => 'previous_page_extends',
-        'style' => 'primary',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
+    $pagination_buttons = [
+        [
+            'text' => $textbotlang['users']['page']['next'],
+            'callback_data' => 'next_page_extends',
+            'style' => 'success',
+            'icon_custom_emoji_id' => 5260450573768990626
+        ],
+        [
+            'text' => $textbotlang['users']['page']['previous'],
+            'callback_data' => 'previous_page_extends',
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
     $backuser = [
-    [
-        'text' => $textbotlang['users']['backbtn'],
-        'callback_data' => 'backuser',
-        'style' => 'danger',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
+        [
+            'text' => $textbotlang['users']['backbtn'],
+            'callback_data' => 'backuser',
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
@@ -7440,7 +7424,7 @@ $text_porsant
                     'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
-                     'icon_custom_emoji_id' => 5258011929993026890
+                    'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -7457,28 +7441,28 @@ $text_porsant
         }
     }
     $pagination_buttons = [
-    [
-        'text' => $textbotlang['users']['page']['next'],
-        'callback_data' => 'next_page_extends',
-        'style' => 'success',
-        'icon_custom_emoji_id' => 5260450573768990626
-    ],
-    [
-        'text' => $textbotlang['users']['page']['previous'],
-        'callback_data' => 'previous_page_extends',
-        'style' => 'primary',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
+        [
+            'text' => $textbotlang['users']['page']['next'],
+            'callback_data' => 'next_page_extends',
+            'style' => 'success',
+            'icon_custom_emoji_id' => 5260450573768990626
+        ],
+        [
+            'text' => $textbotlang['users']['page']['previous'],
+            'callback_data' => 'previous_page_extends',
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
 
-$backuser = [
-    [
-        'text' => $textbotlang['users']['backbtn'],
-        'callback_data' => 'backuser',
-        'style' => 'danger',
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]
-];
+    $backuser = [
+        [
+            'text' => $textbotlang['users']['backbtn'],
+            'callback_data' => 'backuser',
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
