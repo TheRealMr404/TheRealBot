@@ -1875,3 +1875,80 @@ body {
     }
 
 }
+
+
+
+/* =========================================================
+   FIX: جلوگیری از اسکرول عمودی و ثابت ماندن صفحه
+   ========================================================= */
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+body {
+    position: fixed;
+    inset: 0;
+    max-width: 100vw;
+    max-height: 100vh;
+}
+
+#root {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100vh;
+    overflow: hidden !important;
+}
+
+/* جلوگیری از بیرون‌زدگی المان‌ها در عرض موبایل */
+*,
+*::before,
+*::after {
+    max-width: 100%;
+}
+
+/* جلوگیری از ایجاد اسکرول به‌خاطر عرض محتوا */
+div,
+section,
+main,
+header,
+footer {
+    min-width: 0;
+}
+
+/* موبایل */
+@media (max-width: 768px) {
+    html,
+    body,
+    #root {
+        width: 100vw;
+        height: 100dvh;
+        min-height: 100dvh;
+        max-height: 100dvh;
+        overflow: hidden !important;
+    }
+
+    body {
+        position: fixed;
+        inset: 0;
+    }
+}
+
+/* دسکتاپ */
+@media (min-width: 769px) {
+    html,
+    body,
+    #root {
+        height: 100vh;
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden !important;
+    }
+}
