@@ -5069,7 +5069,7 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
         step("home", $from_id);
     } else {
         $err = $resData['msg'] ?? 'خطا در ارتباط با سرور';
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>خطا در ساخت پورت تانل:</b>\n<code>{$err}</code>\n\nاحتمالاً پورت <code>{$port}</code> روی سرور اشغال است. لطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>خطا در ساخت پورت تانل:</b>\nاحتمالاً پورت <code>{$port}</code> روی سرور اشغال است. لطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
     }
 
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
