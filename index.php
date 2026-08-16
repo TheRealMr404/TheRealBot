@@ -5024,7 +5024,7 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
     $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
     $test_hours = intval($panel['time_usertest'] ?? 1);
     $test_volume_mb = intval($panel['val_usertest'] ?? 100);
-    $test_volume_gb = round($test_volume_mb / 1024, 2); 
+    $test_volume_gb = round($test_volume_mb / 1024, 2);
 
     $expire_timestamp = time() + ($test_hours * 3600);
 
@@ -5059,11 +5059,17 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
             ? trim($panel_details['linksubx'])
             : parse_url($panel_details['url_panel'], PHP_URL_HOST);
 
+        if ($test_volume_mb >= 1000) {
+            $formatted_volume = ($test_volume_mb / 1024) . " گیگابایت";
+        } else {
+            $formatted_volume = "{$test_volume_mb} مگابایت";
+        }
+
         $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تست تانل شما با موفقیت فعال شد!</b>\n\n";
         $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
         $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$port}</code>\n";
         $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم تست:</b> {$test_volume_mb} مگابایت\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم تست:</b> {$formatted_volume}\n";
         $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار تست:</b> {$test_hours} ساعت\n\n";
         $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
 
