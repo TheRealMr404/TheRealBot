@@ -1441,3 +1441,437 @@ div[class*="bg-"] {
     background-color: rgba(30, 41, 59, 0.4) !important;
 }
 
+/* =========================================================
+   PREMIUM HEADER + RESPONSIVE FIX
+   فقط Override — بدون تغییر ساختار فعلی
+   ========================================================= */
+
+/* ---------- Global responsive safety ---------- */
+
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+}
+
+#root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100svh;
+    overflow-x: hidden;
+}
+
+#root * {
+    min-width: 0;
+}
+
+/* جلوگیری از بیرون‌زدگی تصاویر و SVGها */
+#root img,
+#root svg,
+#root video,
+#root canvas {
+    max-width: 100%;
+}
+
+/* ---------- Header detection ---------- */
+
+#root > div > header,
+#root > div > nav,
+#root header,
+#root nav {
+    position: relative;
+    z-index: 100;
+
+    width: 100%;
+    max-width: 100%;
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(15, 23, 42, 0.92),
+            rgba(9, 13, 22, 0.82)
+        ) !important;
+
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.16),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+
+    transition:
+        background .25s ease,
+        box-shadow .25s ease,
+        border-color .25s ease;
+}
+
+/* ---------- Header direct layout ---------- */
+
+#root header,
+#root nav {
+    box-sizing: border-box;
+}
+
+/* محتویات هدر بیش از عرض صفحه نشوند */
+#root header > *,
+#root nav > * {
+    max-width: 100%;
+}
+
+/* ---------- Header buttons ---------- */
+
+#root header button,
+#root nav button,
+#root header [role="button"],
+#root nav [role="button"] {
+    position: relative;
+
+    min-height: 38px;
+
+    border: 1px solid transparent !important;
+    border-radius: 11px !important;
+
+    transition:
+        background-color .2s ease,
+        border-color .2s ease,
+        transform .2s cubic-bezier(.22,1,.36,1),
+        box-shadow .2s ease;
+}
+
+#root header button:hover:not(:disabled),
+#root nav button:hover:not(:disabled),
+#root header [role="button"]:hover:not(:disabled),
+#root nav [role="button"]:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.055) !important;
+
+    border-color: rgba(255, 255, 255, 0.08) !important;
+
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+    transform: translateY(-1px);
+}
+
+#root header button:active,
+#root nav button:active,
+#root header [role="button"]:active,
+#root nav [role="button"]:active {
+    transform: scale(.97);
+}
+
+/* ---------- Header links ---------- */
+
+#root header a,
+#root nav a {
+    transition:
+        color .2s ease,
+        background-color .2s ease,
+        opacity .2s ease;
+}
+
+#root header a:hover,
+#root nav a:hover {
+    color: #60a5fa !important;
+}
+
+/* ---------- Header icons ---------- */
+
+#root header svg,
+#root nav svg {
+    flex-shrink: 0;
+    transition:
+        transform .2s ease,
+        color .2s ease,
+        opacity .2s ease;
+}
+
+#root header button:hover svg,
+#root nav button:hover svg {
+    color: #60a5fa;
+}
+
+/* ---------- Header logo / brand ---------- */
+
+#root header img,
+#root nav img {
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+/* ---------- Header separators ---------- */
+
+#root header hr,
+#root nav hr {
+    border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* =========================================================
+   DESKTOP
+   ========================================================= */
+
+@media (min-width: 1024px) {
+
+    #root header,
+    #root nav {
+        min-height: 64px;
+    }
+
+    #root header > div,
+    #root nav > div {
+        max-width: 100%;
+    }
+
+}
+
+/* =========================================================
+   TABLET
+   ========================================================= */
+
+@media (max-width: 1023px) {
+
+    #root header,
+    #root nav {
+        min-height: 58px;
+    }
+
+    #root header > *,
+    #root nav > * {
+        max-width: 100%;
+    }
+
+    /* فاصله‌های خیلی بزرگ Tailwind */
+    #root header .px-6,
+    #root nav .px-6 {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+}
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 767px) {
+
+    #root header,
+    #root nav {
+        min-height: 56px;
+
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    /* جلوگیری از شلوغی هدر */
+    #root header > div,
+    #root nav > div {
+        gap: 8px !important;
+    }
+
+    /* دکمه‌ها جمع‌وجورتر */
+    #root header button,
+    #root nav button,
+    #root header [role="button"],
+    #root nav [role="button"] {
+        min-width: 36px;
+        min-height: 36px;
+
+        padding: 8px !important;
+
+        border-radius: 10px !important;
+    }
+
+    /* متن‌های هدر */
+    #root header .text-lg,
+    #root nav .text-lg {
+        font-size: 15px !important;
+    }
+
+    #root header .text-sm,
+    #root nav .text-sm {
+        font-size: 13px !important;
+    }
+
+    /* فاصله‌های Tailwind در موبایل */
+    #root header .gap-5,
+    #root nav .gap-5 {
+        gap: 10px !important;
+    }
+
+    #root header .gap-4,
+    #root nav .gap-4 {
+        gap: 8px !important;
+    }
+
+    #root header .gap-3,
+    #root nav .gap-3 {
+        gap: 6px !important;
+    }
+
+    /* Padding */
+    #root header .px-6,
+    #root nav .px-6 {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    #root header .px-4,
+    #root nav .px-4 {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    /* متن طولانی هدر باعث Overflow نشود */
+    #root header h1,
+    #root header h2,
+    #root header h3,
+    #root header span,
+    #root nav h1,
+    #root nav h2,
+    #root nav h3,
+    #root nav span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+}
+
+/* =========================================================
+   SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 480px) {
+
+    #root header,
+    #root nav {
+        min-height: 52px;
+
+        padding-left: 7px !important;
+        padding-right: 7px !important;
+    }
+
+    #root header button,
+    #root nav button,
+    #root header [role="button"],
+    #root nav [role="button"] {
+        min-width: 34px;
+        min-height: 34px;
+
+        padding: 7px !important;
+    }
+
+    #root header svg,
+    #root nav svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    /* اگر متن کنار لوگو باشد */
+    #root header .font-semibold,
+    #root nav .font-semibold {
+        font-size: 14px !important;
+    }
+
+}
+
+/* =========================================================
+   VERY SMALL DEVICES
+   ========================================================= */
+
+@media (max-width: 360px) {
+
+    #root header,
+    #root nav {
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+    }
+
+    #root header > div,
+    #root nav > div {
+        gap: 5px !important;
+    }
+
+    #root header button,
+    #root nav button {
+        min-width: 32px;
+        min-height: 32px;
+
+        padding: 6px !important;
+    }
+
+    #root header svg,
+    #root nav svg {
+        width: 16px;
+        height: 16px;
+    }
+
+}
+
+/* =========================================================
+   PREVENT HORIZONTAL OVERFLOW
+   ========================================================= */
+
+@media (max-width: 767px) {
+
+    #root .grid {
+        max-width: 100%;
+    }
+
+    #root .grid-cols-6 {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    #root .w-85 {
+        width: min(100%, 340px) !important;
+    }
+
+    #root .max-w-\[calc\(100\%-2rem\)\] {
+        max-width: calc(100% - 1rem) !important;
+    }
+
+}
+
+/* =========================================================
+   TOUCH DEVICES
+   ========================================================= */
+
+@media (hover: none) and (pointer: coarse) {
+
+    #root header button:hover,
+    #root nav button:hover,
+    #root header [role="button"]:hover,
+    #root nav [role="button"]:hover {
+        transform: none;
+    }
+
+    #root header button:active,
+    #root nav button:active,
+    #root header [role="button"]:active,
+    #root nav [role="button"]:active {
+        transform: scale(.96);
+    }
+
+}
+
+/* =========================================================
+   SAFE AREA — MOBILE NOTCH
+   ========================================================= */
+
+@supports (padding: max(0px)) {
+
+    @media (max-width: 767px) {
+
+        #root header,
+        #root nav {
+            padding-left: max(8px, env(safe-area-inset-left)) !important;
+            padding-right: max(8px, env(safe-area-inset-right)) !important;
+        }
+
+    }
+
+}
