@@ -5019,10 +5019,12 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
         }
     }
 
+
+
     $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
     $test_hours = intval($panel['time_usertest'] ?? 1);
     $test_volume_mb = intval($panel['val_usertest'] ?? 100);
-    $test_volume_gb = round($test_volume_mb / 1024, 2);
+    $test_volume_gb = round($test_volume_mb / 1024, 2); 
 
     $expire_timestamp = time() + ($test_hours * 3600);
 
@@ -5033,11 +5035,11 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
         $port,
         "Test_User_{$from_id}",
         $expire_timestamp,
-        $test_volume_gb
+        $test_volume_mb,
+        true
     );
 
     $resData = json_decode($res['body'] ?? '', true);
-
     if (isset($resData['success']) && $resData['success'] === true) {
         $inbound_id = $resData['obj']['id'];
 
