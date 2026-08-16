@@ -5,8 +5,9 @@ require_auth();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// دریافت تنظیمات فعلی برای مقایسه و استفاده
-$current_setting = select("setting", "*", "id", "1", "select");
+// ۱. دریافت تنظیمات فعلی بدون وابستگی به ستون id
+$stmt_get = $pdo->query("SELECT * FROM setting LIMIT 1");
+$current_setting = $stmt_get->fetch(PDO::FETCH_ASSOC) ?: [];
 
 if ($method == "POST") {
     $raw_payload = file_get_contents("php://input");
@@ -15,7 +16,7 @@ if ($method == "POST") {
     if (is_array($keyboard)) {
         $old_data = json_decode($current_setting['keyboardmain'] ?? '{}', true);
 
-        // ۱. نگاشت ویژگی‌ها (استایل و ایموجی پرمیوم)
+        // ۲. استخراج و نگاشت ویژگی‌های هر دکمه (استایل و ایموجی پرمیوم)
         $button_props_map = [];
         if (!empty($old_data['keyboard']) && is_array($old_data['keyboard'])) {
             foreach ($old_data['keyboard'] as $row) {
@@ -32,7 +33,7 @@ if ($method == "POST") {
             }
         }
 
-        // ۲. بازگرداندن استایل و ایموجی‌ها به چینش جدید
+        // ۳. الصاق مجدد استایل و ایموجی‌ها به چینش جدید
         foreach ($keyboard as &$row) {
             if (is_array($row)) {
                 foreach ($row as &$btn) {
@@ -51,11 +52,11 @@ if ($method == "POST") {
         unset($row);
         unset($btn);
 
-        // ۳. ذخیره قطعی با شرط id = 1 در دیتابیس
+        // ۴. ذخیره در جدول setting به صورت استاندارد
         $keyboardmain = ['keyboard' => $keyboard];
         $json_data = json_encode($keyboardmain, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         
-        update("setting", "keyboardmain", $json_data, "id", "1");
+        update("setting", "keyboardmain", $json_data, null, null);
 
         header('Content-Type: application/json');
         echo json_encode(['status' => true, 'message' => 'کیبورد با موفقیت ذخیره شد']);
@@ -66,7 +67,7 @@ if ($method == "POST") {
 $action = filter_input(INPUT_GET, 'action');
 if ($action === "reaset") {
     $default_keyboard = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
-    update("setting", "keyboardmain", $default_keyboard, "id", "1");
+    update("setting", "keyboardmain", $default_keyboard, null, null);
     header('Location: keyboard.php');
     exit;
 }
