@@ -1440,3 +1440,259 @@ div[class*="bg-"] {
 #root section {
     background-color: rgba(30, 41, 59, 0.4) !important;
 }
+
+:root {
+    --radius: 16px;
+
+    --background: #070b14;
+    --foreground: #f8fafc;
+
+    --card: rgba(15, 23, 42, 0.72);
+    --card-foreground: #f8fafc;
+
+    --popover: rgba(15, 23, 42, 0.94);
+    --popover-foreground: #f8fafc;
+
+    --primary: #4f8cff;
+    --primary-foreground: #ffffff;
+
+    --secondary: rgba(255, 255, 255, 0.055);
+    --secondary-foreground: #dbeafe;
+
+    --muted: rgba(255, 255, 255, 0.045);
+    --muted-foreground: #94a3b8;
+
+    --accent: rgba(79, 140, 255, 0.12);
+    --accent-foreground: #93c5fd;
+
+    --destructive: #ef4444;
+
+    --border: rgba(255, 255, 255, 0.085);
+    --input: rgba(255, 255, 255, 0.08);
+
+    --ring: rgba(79, 140, 255, 0.45);
+}
+
+/* ================================
+   GLOBAL PREMIUM DARK UI
+================================ */
+
+html,
+body {
+    background:
+        radial-gradient(
+            circle at 15% 10%,
+            rgba(59, 130, 246, 0.10),
+            transparent 32%
+        ),
+        radial-gradient(
+            circle at 85% 90%,
+            rgba(99, 102, 241, 0.08),
+            transparent 30%
+        ),
+        #070b14 !important;
+
+    color: #f8fafc !important;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+/* ================================
+   GLASS CARDS
+================================ */
+
+.border-dashed {
+    border: 1px dashed rgba(148, 163, 184, 0.22) !important;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(30, 41, 59, 0.72),
+            rgba(15, 23, 42, 0.58)
+        ) !important;
+
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+
+    border-radius: 18px !important;
+
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.045);
+
+    transition:
+        border-color .25s ease,
+        box-shadow .25s ease,
+        transform .25s cubic-bezier(.22,1,.36,1);
+}
+
+.border-dashed:hover {
+    border-color: rgba(79, 140, 255, 0.42) !important;
+
+    box-shadow:
+        0 25px 65px rgba(0, 0, 0, 0.35),
+        0 0 35px rgba(59, 130, 246, 0.07),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ================================
+   BUTTONS
+================================ */
+
+button,
+[role="button"] {
+    border-radius: 12px !important;
+
+    transition:
+        transform .18s cubic-bezier(.22,1,.36,1),
+        box-shadow .18s ease,
+        background-color .18s ease,
+        border-color .18s ease;
+}
+
+button:hover:not(:disabled),
+[role="button"]:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
+    transform: translateY(0) scale(.985);
+}
+
+/* Primary buttons */
+
+.bg-primary {
+    background:
+        linear-gradient(
+            135deg,
+            #5b8fff,
+            #3b82f6
+        ) !important;
+
+    box-shadow:
+        0 8px 24px rgba(59, 130, 246, 0.20),
+        inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.bg-primary:hover {
+    box-shadow:
+        0 12px 32px rgba(59, 130, 246, 0.30),
+        0 0 25px rgba(59, 130, 246, 0.10);
+}
+
+/* ================================
+   INPUTS
+================================ */
+
+input,
+textarea,
+select {
+    background: rgba(15, 23, 42, 0.72) !important;
+
+    border: 1px solid rgba(148, 163, 184, 0.14) !important;
+
+    border-radius: 12px !important;
+
+    color: #f8fafc !important;
+
+    transition:
+        border-color .2s ease,
+        box-shadow .2s ease,
+        background .2s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    background: rgba(15, 23, 42, 0.9) !important;
+
+    border-color: rgba(79, 140, 255, 0.55) !important;
+
+    box-shadow:
+        0 0 0 3px rgba(59, 130, 246, 0.10),
+        0 8px 25px rgba(0, 0, 0, 0.15);
+
+    outline: none !important;
+}
+
+/* ================================
+   SCROLLBAR
+================================ */
+
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.18);
+    border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.32);
+}
+
+/* ================================
+   TEXT
+================================ */
+
+.text-muted-foreground {
+    color: #94a3b8 !important;
+}
+
+.text-primary {
+    color: #60a5fa !important;
+}
+
+/* ================================
+   SUBTLE SEPARATORS
+================================ */
+
+hr {
+    border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* ================================
+   MODALS
+================================ */
+
+[role="dialog"] {
+    background:
+        linear-gradient(
+            145deg,
+            rgba(17, 24, 39, 0.94),
+            rgba(8, 15, 30, 0.94)
+        ) !important;
+
+    backdrop-filter: blur(30px) saturate(150%);
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+
+    border-radius: 20px !important;
+
+    box-shadow:
+        0 35px 100px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ================================
+   MOBILE
+================================ */
+
+@media (max-width: 640px) {
+
+    .border-dashed {
+        border-radius: 15px !important;
+    }
+
+    button,
+    [role="button"] {
+        border-radius: 11px !important;
+    }
+}
