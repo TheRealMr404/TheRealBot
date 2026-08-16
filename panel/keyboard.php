@@ -185,16 +185,13 @@ if ($action === "reaset") {
 <body>
     <header class="top-navbar">
         <div class="nav-title">
-            <i class="fa-solid fa-layer-group"></i>
-            <span><?= $textbotlang['panel']['keyboardManageTitle'] ?? 'طراحی و چیدمان کیبورد شیشه‌ای' ?></span>
+            <span><?= $textbotlang['panel']['keyboardManageTitle'] ?? 'طراحی و چیدمان کیبورد ' ?></span>
         </div>
         <div class="nav-actions">
             <a class="nav-btn nav-btn-reset" href="keyboard.php?action=reaset" onclick="return confirm('آیا از بازنشانی چینش کیبورد به حالت اولیه مطمئن هستید؟')">
-                <i class="fa-solid fa-rotate-left"></i>
                 <span><?= $textbotlang['panel']['keyboardSaveBtn'] ?? 'تنظیمات اولیه' ?></span>
             </a>
             <a class="nav-btn nav-btn-back" href="index.php">
-                <i class="fa-solid fa-arrow-right"></i>
                 <span><?= $textbotlang['panel']['keyboardSortHint'] ?? 'بازگشت به پنل' ?></span>
             </a>
         </div>
