@@ -4981,21 +4981,22 @@ elseif ($user['step'] == "tunnel_step_port") {
 elseif ($user['step'] == "tunnel_test_step_ip") {
     $ip = trim($text);
     if (!isValidPublicIpv4($ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی است.</b>\nلطفاً یک آی‌پی عمومی معتبر ارسال کنید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً یک آی‌پی IPv4 معتبر ارسال کنید:", $backuser, 'HTML');
         return;
     }
 
     savedata("save", "tunnel_test_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> برای تانل تست را ارسال کنید (بین ۱۰۲۴ تا ۶۵۵۳۵):";
+    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (عددی بین ۱۰۲۴ تا ۶۵۵۳۵):";
     sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
     step("tunnel_test_step_port", $from_id);
-}
-
-// مرحله ۲ تست تانل: بررسی پورت، کسر سهمیه تست و ساخت در سرور سنایی
-elseif ($user['step'] == "tunnel_test_step_port") {
+} elseif ($user['step'] == "tunnel_test_step_port") {
     $port = intval($text);
     if ($port < 1024 || $port > 65535) {
-        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. لطفاً مجدداً پورت مورد نظر را وارد کنید:", $backuser, 'HTML');
         return;
     }
 
@@ -5003,22 +5004,28 @@ elseif ($user['step'] == "tunnel_test_step_port") {
     $panel_name = $userdata['tunnel_test_panel'];
     $target_ip = $userdata['tunnel_test_target_ip'];
 
-    // ۱. بررسی آزاد بودن پورت
     $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
     $stmt->execute([$panel_name, $port]);
     if ($stmt->rowCount() > 0) {
-        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً رزرو شده است.</b> لطفاً پورت دیگری ارسال کنید:", $backuser, 'HTML');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} قبلاً توسط کاربر دیگری رزرو شده است.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
         return;
+    }
+
+    if (function_exists('isTunnelPortAvailable')) {
+        $isAvailable = isTunnelPortAvailable($panel_name, $port);
+        if (!$isAvailable) {
+            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} روی سرور اشغال است یا توسط سیستم استفاده می‌شود.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
+            return;
+        }
     }
 
     $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
     $test_hours = intval($panel['time_usertest'] ?? 1);
     $test_volume_mb = intval($panel['val_usertest'] ?? 100);
-    $test_volume_gb = round($test_volume_mb / 1024, 2); // تبدیل مگابایت به گیگابایت برای تابع تانل
+    $test_volume_gb = round($test_volume_mb / 1024, 2);
 
     $expire_timestamp = time() + ($test_hours * 3600);
 
-    // ۲. ارسال درخواست ساخت به سرور سنایی
     $res = addTunnelForward(
         $panel_name,
         $port,
@@ -5059,10 +5066,11 @@ elseif ($user['step'] == "tunnel_test_step_port") {
         $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
 
         sendmessage($from_id, $success_msg, $keyboard, 'HTML');
+        step("home", $from_id);
     } else {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در فعال‌سازی تست روی سرور سنایی: " . ($resData['msg'] ?? ''), $keyboard, 'HTML');
+        $err = $resData['msg'] ?? 'خطا در ارتباط با سرور';
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>خطا در ساخت پورت تانل:</b>\n<code>{$err}</code>\n\nاحتمالاً پورت <code>{$port}</code> روی سرور اشغال است. لطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
     }
-    step("home", $from_id);
 
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
     $userdate = json_decode($user['Processing_value'], true);
