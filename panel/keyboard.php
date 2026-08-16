@@ -5,10 +5,54 @@ require_auth();
 
 $keyboard = json_decode(file_get_contents("php://input"), true);
 $method = $_SERVER['REQUEST_METHOD'];
+
 if ($method == "POST" && is_array($keyboard)) {
-    $keyboardmain = ['keyboard' => []];
-    $keyboardmain['keyboard'] = $keyboard;
-    update("setting", "keyboardmain", json_encode($keyboardmain), null, null);
+    // ۱. خواندن تنظیمات قبلی از دیتابیس
+    $current_setting = select("setting", "*", "id", "1", "select");
+    $old_data = json_decode($current_setting['keyboardmain'] ?? '{}', true);
+
+    // ۲. نگاشت خصوصیات هر دکمه (استایل و ایموجی پرمیوم)
+    $button_props_map = [];
+    if (!empty($old_data['keyboard']) && is_array($old_data['keyboard'])) {
+        foreach ($old_data['keyboard'] as $row) {
+            foreach ($row as $btn) {
+                if (!empty($btn['text'])) {
+                    $button_props_map[$btn['text']] = [
+                        'style' => $btn['style'] ?? null,
+                        'icon_custom_emoji_id' => $btn['icon_custom_emoji_id'] ?? null
+                    ];
+                }
+            }
+        }
+    }
+
+    // ۳. بازگرداندن استایل و ایموجی به چینش جدید ارسالی از وب
+    foreach ($keyboard as &$row) {
+        if (is_array($row)) {
+            foreach ($row as &$btn) {
+                $btn_key = $btn['text'] ?? '';
+                if (isset($button_props_map[$btn_key])) {
+                    if (empty($btn['style']) && !empty($button_props_map[$btn_key]['style'])) {
+                        $btn['style'] = $button_props_map[$btn_key]['style'];
+                    }
+                    if (empty($btn['icon_custom_emoji_id']) && !empty($button_props_map[$btn_key]['icon_custom_emoji_id'])) {
+                        $btn['icon_custom_emoji_id'] = $button_props_map[$btn_key]['icon_custom_emoji_id'];
+                    }
+                }
+            }
+        }
+    }
+    unset($row);
+    unset($btn);
+
+    // ۴. ذخیره ساختار با حفظ تمام ویژگی‌ها در دیتابیس
+    $keyboardmain = ['keyboard' => $keyboard];
+    update("setting", "keyboardmain", json_encode($keyboardmain, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), null, null);
+
+    // ۵. ارسال پاسخ تایید به فرانت‌اند React و خروج
+    header('Content-Type: application/json');
+    echo json_encode(['status' => true, 'message' => 'کیبورد با موفقیت ذخیره شد']);
+    exit;
 } else {
     $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
     $action = filter_input(INPUT_GET, 'action');
@@ -19,10 +63,8 @@ if ($method == "POST" && is_array($keyboard)) {
     }
 }
 ?>
-
 <!doctype html>
 <html lang="FA">
-
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -52,6 +94,8 @@ if ($method == "POST" && is_array($keyboard)) {
             font-family: yekan;
             font-size: 13px;
             font-weight: bold;
+            text-decoration: none;
+            z-index: 9999;
         }
 
         .btndefult {
@@ -66,6 +110,8 @@ if ($method == "POST" && is_array($keyboard)) {
             font-family: yekan;
             font-size: 13px;
             font-weight: bold;
+            text-decoration: none;
+            z-index: 9999;
         }
     </style>
 </head>
