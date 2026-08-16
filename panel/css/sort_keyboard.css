@@ -1422,3 +1422,21 @@
 [role="button"]:active {
     transform: scale(0.98);
 }
+
+/* تیره‌کردن پس‌زمینه بزرگ وسط صفحه */
+#root > div, 
+.bg-slate-100, 
+.bg-slate-200, 
+.bg-gray-100, 
+.bg-white,
+div[class*="bg-"] {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #f8fafc !important;
+}
+
+/* هماهنگ‌سازی باکس‌های داخلی و دکمه‌های مخزن سمت راست */
+#root div[style*="background"], 
+#root section {
+    background-color: rgba(30, 41, 59, 0.4) !important;
+}
