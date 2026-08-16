@@ -5060,9 +5060,10 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
             : parse_url($panel_details['url_panel'], PHP_URL_HOST);
 
         if ($test_volume_mb >= 1000) {
-            $formatted_volume = ($test_volume_mb / 1024) . " گیگابایت";
+            $gb_value = round($test_volume_mb / 1024, 1);
+            $formatted_volume = ($gb_value == intval($gb_value) ? intval($gb_value) : $gb_value) . " گیگابایت";
         } else {
-            $formatted_volume = "{$test_volume_mb} مگابایت";
+            $formatted_volume = intval($test_volume_mb) . " مگابایت";
         }
 
         $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تست تانل شما با موفقیت فعال شد!</b>\n\n";
