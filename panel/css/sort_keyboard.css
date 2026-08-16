@@ -45,7 +45,7 @@
 
     :root,
     :host {
-        --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        --font-sans: 'Vazirmatn', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         --color-red-100: oklch(93.6% .032 17.717);
         --color-red-300: oklch(80.8% .114 19.571);
@@ -1147,72 +1147,72 @@
 }
 
 :root {
-    --radius: .625rem;
-    --background: oklch(1 0 0);
-    --foreground: oklch(.147 .004 49.25);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(.147 .004 49.25);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(.147 .004 49.25);
-    --primary: oklch(.216 .006 56.043);
-    --primary-foreground: oklch(.985 .001 106.423);
-    --secondary: oklch(.97 .001 106.424);
-    --secondary-foreground: oklch(.216 .006 56.043);
-    --muted: oklch(.97 .001 106.424);
-    --muted-foreground: oklch(.553 .013 58.071);
-    --accent: oklch(.97 .001 106.424);
-    --accent-foreground: oklch(.216 .006 56.043);
-    --destructive: oklch(.577 .245 27.325);
-    --border: oklch(.923 .003 48.717);
-    --input: oklch(.923 .003 48.717);
-    --ring: oklch(.709 .01 56.259);
+    --radius: 0.75rem;
+    --background: oklch(0.14 0.02 260);
+    --foreground: oklch(0.98 0.005 260);
+    --card: oklch(0.18 0.03 260 / 80%);
+    --card-foreground: oklch(0.98 0.005 260);
+    --popover: oklch(0.18 0.03 260);
+    --popover-foreground: oklch(0.98 0.005 260);
+    --primary: oklch(0.62 0.19 250);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.24 0.03 260);
+    --secondary-foreground: oklch(0.95 0.01 260);
+    --muted: oklch(0.22 0.02 260);
+    --muted-foreground: oklch(0.65 0.02 260);
+    --accent: oklch(0.26 0.04 260);
+    --accent-foreground: oklch(0.98 0.005 260);
+    --destructive: oklch(0.6 0.22 25);
+    --border: oklch(0.28 0.03 260 / 60%);
+    --input: oklch(0.28 0.03 260 / 60%);
+    --ring: oklch(0.62 0.19 250);
     --chart-1: oklch(.646 .222 41.116);
     --chart-2: oklch(.6 .118 184.704);
     --chart-3: oklch(.398 .07 227.392);
     --chart-4: oklch(.828 .189 84.429);
     --chart-5: oklch(.769 .188 70.08);
-    --sidebar: oklch(.985 .001 106.423);
-    --sidebar-foreground: oklch(.147 .004 49.25);
-    --sidebar-primary: oklch(.216 .006 56.043);
-    --sidebar-primary-foreground: oklch(.985 .001 106.423);
-    --sidebar-accent: oklch(.97 .001 106.424);
-    --sidebar-accent-foreground: oklch(.216 .006 56.043);
-    --sidebar-border: oklch(.923 .003 48.717);
-    --sidebar-ring: oklch(.709 .01 56.259)
+    --sidebar: oklch(0.18 0.03 260);
+    --sidebar-foreground: oklch(0.98 0.005 260);
+    --sidebar-primary: oklch(0.62 0.19 250);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.26 0.04 260);
+    --sidebar-accent-foreground: oklch(0.98 0.005 260);
+    --sidebar-border: oklch(0.28 0.03 260 / 60%);
+    --sidebar-ring: oklch(0.62 0.19 250)
 }
 
 .dark {
-    --background: oklch(.147 .004 49.25);
-    --foreground: oklch(.985 .001 106.423);
-    --card: oklch(.216 .006 56.043);
-    --card-foreground: oklch(.985 .001 106.423);
-    --popover: oklch(.216 .006 56.043);
-    --popover-foreground: oklch(.985 .001 106.423);
-    --primary: oklch(.923 .003 48.717);
-    --primary-foreground: oklch(.216 .006 56.043);
-    --secondary: oklch(.268 .007 34.298);
-    --secondary-foreground: oklch(.985 .001 106.423);
-    --muted: oklch(.268 .007 34.298);
-    --muted-foreground: oklch(.709 .01 56.259);
-    --accent: oklch(.268 .007 34.298);
-    --accent-foreground: oklch(.985 .001 106.423);
-    --destructive: oklch(.704 .191 22.216);
-    --border: oklch(1 0 0/10%);
-    --input: oklch(1 0 0/15%);
-    --ring: oklch(.553 .013 58.071);
+    --background: oklch(0.12 0.02 260);
+    --foreground: oklch(0.98 0.005 260);
+    --card: oklch(0.16 0.03 260 / 85%);
+    --card-foreground: oklch(0.98 0.005 260);
+    --popover: oklch(0.16 0.03 260);
+    --popover-foreground: oklch(0.98 0.005 260);
+    --primary: oklch(0.62 0.19 250);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.22 0.03 260);
+    --secondary-foreground: oklch(0.98 0.005 260);
+    --muted: oklch(0.2 0.02 260);
+    --muted-foreground: oklch(0.7 0.02 260);
+    --accent: oklch(0.24 0.04 260);
+    --accent-foreground: oklch(0.98 0.005 260);
+    --destructive: oklch(0.6 0.22 25);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.62 0.19 250);
     --chart-1: oklch(.488 .243 264.376);
     --chart-2: oklch(.696 .17 162.48);
     --chart-3: oklch(.769 .188 70.08);
     --chart-4: oklch(.627 .265 303.9);
     --chart-5: oklch(.645 .246 16.439);
-    --sidebar: oklch(.216 .006 56.043);
-    --sidebar-foreground: oklch(.985 .001 106.423);
-    --sidebar-primary: oklch(.488 .243 264.376);
-    --sidebar-primary-foreground: oklch(.985 .001 106.423);
-    --sidebar-accent: oklch(.268 .007 34.298);
-    --sidebar-accent-foreground: oklch(.985 .001 106.423);
-    --sidebar-border: oklch(1 0 0/10%);
-    --sidebar-ring: oklch(.553 .013 58.071)
+    --sidebar: oklch(0.16 0.03 260);
+    --sidebar-foreground: oklch(0.98 0.005 260);
+    --sidebar-primary: oklch(0.62 0.19 250);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.24 0.04 260);
+    --sidebar-accent-foreground: oklch(0.98 0.005 260);
+    --sidebar-border: oklch(1 0 0 / 12%);
+    --sidebar-ring: oklch(0.62 0.19 250)
 }
 
 @property --tw-translate-x {
@@ -1399,4 +1399,39 @@
         opacity: var(--tw-exit-opacity, 1);
         transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))rotate(var(--tw-exit-rotate, 0))
     }
+}
+
+/* =========================================================
+   استایل‌های تکمیلی برای مدرن‌سازی کامپوننت‌های کیبورد
+   ========================================================= */
+
+/* شیشه‌ای کردن پس‌زمینه کادرهای چینش و خط‌چین‌ها */
+.border-dashed {
+    border: 2px dashed rgba(255, 255, 255, 0.18) !important;
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 14px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
+    transition: all 0.25s ease !important;
+}
+
+.border-dashed:hover {
+    border-color: rgba(96, 165, 250, 0.5) !important;
+    background: rgba(30, 41, 59, 0.7) !important;
+}
+
+/* بهبود ظاهری دکمه‌ها در حالت هاور و کلیک */
+[role="button"], button {
+    border-radius: 10px !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+[role="button"]:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+}
+
+[role="button"]:active {
+    transform: scale(0.98);
 }
