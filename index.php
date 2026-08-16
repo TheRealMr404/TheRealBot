@@ -3889,6 +3889,16 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     }
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $location, "select");
+
+    if ($marzban_list_get['type'] == "x-ui_tunnel") {
+        savedata("clear", "tunnel_test_panel", $marzban_list_get['name_panel']);
+        deletemessage($from_id, $message_id);
+        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>دریافت پورت تست تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
+        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
+        step("tunnel_test_step_ip", $from_id);
+        return;
+    }
+
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
         if ($user['step'] != "createusertest") {
             step('createusertest', $from_id);
@@ -4963,6 +4973,95 @@ elseif ($user['step'] == "tunnel_step_port") {
     ]);
 
     sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
+    step("home", $from_id);
+
+}
+
+// مرحله ۱ تست تانل: دریافت آی‌پی
+elseif ($user['step'] == "tunnel_test_step_ip") {
+    $ip = trim($text);
+    if (!isValidPublicIpv4($ip)) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی است.</b>\nلطفاً یک آی‌پی عمومی معتبر ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    savedata("save", "tunnel_test_target_ip", $ip);
+    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> برای تانل تست را ارسال کنید (بین ۱۰۲۴ تا ۶۵۵۳۵):";
+    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
+    step("tunnel_test_step_port", $from_id);
+}
+
+// مرحله ۲ تست تانل: بررسی پورت، کسر سهمیه تست و ساخت در سرور سنایی
+elseif ($user['step'] == "tunnel_test_step_port") {
+    $port = intval($text);
+    if ($port < 1024 || $port > 65535) {
+        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel_name = $userdata['tunnel_test_panel'];
+    $target_ip = $userdata['tunnel_test_target_ip'];
+
+    // ۱. بررسی آزاد بودن پورت
+    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
+    $stmt->execute([$panel_name, $port]);
+    if ($stmt->rowCount() > 0) {
+        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً رزرو شده است.</b> لطفاً پورت دیگری ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
+    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+    $test_hours = intval($panel['time_usertest'] ?? 1);
+    $test_volume_mb = intval($panel['val_usertest'] ?? 100);
+    $test_volume_gb = round($test_volume_mb / 1024, 2); // تبدیل مگابایت به گیگابایت برای تابع تانل
+
+    $expire_timestamp = time() + ($test_hours * 3600);
+
+    // ۲. ارسال درخواست ساخت به سرور سنایی
+    $res = addTunnelForward(
+        $panel_name,
+        $port,
+        $target_ip,
+        $port,
+        "Test_User_{$from_id}",
+        $expire_timestamp,
+        $test_volume_gb
+    );
+
+    $resData = json_decode($res['body'] ?? '', true);
+
+    if (isset($resData['success']) && $resData['success'] === true) {
+        $inbound_id = $resData['obj']['id'];
+
+        $limit_usertest = intval($user['limit_usertest']) - 1;
+        update("user", "limit_usertest", $limit_usertest, "id", $from_id);
+
+        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
+        $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $test_volume_gb, $expire_timestamp]);
+
+        $randomString = bin2hex(random_bytes(4));
+        $date = time();
+        $stmt_inv = $pdo->prepare("INSERT IGNORE INTO invoice (id_user, id_invoice, username, time_sell, Service_location, name_product, price_product, Volume, Service_time, Status) VALUES (?, ?, ?, ?, ?, 'سرویس تست تانل', '0', ?, ?, 'active')");
+        $stmt_inv->execute([$from_id, $randomString, "tun_{$port}", $date, $panel_name, $test_volume_mb, $test_hours]);
+
+        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
+        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null"
+            ? trim($panel_details['linksubx'])
+            : parse_url($panel_details['url_panel'], PHP_URL_HOST);
+
+        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تست تانل شما با موفقیت فعال شد!</b>\n\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم تست:</b> {$test_volume_mb} مگابایت\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار تست:</b> {$test_hours} ساعت\n\n";
+        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
+
+        sendmessage($from_id, $success_msg, $keyboard, 'HTML');
+    } else {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در فعال‌سازی تست روی سرور سنایی: " . ($resData['msg'] ?? ''), $keyboard, 'HTML');
+    }
     step("home", $from_id);
 
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
