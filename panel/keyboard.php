@@ -96,22 +96,24 @@ if ($action === "reaset") {
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            background-color: #090d16;
+            color: #f1f5f9;
         }
 
-        /* نوار ابزار بالای صفحه با افکت شیشه‌ای (Glassmorphism) */
+        /* هدر مینیمال، دارک و شیشه‌ای */
         .top-navbar {
             position: sticky;
             top: 0;
             z-index: 999;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            background: rgba(20, 25, 40, 0.75);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 14px 28px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            background: rgba(15, 23, 42, 0.75);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            padding: 16px 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         }
 
         .nav-title {
@@ -119,62 +121,60 @@ if ($action === "reaset") {
             align-items: center;
             gap: 12px;
             font-weight: 700;
-            font-size: 1.15rem;
-            color: #f1f5f9;
+            font-size: 1.1rem;
+            color: #f8fafc;
         }
 
         .nav-title i {
-            color: #60a5fa;
-            font-size: 1.25rem;
+            color: #3b82f6;
+            font-size: 1.2rem;
         }
 
         .nav-actions {
             display: flex;
-            gap: 10px;
+            gap: 12px;
         }
 
         .nav-btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 16px;
-            border-radius: 10px;
-            font-size: 13.5px;
-            font-weight: 600;
+            padding: 8px 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
             text-decoration: none;
             cursor: pointer;
             transition: all 0.2s ease;
-            border: 1px solid transparent;
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .nav-btn-back {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.04);
             color: #cbd5e1;
-            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .nav-btn-back:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.09);
             color: #fff;
-            transform: translateY(-1px);
+            border-color: rgba(255, 255, 255, 0.15);
         }
 
         .nav-btn-reset {
-            background: rgba(239, 68, 68, 0.12);
+            background: rgba(239, 68, 68, 0.1);
             color: #f87171;
-            border-color: rgba(239, 68, 68, 0.25);
+            border-color: rgba(239, 68, 68, 0.2);
         }
 
         .nav-btn-reset:hover {
-            background: rgba(239, 68, 68, 0.22);
+            background: rgba(239, 68, 68, 0.2);
             color: #fca5a5;
-            transform: translateY(-1px);
         }
 
         /* ساختار ریشه اپلیکیشن React */
         #root {
             flex: 1;
-            padding: 35px 20px;
+            padding: 40px 20px;
             max-width: 900px;
             width: 100%;
             margin: 0 auto;
