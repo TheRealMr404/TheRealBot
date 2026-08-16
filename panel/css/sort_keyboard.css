@@ -1953,3 +1953,43 @@ footer {
     }
 }
 
+/* =========================================================
+   بهینه‌سازی و هماهنگ‌سازی نهایی دکمه‌ها و المان‌ها
+   ========================================================= */
+
+/* استایل یکپارچه برای دکمه‌های هدر و پنل */
+.nav-btn, button:not(.btnback):not(.btndefult) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 12px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    white-space: nowrap;
+}
+
+.nav-btn:hover, button:not(.btnback):not(.btndefult):hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* واکنش‌گرا کردن دکمه‌ها در موبایل */
+@media (max-width: 576px) {
+    .nav-actions {
+        width: 100%;
+        justify-content: center;
+    }
+    .nav-btn {
+        flex: 1;
+        padding: 8px 10px;
+        font-size: 12px !important;
+    }
+}
