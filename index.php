@@ -1147,8 +1147,8 @@ elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     savedata("clear", "tun_edit_id", $tunnel_id);
 
     $txt_edit = "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>ویرایش مقصد تانل (سرور خارج):</b>\n\n";
-    $txt_edit .= "🔹 <b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt_edit .= "🔌 <b>پورت ورودی فعلی:</b> <code>{$tunnel['listen_port']}</code>\n\n";
+    $txt_edit .= "<b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
+    $txt_edit .= "<b>پورت ورودی فعلی:</b> <code>{$tunnel['listen_port']}</code>\n\n";
     $txt_edit .= "لطفاً آی‌پی و پورت جدید سرور خارج را به فرمت زیر ارسال کنید:\n";
     $txt_edit .= "<code>IP:Port</code> (مثال: <code>45.12.34.56:443</code>)";
 
@@ -1231,7 +1231,7 @@ elseif ($user['step'] == "tun_get_new_target") {
 
         $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مشخصات تانل با موفقیت تغییر یافت.</b>\n\n";
         $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>\n";
-        $succ_txt .= "🔌 <b>پورت ورودی تانل:</b> <code>{$new_port}</code>";
+        $succ_txt .= "<b>پورت ورودی تانل:</b> <code>{$new_port}</code>";
 
         sendmessage($from_id, $succ_txt, $keyboard, 'HTML');
         step("home", $from_id);

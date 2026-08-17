@@ -10937,6 +10937,14 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
         unset($Bot_Status['inline_keyboard'][8]);
         unset($Bot_Status['inline_keyboard'][9]);
     }
+
+    if ($panel['type'] == "x-ui_tunnel") {
+        unset($Bot_Status['inline_keyboard'][2]); // وضعیت تمدید
+        unset($Bot_Status['inline_keyboard'][3]); // سرویس دلخواه f
+        unset($Bot_Status['inline_keyboard'][4]); // سرویس دلخواه n
+        unset($Bot_Status['inline_keyboard'][5]); // سرویس دلخواه n2
+    }
+
     $Bot_Status['inline_keyboard'] = array_values($Bot_Status['inline_keyboard']);
     $Bot_Status = json_encode($Bot_Status);
     sendmessage($from_id, $textbotlang['Admin']['Status']['BotTitle'], $Bot_Status, 'HTML');
