@@ -775,11 +775,34 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
     }
 
+   
+    $used_bytes = 0;
+    
+    if (function_exists('getInboundInfo')) {
+        $inbound_data = getInboundInfo($tunnel['name_panel'], $tunnel['inbound_id']);
+    } elseif (isset($ManagePanel) && method_exists($ManagePanel, 'getInbound')) {
+        $inbound_data = $ManagePanel->getInbound($tunnel['name_panel'], $tunnel['inbound_id']);
+    } elseif (function_exists('getTunnelInfo')) {
+        $inbound_data = getTunnelInfo($tunnel['name_panel'], $tunnel['inbound_id']);
+    }
+
+    if (!empty($inbound_data['obj'])) {
+        $used_bytes = intval($inbound_data['obj']['up'] ?? 0) + intval($inbound_data['obj']['down'] ?? 0);
+    } elseif (!empty($inbound_data['up']) || !empty($inbound_data['down'])) {
+        $used_bytes = intval($inbound_data['up'] ?? 0) + intval($inbound_data['down'] ?? 0);
+    } else {
+        $used_bytes = intval($tunnel['used_traffic'] ?? 0);
+    }
+
+    if ($used_bytes > 0 && $used_bytes != $tunnel['used_traffic']) {
+        update("tunnel_orders", "used_traffic", $used_bytes, "id", $tunnel['id']);
+    }
+
+  
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
     $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
 
-    $used_bytes = intval($tunnel_data['used_traffic'] ?? $tunnel['used_traffic'] ?? 0);
     $total_bytes = intval($total_gb_val * 1073741824); // تبدیل گیگابایت به بایت
     $expire_time = intval($tunnel['expire_time'] ?? 0);
 
@@ -791,6 +814,7 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $remaining_volume_text = "نامحدود";
     }
 
+    
     if ($tunnel['status'] != 'active') {
         $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
     } elseif ($expire_time > 0 && time() > $expire_time) {
@@ -800,6 +824,7 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
     } else {
         $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
     }
+
 
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
