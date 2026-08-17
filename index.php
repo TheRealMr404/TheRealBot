@@ -775,30 +775,23 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
     }
 
-   
-    $used_bytes = 0;
+    // ۱. دریافت لایو اطلاعات و حجم مصرفی از پنل
+    $used_bytes = intval($tunnel['used_traffic'] ?? 0);
+    $inbound_res = getInbound($tunnel['name_panel'], $tunnel['inbound_id']);
     
-    if (function_exists('getInboundInfo')) {
-        $inbound_data = getInboundInfo($tunnel['name_panel'], $tunnel['inbound_id']);
-    } elseif (isset($ManagePanel) && method_exists($ManagePanel, 'getInbound')) {
-        $inbound_data = $ManagePanel->getInbound($tunnel['name_panel'], $tunnel['inbound_id']);
-    } elseif (function_exists('getTunnelInfo')) {
-        $inbound_data = getTunnelInfo($tunnel['name_panel'], $tunnel['inbound_id']);
+    if (isset($inbound_res['body'])) {
+        $inbound_data = json_decode($inbound_res['body'], true);
+        if (isset($inbound_data['success']) && $inbound_data['success'] === true && !empty($inbound_data['obj'])) {
+            $up = intval($inbound_data['obj']['up'] ?? 0);
+            $down = intval($inbound_data['obj']['down'] ?? 0);
+            $used_bytes = $up + $down;
+
+            // ذخیره ترافیک جدید در دیتابیس
+            update("tunnel_orders", "used_traffic", $used_bytes, "id", $tunnel['id']);
+        }
     }
 
-    if (!empty($inbound_data['obj'])) {
-        $used_bytes = intval($inbound_data['obj']['up'] ?? 0) + intval($inbound_data['obj']['down'] ?? 0);
-    } elseif (!empty($inbound_data['up']) || !empty($inbound_data['down'])) {
-        $used_bytes = intval($inbound_data['up'] ?? 0) + intval($inbound_data['down'] ?? 0);
-    } else {
-        $used_bytes = intval($tunnel['used_traffic'] ?? 0);
-    }
-
-    if ($used_bytes > 0 && $used_bytes != $tunnel['used_traffic']) {
-        update("tunnel_orders", "used_traffic", $used_bytes, "id", $tunnel['id']);
-    }
-
-  
+    // ۲. محاسبات ترافیک و تاریخ
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
     $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
@@ -814,7 +807,7 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $remaining_volume_text = "نامحدود";
     }
 
-    
+    // ۳. تعیین وضعیت واقعی
     if ($tunnel['status'] != 'active') {
         $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
     } elseif ($expire_time > 0 && time() > $expire_time) {
@@ -825,7 +818,7 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
     }
 
-
+    // ۴. خروجی متن پیام
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";

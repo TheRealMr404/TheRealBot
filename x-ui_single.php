@@ -440,3 +440,27 @@ function isValidPublicIpv4($ip) {
         FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
     ) !== false;
 }
+
+function getInbound($name_panel, $inbound_id) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
+
+    login($marzban_list_get['code_panel']);
+
+    $url = rtrim($marzban_list_get['url_panel'], '/') . '/panel/api/inbounds/get/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->get();
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
+}
