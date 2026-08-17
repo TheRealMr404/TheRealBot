@@ -7124,7 +7124,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 🔗آدرس ورود : https://$domainhosts/panel
 👤نام کاربری :  <code>$from_id</code>
 🔑رمز عبور :  <code>$randomString</code>", $keyboardstatistics, 'HTML');
-} elseif ($text == "🎨 تغییر ایموجی دکمه‌ها" && $adminrulecheck['rule'] == "administrator") {
+} elseif ($text == "تغییر ایموجی دکمه‌ها" && $adminrulecheck['rule'] == "administrator") {
     $setting_row = select("setting", "*", "id", 1, "select");
     $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
 
@@ -7156,7 +7156,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         ['text' => "🔙 بازگشت", 'callback_data' => "back_to_admin_general"]
     ];
 
-    $txt = "🎨 <b>انتخاب دکمه برای تغییر ایموجی:</b>\n\n";
+    $txt = "<b>انتخاب دکمه برای تغییر ایموجی:</b>\n\n";
     $txt .= "ساختار زیر دقیقاً چیدمان دکمه‌های فعلی شماست. روی دکمه مورد نظر کلیک کنید:";
 
     sendmessage($from_id, $txt, json_encode(['inline_keyboard' => $inline_keyboard]), 'HTML');
