@@ -767,7 +767,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, "❌ اطلاعات پورت یافت نشد.", null, 'HTML');
         return;
     }
-$panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+// ==========================================
+    // ۱. دریافت مشخصات اولیه و پورت لحظه‌ای از دیتابیس
+    // ==========================================
+    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
 
     if (!empty($panel['linksubx']) && $panel['linksubx'] != "null") {
         $server_host = trim($panel['linksubx']);
@@ -775,28 +778,56 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
     }
 
-    // ۱. دریافت لایو اطلاعات و حجم مصرفی از پنل
+    $current_listen_port = intval($tunnel['listen_port']); // 👈 پورت لحظه‌ای تانل
     $used_bytes = intval($tunnel['used_traffic'] ?? 0);
-    $inbound_res = getInbound($tunnel['name_panel'], $tunnel['inbound_id']);
-    
-    if (isset($inbound_res['body'])) {
-        $inbound_data = json_decode($inbound_res['body'], true);
-        if (isset($inbound_data['success']) && $inbound_data['success'] === true && !empty($inbound_data['obj'])) {
-            $up = intval($inbound_data['obj']['up'] ?? 0);
-            $down = intval($inbound_data['obj']['down'] ?? 0);
-            $used_bytes = $up + $down;
 
-            // ذخیره ترافیک جدید در دیتابیس
-            update("tunnel_orders", "used_traffic", $used_bytes, "id", $tunnel['id']);
+    // ==========================================
+    // ۲. استعلام زنده مصرف پنل با همان پورت لحظه‌ای ($current_listen_port)
+    // ==========================================
+    $list_res = getInboundsList($tunnel['name_panel']);
+
+    if (isset($list_res['body'])) {
+        $list_data = json_decode($list_res['body'], true);
+        if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
+            $matched = null;
+
+            // جستجو بر اساس پورت لحظه‌ای کاربر
+            foreach ($list_data['obj'] as $inb) {
+                if (intval($inb['port']) === $current_listen_port) {
+                    $matched = $inb;
+                    break;
+                }
+            }
+
+            // اگر پورت در پنل تغییر کرده بود، بررسی بر اساس inbound_id
+            if (!$matched && !empty($tunnel['inbound_id'])) {
+                foreach ($list_data['obj'] as $inb) {
+                    if (intval($inb['id']) === intval($tunnel['inbound_id'])) {
+                        $matched = $inb;
+                        $current_listen_port = intval($inb['port']);
+                        $tunnel['listen_port'] = $current_listen_port; // بروزرسانی متغیر برای نمایش در پیام
+                        break;
+                    }
+                }
+            }
+
+            // محاسبه حجم و همگام‌سازی دیتابیس
+            if ($matched) {
+                $used_bytes = intval($matched['up'] ?? 0) + intval($matched['down'] ?? 0);
+                $stmt_up = $pdo->prepare("UPDATE tunnel_orders SET used_traffic = ?, inbound_id = ?, listen_port = ? WHERE id = ?");
+                $stmt_up->execute([$used_bytes, intval($matched['id']), $current_listen_port, $tunnel['id']]);
+            }
         }
     }
 
-    // ۲. محاسبات ترافیک و تاریخ
+    // ==========================================
+    // ۳. محاسبات حجم، تاریخ و وضعیت
+    // ==========================================
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
     $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
 
-    $total_bytes = intval($total_gb_val * 1073741824); // تبدیل گیگابایت به بایت
+    $total_bytes = intval($total_gb_val * 1073741824);
     $expire_time = intval($tunnel['expire_time'] ?? 0);
 
     $used_volume_text = formatBytes($used_bytes);
@@ -807,7 +838,7 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $remaining_volume_text = "نامحدود";
     }
 
-    // ۳. تعیین وضعیت واقعی
+    // تعیین وضعیت اتصال
     if ($tunnel['status'] != 'active') {
         $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
     } elseif ($expire_time > 0 && time() > $expire_time) {
@@ -818,10 +849,12 @@ $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "sele
         $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
     }
 
-    // ۴. خروجی متن پیام
+    // ==========================================
+    // ۴. ساخت پیام نهایی با متغیر $current_listen_port
+    // ==========================================
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$current_listen_port}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل:</b> {$volume_text}\n";
     $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">📉</tg-emoji> <b>حجم مصرف شده:</b> {$used_volume_text}\n";
