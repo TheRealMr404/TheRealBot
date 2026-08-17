@@ -1078,7 +1078,7 @@ elseif ($datain == "tun_confirm_pay_time") {
 
 // ==================== ۳. بخش ویرایش آی‌پی و پورت خارج ====================
 
-// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج»
+// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج» (فرمت یک‌جای IP:Port)
 elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
@@ -1093,7 +1093,8 @@ elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     savedata("clear", "tun_edit_id", $tunnel_id);
 
     $txt_edit = "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>ویرایش مقصد تانل (سرور خارج):</b>\n\n";
-    $txt_edit .= "🔹 <b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n\n";
+    $txt_edit .= "🔹 <b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
+    $txt_edit .= "🔌 <b>پورت ورودی فعلی:</b> <code>{$tunnel['listen_port']}</code>\n\n";
     $txt_edit .= "لطفاً آی‌پی و پورت جدید سرور خارج را به فرمت زیر ارسال کنید:\n";
     $txt_edit .= "<code>IP:Port</code> (مثال: <code>45.12.34.56:443</code>)";
 
@@ -1101,7 +1102,7 @@ elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     step("tun_get_new_target", $from_id);
 }
 
-// دریافت IP:Port جدید و ذخیره در پنل
+// دریافت IP:Port جدید و ذخیره در پنل و دیتابیس
 elseif ($user['step'] == "tun_get_new_target") {
     $parts = explode(':', trim($text));
     if (count($parts) != 2 || empty($parts[0]) || !is_numeric($parts[1]) || intval($parts[1]) < 1 || intval($parts[1]) > 65535) {
@@ -1112,14 +1113,26 @@ elseif ($user['step'] == "tun_get_new_target") {
     $new_ip = trim($parts[0]);
     $new_port = intval($parts[1]);
 
+    if (!isValidPublicIpv4($new_ip)) {
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی معتبر ارسال کنید:", $backuser, 'HTML');
+        return;
+    }
+
     $userdata = json_decode($user['Processing_value'], true);
     $tunnel_id = intval($userdata['tun_edit_id'] ?? 0);
     $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
 
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات تانل رخ داد.", $keyboard, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+
+    // پورت اصلی ایران و مقصد هر دو با مقدار جدید آپدیت می‌شوند
     $res = updateTunnelForward(
         $tunnel['name_panel'],
         $tunnel['inbound_id'],
-        $tunnel['listen_port'],
+        $new_port,
         $new_ip,
         $new_port,
         "User_{$from_id}",
@@ -1135,11 +1148,12 @@ elseif ($user['step'] == "tun_get_new_target") {
     }
 
     if (isset($resData['success']) && $resData['success'] === true) {
-        update("tunnel_orders", "target_ip", $new_ip, "id", $tunnel_id);
-        update("tunnel_orders", "target_port", $new_port, "id", $tunnel_id);
+        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
+        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
 
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مقصد سرور خارج با موفقیت تغییر یافت.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>";
+        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مشخصات تانل با موفقیت تغییر یافت.</b>\n\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>\n";
+        $succ_txt .= "🔌 <b>پورت ورودی تانل:</b> <code>{$new_port}</code>";
 
         sendmessage($from_id, $succ_txt, $keyboard, 'HTML');
     } else {
@@ -1147,16 +1161,12 @@ elseif ($user['step'] == "tun_get_new_target") {
     }
     step("home", $from_id);
 
-} elseif (preg_match('/^edit_tunnel_target_(\d+)/', $datain, $matches)) {
-    $tunnel_id = intval($matches[1]);
-    update("user", "Processing_value_one", $tunnel_id, "id", $from_id);
+}
 
-    sendmessage($from_id, "🌐 لطفاً <b>آی‌پی جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
-    step("tunnel_edit_get_ip", $from_id);
-
-} elseif ($user['step'] == "tunnel_edit_get_ip") {
+// دریافت مرحله‌به‌مرحله آی‌پی
+elseif ($user['step'] == "tunnel_edit_get_ip") {
     $new_ip = trim($text);
-    if (!isValidPublicIpv4($ip)) {
+    if (!isValidPublicIpv4($new_ip)) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
         return;
     }
@@ -1169,7 +1179,10 @@ elseif ($user['step'] == "tun_get_new_target") {
     sendmessage($from_id, "🔌 لطفاً <b>پورت جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
     step("tunnel_edit_get_port", $from_id);
 
-} elseif ($user['step'] == "tunnel_edit_get_port") {
+}
+
+// دریافت مرحله‌به‌مرحله پورت و ذخیره نهایی
+elseif ($user['step'] == "tunnel_edit_get_port") {
     $new_port = intval($text);
     if ($new_port < 1 || $new_port > 65535) {
         sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
@@ -1181,13 +1194,20 @@ elseif ($user['step'] == "tun_get_new_target") {
     $stmt->execute([$tunnel_id, $from_id]);
     $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    if (!$tunnel) {
+        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+
     $userdata = json_decode($user['Processing_value'], true);
     $new_ip = $userdata['tunnel_temp_new_ip'];
 
+    // ارسال پورت جدید برای هر دو مقدار listen_port و target_port
     $res = updateTunnelForward(
         $tunnel['name_panel'],
         $tunnel['inbound_id'],
-        $tunnel['listen_port'],
+        $new_port,
         $new_ip,
         $new_port,
         "User_{$from_id}",
@@ -1195,12 +1215,18 @@ elseif ($user['step'] == "tun_get_new_target") {
         $tunnel['total_gb']
     );
 
-    $resData = json_decode($res['body'], true);
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ? WHERE id = ?");
-        $update_stmt->execute([$new_ip, $new_port, $tunnel_id]);
+    $resData = [];
+    if (isset($res['body'])) {
+        $resData = json_decode($res['body'], true);
+    } elseif (is_string($res)) {
+        $resData = json_decode($res, true);
+    }
 
-        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>", $keyboard, 'HTML');
+    if (isset($resData['success']) && $resData['success'] === true) {
+        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
+        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
+
+        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>\n🔌 پورت تانل: <code>{$new_port}</code>", $keyboard, 'HTML');
     } else {
         sendmessage($from_id, "❌ خطا در برقراری ارتباط با سرور یا ذخیره تغییرات.", $keyboard, 'HTML');
     }
