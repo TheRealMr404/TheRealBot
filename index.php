@@ -767,8 +767,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         sendmessage($from_id, "❌ اطلاعات پورت یافت نشد.", null, 'HTML');
         return;
     }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
+$panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
 
     if (!empty($panel['linksubx']) && $panel['linksubx'] != "null") {
         $server_host = trim($panel['linksubx']);
@@ -777,19 +776,40 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
-    $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
+    $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
+    $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
 
-    $status_badge = ($tunnel['status'] == 'active')
-        ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال'
-        : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
+    $used_bytes = intval($tunnel_data['used_traffic'] ?? $tunnel['used_traffic'] ?? 0);
+    $total_bytes = intval($total_gb_val * 1073741824); // تبدیل گیگابایت به بایت
+    $expire_time = intval($tunnel['expire_time'] ?? 0);
+
+    $used_volume_text = formatBytes($used_bytes);
+    if ($total_bytes > 0) {
+        $remaining_bytes = max(0, $total_bytes - $used_bytes);
+        $remaining_volume_text = formatBytes($remaining_bytes);
+    } else {
+        $remaining_volume_text = "نامحدود";
+    }
+
+    if ($tunnel['status'] != 'active') {
+        $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
+    } elseif ($expire_time > 0 && time() > $expire_time) {
+        $status_badge = '<tg-emoji emoji-id="5348090777308251395">⌛️</tg-emoji> منقضی شده (اتمام زمان)';
+    } elseif ($total_bytes > 0 && $used_bytes >= $total_bytes) {
+        $status_badge = '<tg-emoji emoji-id="5258236805890710909">🚫</tg-emoji> پایان حجم';
+    } else {
+        $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
+    }
 
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل:</b> {$volume_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">📉</tg-emoji> <b>حجم مصرف شده:</b> {$used_volume_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5350572310627632617\">📈</tg-emoji> <b>حجم باقی‌مانده:</b> {$remaining_volume_text}\n";
     $txt .= "<tg-emoji emoji-id=\"5348090777308251395\">⏳</tg-emoji> <b>تاریخ انقضا:</b> {$expire_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت اتصال:</b> {$status_badge}\n";
+    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت سرویس:</b> {$status_badge}\n";
     $tun_keyboard = json_encode([
         'inline_keyboard' => [
 
