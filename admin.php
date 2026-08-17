@@ -10937,14 +10937,6 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
         unset($Bot_Status['inline_keyboard'][8]);
         unset($Bot_Status['inline_keyboard'][9]);
     }
-
-    if ($panel['type'] == "x-ui_tunnel") {
-        unset($Bot_Status['inline_keyboard'][2]); // وضعیت تمدید
-        unset($Bot_Status['inline_keyboard'][3]); // سرویس دلخواه f
-        unset($Bot_Status['inline_keyboard'][4]); // سرویس دلخواه n
-        unset($Bot_Status['inline_keyboard'][5]); // سرویس دلخواه n2
-    }
-
     $Bot_Status['inline_keyboard'] = array_values($Bot_Status['inline_keyboard']);
     $Bot_Status = json_encode($Bot_Status);
     sendmessage($from_id, $textbotlang['Admin']['Status']['BotTitle'], $Bot_Status, 'HTML');
@@ -11152,13 +11144,13 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify','x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -11174,7 +11166,7 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard"])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard" , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],
