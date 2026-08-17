@@ -1002,9 +1002,7 @@ $paycount
     } elseif ($userdata['type'] == "s_ui") {
         sendmessage($from_id, "❌ نکته :
 1 - از مسیر مدیریت پنل > تنظیم ⚙️ تنظیم پروتکل و اینباند یک نام کاربری کانفیگ را ارسال نمایید.", null, 'HTML');
-    }
-
-     elseif ($userdata['type'] == "x-ui_tunnel") {
+    } elseif ($userdata['type'] == "x-ui_tunnel") {
         sendmessage($from_id, "✅ <b>پنل تانل سنایی با موفقیت اضافه شد.</b>\n\n⚙️ <b>نکته مهم:</b>\nمطمئن شوید فایروال سرور ایران پورت‌های مورد نظر را باز نگه داشته باشد تا اتصالات کاربران بدون اختلال برقرار شود.", null, 'HTML');
     }
 }
@@ -4275,16 +4273,16 @@ $text_expie_agent
     step('GetLocationEdit', $from_id);
 } elseif ($user['step'] == "GetLocationEdit") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $text, "select");
-if ($marzban_list_get['type'] == "x-ui_tunnel") {
+    if ($marzban_list_get['type'] == "x-ui_tunnel") {
         $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
         $txt_tun = "🔌 <b>پنل پورت تانل متصل است ✅</b>\n\n📍 <b>نام پنل:</b> {$marzban_list_get['name_panel']}\n👥 <b>گروه:</b> {$marzban_list_get['agent']}";
         sendmessage($from_id, $txt_tun, $optionX_ui_tunnel, 'HTML');
-        
+
         update("user", "Processing_value", $text, "id", $from_id);
         step('home', $from_id);
         return; // این دستور مانع از اجرای شرط‌های بعدی و ارسال پیام دوم می‌شود
     }
-    
+
     if ($marzban_list_get['type'] == "marzban") {
         $Check_token = token_panel($marzban_list_get['code_panel'], false);
         if (isset($Check_token['access_token'])) {
@@ -4500,7 +4498,7 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
 
-// نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
+    // نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
@@ -4513,23 +4511,27 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
 
     $keys = ['inline_keyboard' => []];
     foreach ($tunnels as $tun) {
-        $keys['inline_keyboard'][] = [[
-            'text' => "🚪 پورت: {$tun['listen_port']} | کاربر: {$tun['user_id']}",
-            'callback_data' => "adm_view_tun_" . $tun['id'],
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5350572310627632617
-        ]];
+        $keys['inline_keyboard'][] = [
+            [
+                'text' => "🚪 پورت: {$tun['listen_port']} | کاربر: {$tun['user_id']}",
+                'callback_data' => "adm_view_tun_" . $tun['id'],
+                'style' => 'primary',
+                'icon_custom_emoji_id' => 5350572310627632617
+            ]
+        ];
     }
-    $keys['inline_keyboard'][] = [[
-        'text' => "🔙 بازگشت", 
-        'callback_data' => "admin", 
-        'style' => 'danger', 
-        'icon_custom_emoji_id' => 5258236805890710909
-    ]];
+    $keys['inline_keyboard'][] = [
+        [
+            'text' => "🔙 بازگشت",
+            'callback_data' => "admin",
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]
+    ];
 
     sendmessage($from_id, "📋 <b>لیست پورت‌های فعال تانل:</b>\nجهت مشاهده جزئیات یا حذف پورت، یکی را انتخاب کنید:", json_encode($keys), 'HTML');
 
-// مشاهده مشخصات پورت و امکان حذف دستی توسط ادمین
+    // مشاهده مشخصات پورت و امکان حذف دستی توسط ادمین
 } elseif (preg_match('/^adm_view_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
     $tun_id = intval($matches[1]);
     $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
@@ -4546,24 +4548,30 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
     $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5359664288241829619\">📊</tg-emoji> <b>حجم مجاز:</b> {$tunnel['total_gb']} GB\n";
 
-    $adm_keys = json_encode(['inline_keyboard' => [
-        [[
-            'text' => "❌ حذف این پورت از سرور", 
-            'callback_data' => "adm_del_tun_{$tun_id}",
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]],
-        [[
-            'text' => "🔙 بازگشت", 
-            'callback_data' => "admin",
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5429571366384842791
-        ]]
-    ]]);
+    $adm_keys = json_encode([
+        'inline_keyboard' => [
+            [
+                [
+                    'text' => "❌ حذف این پورت از سرور",
+                    'callback_data' => "adm_del_tun_{$tun_id}",
+                    'style' => 'danger',
+                    'icon_custom_emoji_id' => 5258236805890710909
+                ]
+            ],
+            [
+                [
+                    'text' => "🔙 بازگشت",
+                    'callback_data' => "admin",
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5429571366384842791
+                ]
+            ]
+        ]
+    ]);
 
     Editmessagetext($from_id, $message_id, $txt, $adm_keys, 'HTML');
 
-// اجرای حذف پورت از پنل سنایی و دیتابیس
+    // اجرای حذف پورت از پنل سنایی و دیتابیس
 } elseif (preg_match('/^adm_del_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
     $tun_id = intval($matches[1]);
     $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
@@ -4580,20 +4588,20 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
 } elseif ($text == "🌐 تنظیم آی‌پی/دامنه سرور" && $adminrulecheck['rule'] == "administrator") {
     $current_panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $current_host = !empty($current_panel['linksubx']) ? $current_panel['linksubx'] : "تنظیم نشده";
-    
+
     $txt = "🌐 <b>تنظیم آی‌پی یا دامنه سرور ایران (تانل)</b>\n\n";
     $txt .= "📌 این آدرس پس از خرید به همراه پورت به خریدار نمایش داده می‌شود.\n";
     $txt .= "🔹 <b>مقدار فعلی:</b> <code>{$current_host}</code>\n\n";
     $txt .= "لطفاً آی‌پی سرور ایران یا دامنه متصل به آن را بدون پورت و بدون http ارسال کنید:\n";
     $txt .= "مثال: <code>185.120.45.10</code> یا <code>iran.domain.com</code>";
-    
+
     sendmessage($from_id, $txt, $backadmin, 'HTML');
     step('set_tunnel_server_host', $from_id);
 
-// ذخیره مقدار ارسالی در دیتابیس
+    // ذخیره مقدار ارسالی در دیتابیس
 } elseif ($user['step'] == "set_tunnel_server_host") {
     $host = trim(str_replace(['http://', 'https://', '/'], '', $text));
-    
+
     if (empty($host)) {
         sendmessage($from_id, "❌ لطفاً یک آی‌پی یا دامنه معتبر ارسال کنید:", $backadmin, 'HTML');
         return;
@@ -4601,7 +4609,7 @@ if ($marzban_list_get['type'] == "x-ui_tunnel") {
 
     update("marzban_panel", "linksubx", $host, "name_panel", $user['Processing_value']);
     $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    
+
     outtypepanel($typepanel['type'], "✅ <b>آدرس سرور تانل با موفقیت ذخیره گردید:</b>\n<code>{$host}</code>");
     step('home', $from_id);
 
@@ -7116,6 +7124,114 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 🔗آدرس ورود : https://$domainhosts/panel
 👤نام کاربری :  <code>$from_id</code>
 🔑رمز عبور :  <code>$randomString</code>", $keyboardstatistics, 'HTML');
+} elseif ($text == "🎨 تغییر ایموجی دکمه‌ها" && $adminrulecheck['rule'] == "administrator") {
+    $setting_row = select("setting", "*", "id", 1, "select");
+    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+
+    if (empty($main_keyboard_data) || !isset($main_keyboard_data['keyboard'])) {
+        sendmessage($from_id, "❌ ساختار کیبورد در دیتابیس یافت نشد.", $backadmin, 'HTML');
+        return;
+    }
+
+    $inline_keyboard = [];
+
+    foreach ($main_keyboard_data['keyboard'] as $row_index => $row) {
+        $inline_row = [];
+        foreach ($row as $col_index => $btn) {
+            $btn_text = is_array($btn) ? ($btn['text'] ?? '') : $btn;
+            if (empty($btn_text))
+                continue;
+
+            $inline_row[] = [
+                'text' => $btn_text,
+                'callback_data' => "chg_btn_emoji_{$row_index}_{$col_index}"
+            ];
+        }
+        if (!empty($inline_row)) {
+            $inline_keyboard[] = $inline_row;
+        }
+    }
+
+    $inline_keyboard[] = [
+        ['text' => "🔙 بازگشت", 'callback_data' => "back_to_admin_general"]
+    ];
+
+    $txt = "🎨 <b>انتخاب دکمه برای تغییر ایموجی:</b>\n\n";
+    $txt .= "ساختار زیر دقیقاً چیدمان دکمه‌های فعلی شماست. روی دکمه مورد نظر کلیک کنید:";
+
+    sendmessage($from_id, $txt, json_encode(['inline_keyboard' => $inline_keyboard]), 'HTML');
+} elseif (preg_match('/^chg_btn_emoji_(\d+)_(\d+)$/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+
+    $r = intval($matches[1]);
+    $c = intval($matches[2]);
+
+    $setting_row = select("setting", "*", "id", 1, "select");
+    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+
+    $current_btn = $main_keyboard_data['keyboard'][$r][$c]['text'] ?? $main_keyboard_data['keyboard'][$r][$c] ?? '';
+
+    savedata("save", "edit_btn_pos", json_encode(['r' => $r, 'c' => $c, 'old_text' => $current_btn]));
+
+    $txt = "✏️ <b>تغییر ایموجی دکمه:</b> <code>{$current_btn}</code>\n\n";
+    $txt .= "لطفاً <b>ایموجی جدید</b> مورد نظر خود را ارسال کنید:";
+
+    sendmessage($from_id, $txt, $backadmin, 'HTML');
+    step("admin_save_btn_emoji", $from_id);
+} elseif ($user['step'] == "admin_save_btn_emoji" && $adminrulecheck['rule'] == "administrator") {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت") {
+        step("home", $from_id);
+        sendmessage($from_id, "عملیات لغو شد.", $admin_keyboard, 'HTML');
+        return;
+    }
+
+    $new_emoji = trim($text);
+    $userdata = json_decode($user['Processing_value'], true);
+    $pos_data = json_decode($userdata['edit_btn_pos'] ?? '{}', true);
+
+    $r = $pos_data['r'] ?? null;
+    $c = $pos_data['c'] ?? null;
+
+    if ($r === null || $c === null) {
+        sendmessage($from_id, "❌ خطایی رخ داد، لطفاً مجدداً تلاش کنید.", $admin_keyboard, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+
+    $setting_row = select("setting", "*", "id", 1, "select");
+    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+
+    $target_text = $main_keyboard_data['keyboard'][$r][$c]['text'] ?? $main_keyboard_data['keyboard'][$r][$c] ?? '';
+
+    // جدا کردن متن خالص دکمه از ایموجی قبلی
+    $clean_text = preg_replace('/^[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F900}-\x{1F9FF}\x{1F1E0}-\x{1F1FF}\s]+/u', '', $target_text);
+    if (empty($clean_text)) {
+        $clean_text = $target_text;
+    }
+
+    $updated_text = "{$new_emoji} {$clean_text}";
+
+    if (is_array($main_keyboard_data['keyboard'][$r][$c])) {
+        $main_keyboard_data['keyboard'][$r][$c]['text'] = $updated_text;
+    } else {
+        $main_keyboard_data['keyboard'][$r][$c] = $updated_text;
+    }
+
+    $updated_json = json_encode($main_keyboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    update("setting", "keyboard", $updated_json, "id", 1);
+
+    $succ_txt = "✅ <b>ایموجی دکمه با موفقیت ویرایش شد.</b>\n\n";
+    $succ_txt .= "🔹 متن قبلی: <code>{$target_text}</code>\n";
+    $succ_txt .= "🔹 متن جدید: <code>{$updated_text}</code>";
+
+    sendmessage($from_id, $succ_txt, $admin_keyboard, 'HTML');
+    step("home", $from_id);
+} elseif ($datain == "back_to_admin_general" && $adminrulecheck['rule'] == "administrator") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    telegram('deleteMessage', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id
+    ]);
 } elseif (preg_match('/addordermanualـ(\w+)/', $datain, $dataget)) {
     $iduser = $dataget[1];
     update("user", "Processing_value", $iduser, "id", $from_id);
@@ -7860,24 +7976,22 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 
 } elseif (strpos($datain, 'setproto_') === 0) {
     $selected_protocol = str_replace('setproto_', '', $datain);
-    
+
     $panel_name = $user['Processing_value'];
-    
+
     if ($selected_protocol === 'null') {
-        $db_value = ""; 
+        $db_value = "";
         $display_text = "خالی (Null)";
     } else {
         $db_value = $selected_protocol;
         $display_text = strtoupper($selected_protocol);
     }
-    
+
     update("marzban_panel", "protocol", $db_value, "name_panel", $panel_name);
-    
+
     $success_text = "✅ پروتکل این پنل با موفقیت روی حالت " . $display_text . "تنظیم شد.";
     Editmessagetext($from_id, $message_id, $success_text, null);
-}
-
-elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
+} elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
     $nodeid = $dataget[1];
     update("user", "Processing_value_one", $nodeid, "id", $from_id);
     $node = Get_Node($user['Processing_value'], $nodeid);
@@ -10769,9 +10883,8 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("DELETE FROM app WHERE name = :name");
     $stmt->bindParam(':name', $text, PDO::PARAM_STR);
     $stmt->execute();
-}
-elseif ($text == "تنظیم پروتکل کانفیگ") {
-$keyboard = json_encode([
+} elseif ($text == "تنظیم پروتکل کانفیگ") {
+    $keyboard = json_encode([
         'inline_keyboard' => [
             [
                 ['text' => 'VLESS', 'callback_data' => 'setproto_vless'],
@@ -10785,11 +10898,10 @@ $keyboard = json_encode([
             ]
         ]
     ]);
-    
+
     $text_msg = "⚙️ لطفا پروتکل مورد نظر برای این پنل را انتخاب کنید:\n\n⚠️ نکته: اگر شادوساکس را انتخاب می‌کنید، حتماً تنظیمات اینباند در سرور باید روی Shadowsocks باشد.";
     sendmessage($from_id, $text_msg, $keyboard, 'HTML');
-}
-elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
+} elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
         update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
@@ -10889,13 +11001,13 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -10911,7 +11023,7 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard" , 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard", 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],
@@ -11150,7 +11262,7 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify','x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -11166,7 +11278,7 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard" , 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard", 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],
