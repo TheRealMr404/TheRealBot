@@ -7124,109 +7124,148 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 🔗آدرس ورود : https://$domainhosts/panel
 👤نام کاربری :  <code>$from_id</code>
 🔑رمز عبور :  <code>$randomString</code>", $keyboardstatistics, 'HTML');
-} elseif ($text == "تغییر ایموجی دکمه‌ها" && $adminrulecheck['rule'] == "administrator") {
-    $setting_row = select("setting", "*", "id", 1, "select");
-    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+} // ==================== ۱. نمایش چیدمان دکمه‌ها با متغیرهای اصلی ====================
+// ==================== ۱. نمایش چیدمان دکمه‌ها برای مدیریت ====================
+elseif (($text == "🎨 تغییر ایموجی دکمه‌ها" || mb_strpos($text, "تغییر ایموجی") !== false) && in_array($from_id, $admin_ids)) {
 
-    if (empty($main_keyboard_data) || !isset($main_keyboard_data['keyboard'])) {
-        sendmessage($from_id, "❌ ساختار کیبورد در دیتابیس یافت نشد.", $backadmin, 'HTML');
+    if (empty($keyboardRows)) {
+        sendmessage($from_id, "❌ ساختار کیبورد یافت نشد.", $backadmin, 'HTML');
         return;
     }
 
-    $inline_keyboard = [];
-
-    foreach ($main_keyboard_data['keyboard'] as $row_index => $row) {
-        $inline_row = [];
-        foreach ($row as $col_index => $btn) {
-            $btn_text = is_array($btn) ? ($btn['text'] ?? '') : $btn;
-            if (empty($btn_text))
+    $trace_keyboard = [];
+    foreach ($keyboardRows as $row_idx => $callback_set) {
+        $row_btns = [];
+        foreach ($callback_set as $btn) {
+            $raw_key = $btn['text'] ?? '';
+            if (empty($raw_key))
                 continue;
 
-            $inline_row[] = [
-                'text' => $btn_text,
-                'callback_data' => "chg_btn_emoji_{$row_index}_{$col_index}"
+            $display_text = $replacements[$raw_key] ?? ($datatextbot[$raw_key] ?? $raw_key);
+
+            $btn_item = [
+                'text' => $display_text,
+                'callback_data' => "chg_btn_key_" . $raw_key
             ];
+
+            if (isset($btn['style'])) {
+                $btn_item['style'] = $btn['style'];
+            }
+            if (!empty($btn['icon_custom_emoji_id'])) {
+                $btn_item['icon_custom_emoji_id'] = $btn['icon_custom_emoji_id'];
+            }
+
+            $row_btns[] = $btn_item;
         }
-        if (!empty($inline_row)) {
-            $inline_keyboard[] = $inline_row;
+        if (!empty($row_btns)) {
+            $trace_keyboard[] = $row_btns;
         }
     }
 
-    $inline_keyboard[] = [
-        ['text' => "🔙 بازگشت", 'callback_data' => "back_to_admin_general"]
+    $trace_keyboard[] = [
+        ['text' => "بازگشت", 'callback_data' => "back_to_admin_general", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]
     ];
 
-    $txt = "<b>انتخاب دکمه برای تغییر ایموجی:</b>\n\n";
-    $txt .= "ساختار زیر دقیقاً چیدمان دکمه‌های فعلی شماست. روی دکمه مورد نظر کلیک کنید:";
+    $admin_inline_keyboard = json_encode(['inline_keyboard' => $trace_keyboard]);
 
-    sendmessage($from_id, $txt, json_encode(['inline_keyboard' => $inline_keyboard]), 'HTML');
-} elseif (preg_match('/^chg_btn_emoji_(\d+)_(\d+)$/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
+    $txt = "<tg-emoji emoji-id=\"5463335865235288297\">🎨</tg-emoji> <b>مدیریت ایموجی دکمه‌های منوی اصلی:</b>\n\n";
+    $txt .= "روی هر دکمه که می‌خواهید ایموجی آن را تغییر دهید کلیک کنید:";
+
+    sendmessage($from_id, $txt, $admin_inline_keyboard, 'HTML');
+} elseif (preg_match('/^chg_btn_key_([a-zA-Z0-9_]+)$/', $datain, $matches) && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
-    $r = intval($matches[1]);
-    $c = intval($matches[2]);
+    $target_key = $matches[1];
+    $current_val = $replacements[$target_key] ?? ($datatextbot[$target_key] ?? $target_key);
 
-    $setting_row = select("setting", "*", "id", 1, "select");
-    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+    update("user", "Processing_value", $target_key, "id", $from_id);
 
-    $current_btn = $main_keyboard_data['keyboard'][$r][$c]['text'] ?? $main_keyboard_data['keyboard'][$r][$c] ?? '';
-
-    savedata("save", "edit_btn_pos", json_encode(['r' => $r, 'c' => $c, 'old_text' => $current_btn]));
-
-    $txt = "✏️ <b>تغییر ایموجی دکمه:</b> <code>{$current_btn}</code>\n\n";
-    $txt .= "لطفاً <b>ایموجی جدید</b> مورد نظر خود را ارسال کنید:";
-
+    $txt = "<tg-emoji emoji-id=\"5348536444589719796\">✏️</tg-emoji> <b>ویرایش ایموجی دکمه:</b> <code>{$current_val}</code>\n\n";
+    $txt .= "<tg-emoji emoji-id=\"5350626672028697529\">💎</tg-emoji> لطفاً <b>ایموجی پریمیوم</b> یا <b>آیدی عددی ایموجی</b> را ارسال فرمایید:";
     sendmessage($from_id, $txt, $backadmin, 'HTML');
     step("admin_save_btn_emoji", $from_id);
-} elseif ($user['step'] == "admin_save_btn_emoji" && $adminrulecheck['rule'] == "administrator") {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت") {
+} elseif ($user['step'] == "admin_save_btn_emoji" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
         step("home", $from_id);
-        sendmessage($from_id, "عملیات لغو شد.", $admin_keyboard, 'HTML');
+        sendmessage($from_id, "عملیات لغو شد.", $setting_panel, 'HTML');
         return;
     }
 
-    $new_emoji = trim($text);
-    $userdata = json_decode($user['Processing_value'], true);
-    $pos_data = json_decode($userdata['edit_btn_pos'] ?? '{}', true);
-
-    $r = $pos_data['r'] ?? null;
-    $c = $pos_data['c'] ?? null;
-
-    if ($r === null || $c === null) {
-        sendmessage($from_id, "❌ خطایی رخ داد، لطفاً مجدداً تلاش کنید.", $admin_keyboard, 'HTML');
+    $target_key = $user['Processing_value'] ?? '';
+    if (empty($target_key)) {
+        sendmessage($from_id, "❌ خطایی در بازخوانی دکمه رخ داد، لطفاً مجدداً از منو دکمه را انتخاب کنید.", $setting_panel, 'HTML');
         step("home", $from_id);
         return;
     }
 
-    $setting_row = select("setting", "*", "id", 1, "select");
-    $main_keyboard_data = json_decode($setting_row['keyboard'] ?? '[]', true);
+    $custom_emoji_id = null;
+    $raw_msg = $update['message'] ?? [];
 
-    $target_text = $main_keyboard_data['keyboard'][$r][$c]['text'] ?? $main_keyboard_data['keyboard'][$r][$c] ?? '';
-
-    // جدا کردن متن خالص دکمه از ایموجی قبلی
-    $clean_text = preg_replace('/^[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F900}-\x{1F9FF}\x{1F1E0}-\x{1F1FF}\s]+/u', '', $target_text);
-    if (empty($clean_text)) {
-        $clean_text = $target_text;
+    // ۱. بررسی مستقیم entities در پکت آپدیت ارسالی تلگرام
+    if (!empty($raw_msg['entities']) && is_array($raw_msg['entities'])) {
+        foreach ($raw_msg['entities'] as $entity) {
+            if (isset($entity['type']) && $entity['type'] === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
+                $custom_emoji_id = (string) $entity['custom_emoji_id'];
+                break;
+            }
+        }
     }
 
-    $updated_text = "{$new_emoji} {$clean_text}";
-
-    if (is_array($main_keyboard_data['keyboard'][$r][$c])) {
-        $main_keyboard_data['keyboard'][$r][$c]['text'] = $updated_text;
-    } else {
-        $main_keyboard_data['keyboard'][$r][$c] = $updated_text;
+    // ۲. بررسی از طریق خروجی تابع convertCustomEmojiToHTML
+    if ($custom_emoji_id === null && function_exists('convertCustomEmojiToHTML')) {
+        $html_emoji = convertCustomEmojiToHTML($raw_msg);
+        if (preg_match('/emoji-id="(\d+)"/', (string) $html_emoji, $matches_emoji)) {
+            $custom_emoji_id = (string) $matches_emoji[1];
+        }
     }
 
-    $updated_json = json_encode($main_keyboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    update("setting", "keyboard", $updated_json, "id", 1);
+    // ۳. بررسی اگر ادمین مستقیماً آیدی عددی ارسال کرده باشد
+    $trimmed_text = trim((string) $text);
+    if ($custom_emoji_id === null && preg_match('/^\d{15,22}$/', $trimmed_text)) {
+        $custom_emoji_id = $trimmed_text;
+    }
 
-    $succ_txt = "✅ <b>ایموجی دکمه با موفقیت ویرایش شد.</b>\n\n";
-    $succ_txt .= "🔹 متن قبلی: <code>{$target_text}</code>\n";
-    $succ_txt .= "🔹 متن جدید: <code>{$updated_text}</code>";
+    // اگر هیچ شناسه‌ای پیدا نشد
+    if ($custom_emoji_id === null) {
+        sendmessage($from_id, "❌ شناسه ایموجی پریمیوم یافت نشد.\nلطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی</b> آن را ارسال کنید:", $backadmin, 'HTML');
+        return;
+    }
 
-    sendmessage($from_id, $succ_txt, $admin_keyboard, 'HTML');
+    // ۴. خواندن و ویرایش JSON فیلد keyboardmain در دیتابیس
+    $setting_row = select("setting", "*", null, null, "select");
+    $raw_kb = $setting_row['keyboardmain'] ?? '{}';
+    $keyboard_data = json_decode($raw_kb, true);
+
+    if (isset($keyboard_data['keyboard']) && is_array($keyboard_data['keyboard'])) {
+        foreach ($keyboard_data['keyboard'] as &$row) {
+            if (!is_array($row))
+                continue;
+            foreach ($row as &$btn) {
+                if (isset($btn['text']) && $btn['text'] === $target_key) {
+                    $btn['icon_custom_emoji_id'] = (string) $custom_emoji_id;
+                }
+            }
+        }
+        unset($btn);
+        unset($row);
+
+        $updated_keyboardmain = json_encode($keyboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        // آپدیت امن دیتابیس با شرط صحیح
+        $stmt_up = $pdo->prepare("UPDATE setting SET keyboardmain = :kb");
+        $stmt_up->execute([':kb' => $updated_keyboardmain]);
+    }
+
+    $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>ایموجی دکمه با موفقیت ویرایش و ذخیره شد.</b>\n\n";
+    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">🆔</tg-emoji> <b>شناسه ایموجی:</b> <code>{$custom_emoji_id}</code>\n";
+    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">👀</tg-emoji> <b>پیش‌نمایش:</b> <tg-emoji emoji-id=\"{$custom_emoji_id}\">✨</tg-emoji>\n";
+    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">🔘</tg-emoji> <b>کلید به‌روزرسانی شده:</b> <code>{$target_key}</code>";
+    sendmessage($from_id, $succ_txt, $setting_panel, 'HTML');
     step("home", $from_id);
-} elseif ($datain == "back_to_admin_general" && $adminrulecheck['rule'] == "administrator") {
+}
+
+// ==================== ۴. بستن پنجره شیشه‌ای ====================
+elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     telegram('deleteMessage', [
         'chat_id' => $from_id,
