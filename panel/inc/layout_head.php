@@ -63,7 +63,7 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <!-- <div class="brand-mark">A</div> -->
-        <div class="brand-name">مدیریت<span> · پنل</span></div>
+        <div class="brand-name">پنل مدیریت<span></span></div>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section">
