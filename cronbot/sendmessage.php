@@ -77,13 +77,19 @@ while (true) {
         ]);
 
         $count_remein = count($userid);
-        $textprocces = "✏️ عملیات ارسال پیام درحال انجام می‌باشد...\n\n";
-        $textprocces .= "👥 تعداد نفرات باقی‌مانده: <b>{$count_remein}</b>\n";
-        $textprocces .= "✅ ارسال موفق: <b>{$info['count_success']}</b>\n";
-        $textprocces .= "🚫 ناموفق: <b>{$info['count_blocked']}</b>";
-        
+        $textprocces = "✏️ عملیات ارسال پیام درحال انجام می‌باشد...\n\n" .
+                       "👥 تعداد نفرات باقی‌مانده: <b>{$count_remein}</b>\n" .
+                       "✅ ارسال موفق: <b>{$info['count_success']}</b>\n" .
+                       "🚫 ناموفق: <b>{$info['count_blocked']}</b>";
+
         if (isset($info['id_admin']) && isset($info['id_message'])) {
-            Editmessagetext($info['id_admin'], $info['id_message'], $textprocces, $cancelmessage);
+            telegram('editMessageText', [
+                'chat_id' => $info['id_admin'],
+                'message_id' => $info['id_message'],
+                'text' => $textprocces,
+                'parse_mode' => 'HTML',
+                'reply_markup' => $cancelmessage
+            ]);
         }
 
         $batch_size = min(200, $count_remein);
