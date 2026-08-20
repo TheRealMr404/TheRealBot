@@ -4,47 +4,6 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 
-function autoSetupSystemService() {
-    $service_name = 'bot-broadcast.service';
-    $service_file = '/etc/systemd/system/' . $service_name;
-    $cron_dir = __DIR__;
-    $daemon_file = realpath(__FILE__);
-    $php_bin = PHP_BINARY ? PHP_BINARY : '/usr/bin/php';
-
-    if (!function_exists('shell_exec') && !function_exists('exec')) {
-        return false;
-    }
-
-    if (!file_exists($service_file)) {
-        $service_content = "[Unit]\n";
-        $service_content .= "Description=Telegram Bot Broadcast Daemon\n";
-        $service_content .= "After=network.target\n\n";
-        $service_content .= "[Service]\n";
-        $service_content .= "Type=simple\n";
-        $service_content .= "User=root\n";
-        $service_content .= "WorkingDirectory={$cron_dir}\n";
-        $service_content .= "ExecStart={$php_bin} {$daemon_file}\n";
-        $service_content .= "Restart=always\n";
-        $service_content .= "RestartSec=3\n\n";
-        $service_content .= "[Install]\n";
-        $service_content .= "WantedBy=multi-user.target\n";
-
-        @file_put_contents($service_file, $service_content);
-        @exec("systemctl daemon-reload");
-        @exec("systemctl enable --now {$service_name}");
-        return true;
-    }
-
-    $status = @shell_exec("systemctl is-active {$service_name} 2>/dev/null");
-    if (trim((string)$status) !== 'active') {
-        @exec("systemctl restart {$service_name}");
-    }
-
-    return true;
-}
-
-autoSetupSystemService();
-
 set_time_limit(0);
 ini_set('memory_limit', '256M');
 
