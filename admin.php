@@ -15,7 +15,6 @@ $text_panel_admin_login_template = "💎 | Version Bot: $version
 if (!in_array($from_id, $admin_ids))
     return;
 
-// تغییر عنوان دکمه قبلی «گزارش ربات» به «آپدیت ربات» بدون دست‌زدن به ساختار کیبورد.
 if (isset($keyboardadmin) && is_string($keyboardadmin)) {
     $keyboardadmin = str_replace(
         "📬 گزارش ربات",

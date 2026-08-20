@@ -38,7 +38,6 @@ while (true) {
                     deletemessage($info['id_admin'], $info['id_message']);
                 }
                 sendmessage($info['id_admin'], $final_report, null, 'HTML');
-                @unlink($info_path);
                 @unlink($users_path);
             }
             sleep(2);
@@ -163,8 +162,29 @@ while (true) {
         }
 
         array_splice($userid, 0, $batch_size);
-        file_put_contents($users_path, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
-        file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+        if (count($userid) > 0) {
+            file_put_contents($users_path, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
+            file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        } else {
+            if (isset($info['id_admin'])) {
+                $count_success = (int)$info['count_success'];
+                $count_blocked = (int)$info['count_blocked'];
+                $count_total = $count_success + $count_blocked;
+
+                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n";
+                $final_report .= "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n";
+                $final_report .= "✅ <b>ارسال موفق:</b> {$count_success}\n";
+                $final_report .= "🚫 <b>ناموفق (بلاک / خطا):</b> {$count_blocked}";
+
+                if (isset($info['id_message'])) {
+                    deletemessage($info['id_admin'], $info['id_message']);
+                }
+                sendmessage($info['id_admin'], $final_report, null, 'HTML');
+            }
+            file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            @unlink($users_path);
+        }
     } else {
         sleep(2);
     }
