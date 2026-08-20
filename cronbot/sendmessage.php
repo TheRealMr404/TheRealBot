@@ -17,14 +17,26 @@ while (true) {
 
         if (!is_array($userid) || count($userid) == 0) {
             if (isset($info['id_admin'])) {
+                $count_success = $info['count_success'] ?? 0;
+                $count_blocked = $info['count_blocked'] ?? 0;
+                $count_total = $count_success + $count_blocked;
+
+                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n";
+                $final_report .= "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n";
+                $final_report .= "✅ <b>ارسال موفق:</b> {$count_success}\n";
+                $final_report .= "🚫 <b>ناموفق (بلاک بودن ربات):</b> {$count_blocked}";
+
                 deletemessage($info['id_admin'], $info['id_message']);
-                sendmessage($info['id_admin'], "📌 عملیات برای تمامی کاربران درخواستی انجام شد.", null, 'HTML');
+                sendmessage($info['id_admin'], $final_report, null, 'HTML');
                 @unlink($info_path);
                 @unlink($users_path);
             }
             sleep(2);
             continue;
         }
+
+        if (!isset($info['count_success'])) $info['count_success'] = 0;
+        if (!isset($info['count_blocked'])) $info['count_blocked'] = 0;
 
         $datatextbotget = select("textbot", "*", null, null, "fetchAll");
         $datatextbot = [
@@ -58,10 +70,13 @@ while (true) {
         ]);
 
         $count_remein = count($userid);
-        $textprocces = "✏️ عملیات ارسال پیام درحال انجام می‌باشد...\n\n👥 تعداد نفرات باقی‌مانده: <b>$count_remein</b>";
+        $textprocces = "✏️ عملیات ارسال پیام درحال انجام می‌باشد...\n\n";
+        $textprocces .= "👥 تعداد نفرات باقی‌مانده: <b>{$count_remein}</b>\n";
+        $textprocces .= "✅ ارسال موفق: <b>{$info['count_success']}</b>\n";
+        $textprocces .= "🚫 ناموفق (بلاک): <b>{$info['count_blocked']}</b>";
         Editmessagetext($info['id_admin'], $info['id_message'], $textprocces, $cancelmessage);
 
-        $batch_size = min(150, $count_remein);
+        $batch_size = min(200, $count_remein);
         $current_batch = array_slice($userid, 0, $batch_size);
 
         foreach ($current_batch as $item) {
@@ -86,12 +101,17 @@ while (true) {
                 $meesage = sendmessage($target_chat_id, $info['message'], $reply_markup, 'HTML');
 
                 if (isset($meesage['ok']) && $meesage['ok'] === false && isset($meesage['description']) && strpos($meesage['description'], 'blocked by the user') !== false) {
+                    $info['count_blocked']++;
                     $invoicecount = select("invoice", "*", "id_user", $target_chat_id, "count");
                     $userinfo = select("user", "Balance", "id", $target_chat_id, "select");
                     if ($invoicecount == 0 && isset($userinfo['Balance']) && $userinfo['Balance'] == 0) {
                         $stmt = $pdo->prepare("DELETE FROM user WHERE id = :uid");
                         $stmt->execute([':uid' => $target_chat_id]);
                     }
+                } elseif (isset($meesage['ok']) && $meesage['ok'] === true) {
+                    $info['count_success']++;
+                } else {
+                    $info['count_blocked']++;
                 }
 
                 if (isset($meesage['ok']) && $meesage['ok'] && isset($info['pingmessage']) && $info['pingmessage'] == "yes") {
@@ -99,16 +119,23 @@ while (true) {
                 }
             } elseif ($info['type'] == "forwardmessage") {
                 $meesage = forwardMessage($info['id_admin'], $info['message'], $target_chat_id);
+                if (isset($meesage['ok']) && $meesage['ok'] === true) {
+                    $info['count_success']++;
+                } else {
+                    $info['count_blocked']++;
+                }
+
                 if (isset($meesage['ok']) && $meesage['ok'] && isset($info['pingmessage']) && $info['pingmessage'] == "yes") {
                     pinmessage($target_chat_id, $meesage['result']['message_id']);
                 }
             }
 
-            usleep(40000);
+            usleep(50000);
         }
 
         array_splice($userid, 0, $batch_size);
         file_put_contents($users_path, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
+        file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE));
     } else {
         sleep(2);
     }
