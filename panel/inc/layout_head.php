@@ -16,7 +16,7 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>پنل مدیریت میرزا بات</title>
+  <title>پنل مدیریت بات</title>
   <link rel="stylesheet" href="css/style.css">
   <script>
     (function () {
@@ -62,8 +62,8 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark">M</div>
-        <div class="brand-name">میرزا<span> · پنل</span></div>
+        <div class="brand-mark">A</div>
+        <div class="brand-name">مدیریت<span> · پنل</span></div>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section">
@@ -121,7 +121,7 @@ $initials = mb_strtoupper(mb_substr($currentUser, 0, 1, 'UTF-8'), 'UTF-8');
           <button class="icon-btn sb-toggle" onclick="toggleSidebar()"><?= icon('menu', 17) ?></button>
           <div>
             <div class="topbar-title"><?= htmlspecialchars($pageTitle) ?></div>
-            <div class="crumb"><span>میرزا</span><span
+            <div class="crumb"><span></span><span
                 style="opacity:.4;margin:0 3px">/</span><span><?= htmlspecialchars($pageTitle) ?></span></div>
           </div>
         </div>
