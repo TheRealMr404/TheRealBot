@@ -4295,7 +4295,7 @@ $text_expie_agent
     $static_names = [
         'trx' => 'TRON - USDT',
         'usdt' => 'BNB - USDT',
-        'ton' => 'GRSM - USDT'
+        'ton' => 'GRAM - USDT'
     ];
     $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
 
@@ -7841,12 +7841,12 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "🪙 {$info['name']}", 'callback_data' => "view_wallet_info_{$sym}"]
+            ['text' => "{$info['name']}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
-    $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
+    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
         "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
         "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
         "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
@@ -7914,7 +7914,7 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "🪙 {$item['name']}", 'callback_data' => "view_wallet_info_{$s}"]
+            ['text' => "{$item['name']}", 'callback_data' => "view_wallet_info_{$s}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
