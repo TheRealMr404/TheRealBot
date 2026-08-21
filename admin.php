@@ -4367,32 +4367,6 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         'reply_markup' => json_encode($keyboard)
     ]);
 }
-// بازگشت به لیست ارزها از منوی ویرایش
-elseif ($datain == "back_to_crypto_list") {
-    $currencies = get_all_crypto_currencies();
-
-    $keyboard = [];
-    foreach ($currencies as $sym => $info) {
-        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        $keyboard[] = [
-            ['text' => "{$info['emoji']} {$info['name']}", 'callback_data' => "edit_crypto_{$sym}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"]
-        ];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت (روشن/خاموش) کلیک کنید.\n" .
-        "🔹 برای <b>تنظیم آدرس ولت، متن پیام، شبکه و ممو</b> روی نام ارز کلیک کنید:";
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => $msg,
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
-    ]);
-}
 
 // تغییر استپ برای دریافت مقادیر ورودی از ادمین
 elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $datain, $matches)) {
