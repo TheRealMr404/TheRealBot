@@ -333,7 +333,7 @@ $step_payment = [
     }
    if($affilnecurrency == "ondigi"){
         $step_payment['inline_keyboard'][] = [
-            ['text' =>  $datatextbot['textnowpaymenttron'], 'callback_data' => "digitaltron", 'style'=>'primary' ]
+            ['text' =>  $datatextbot['textnowpaymenttron'], 'callback_data' => "offline_crypto_pay", 'style'=>'primary' ]
     ];
     }
    if($Swapino == "onSwapinoBot"){

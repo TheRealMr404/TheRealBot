@@ -775,7 +775,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
     }
 
-    $current_listen_port = intval($tunnel['listen_port']); 
+    $current_listen_port = intval($tunnel['listen_port']);
     $used_bytes = intval($tunnel['used_traffic'] ?? 0);
 
 
@@ -798,7 +798,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                     if (intval($inb['id']) === intval($tunnel['inbound_id'])) {
                         $matched = $inb;
                         $current_listen_port = intval($inb['port']);
-                        $tunnel['listen_port'] = $current_listen_port; 
+                        $tunnel['listen_port'] = $current_listen_port;
                         break;
                     }
                 }
@@ -812,7 +812,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         }
     }
 
-   
+
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
     $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
     $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
@@ -838,7 +838,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
     }
 
-   
+
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$current_listen_port}</code>\n";
@@ -887,10 +887,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
 
-}
-
-
-elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
+} elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
     $tunnel_id = intval($matches[1]);
@@ -914,9 +911,7 @@ elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
 
     sendmessage($from_id, $txt_get_vol, $backuser, 'HTML');
     step("tun_get_extra_vol", $from_id);
-}
-
-elseif ($user['step'] == "tun_get_extra_vol") {
+} elseif ($user['step'] == "tun_get_extra_vol") {
     $vol = intval($text);
     if ($vol < 1) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
@@ -950,9 +945,7 @@ elseif ($user['step'] == "tun_get_extra_vol") {
 
     sendmessage($from_id, $inv_text, $keys, 'HTML');
     step("home", $from_id);
-}
-
-elseif ($datain == "tun_confirm_pay_vol") {
+} elseif ($datain == "tun_confirm_pay_vol") {
     $userdata = json_decode($user['Processing_value'], true);
     $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
     $vol = intval($userdata['tun_vol_amount'] ?? 0);
@@ -5018,9 +5011,39 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-}  // مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
-// مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
-elseif ($user['step'] == "tunnel_step_ip") {
+} elseif ($datain == "offline_crypto_pay") {
+    $currencies = get_all_crypto_currencies();
+
+    $buttons = [];
+    $row = [];
+    foreach ($currencies as $sym => $info) {
+        if (($info['status'] ?? 'off') === 'on') {
+            $btn_title = ($info['emoji'] ?? '💎') . ' ' . ($info['display_name'] ?? $info['name']);
+            $row[] = [
+                'text' => $btn_title,
+                'callback_data' => "user_select_crypto_{$sym}"
+            ];
+            if (count($row) == 2) {
+                $buttons[] = $row;
+                $row = [];
+            }
+        }
+    }
+    if (!empty($row)) {
+        $buttons[] = $row;
+    }
+
+    // دکمه بازگشت به روش‌های پرداخت
+    $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back']];
+
+    telegram('editMessageText', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را برای پرداخت انتخاب نمایید:",
+        'parse_mode' => 'HTML',
+        'reply_markup' => json_encode(['inline_keyboard' => $buttons])
+    ]);
+} elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
     if (!isValidPublicIpv4($ip)) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
