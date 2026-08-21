@@ -5011,29 +5011,24 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-} elseif ($datain == "offline_crypto_pay") {
+}
+
+// ۱. نمایش لیست ارزها به صورت زیرِ هم (تک‌ستونه)
+elseif ($datain == "offline_crypto_pay") {
     $currencies = get_all_crypto_currencies();
 
     $buttons = [];
-    $row = [];
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
             $btn_title = ($info['emoji'] ?? '💎') . ' ' . ($info['display_name'] ?? $info['name']);
-            $row[] = [
-                'text' => $btn_title,
-                'callback_data' => "user_select_crypto_{$sym}"
+            // قرار دادن هر ارز در یک ردیف مجزا برای چینش عمودی
+            $buttons[] = [
+                ['text' => $btn_title, 'callback_data' => "user_select_crypto_{$sym}"]
             ];
-            if (count($row) == 2) {
-                $buttons[] = $row;
-                $row = [];
-            }
         }
     }
-    if (!empty($row)) {
-        $buttons[] = $row;
-    }
 
-    // دکمه بازگشت به روش‌های پرداخت
+    // دکمه بازگشت
     $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back']];
 
     telegram('editMessageText', [
@@ -5043,6 +5038,40 @@ $textinvite
         'parse_mode' => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
+}
+
+// ۲. پردازش کلیک روی یک ارز و نمایش ولت + پیام اختصاصی
+elseif (strpos($datain, "user_select_crypto_") === 0) {
+    $sym = str_replace("user_select_crypto_", "", $datain);
+    $info = get_crypto_currency($sym);
+
+    if ($info && ($info['status'] ?? 'off') === 'on') {
+        // جایگذاری ولت و شبکه در متن پیام
+        $display_msg = render_crypto_message($info['message'], $info);
+
+        // تنظیم استپ کاربر برای ارسال فیش یا هش
+        update("user", "step", "send_crypto_receipt_{$sym}", "id", $from_id);
+
+        $cancel_btn = json_encode([
+            'inline_keyboard' => [
+                [['text' => "🔙 تغییر ارز", 'callback_data' => 'offline_crypto_pay']]
+            ]
+        ]);
+
+        telegram('editMessageText', [
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'text' => $display_msg,
+            'parse_mode' => 'HTML',
+            'reply_markup' => $cancel_btn
+        ]);
+    } else {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
+            'show_alert' => true
+        ]);
+    }
 } elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
     if (!isValidPublicIpv4($ip)) {
