@@ -2199,38 +2199,32 @@ function get_all_crypto_currencies() {
     return $list;
 }
 
-function render_crypto_message($data, $amount_toman, $crypto_amount, $rate_toman) {
+function render_crypto_message($data, $amount_toman, $crypto_amount) {
     $sym = strtoupper($data['symbol'] ?? 'CRYPTO');
-    $wallet = !empty($data['wallet']) ? $data['wallet'] : '<i>تنظیم نشده</i>';
-    
-    // قالب‌بندی اعداد
+    $wallet = !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده';
     $formatted_toman = number_format($amount_toman);
-    $formatted_rate  = number_format($rate_toman);
 
     if ($sym == 'TON') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">🔷</tg-emoji> <b>پرداخت TON</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان (نرخ نوبیتکس)\n" .
-               "<tg-emoji emoji-id=\"6032850693348399258\">📊</tg-emoji> تقریباً <b>1 TON ≈ {$formatted_rate} تومان</b>\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n" .
-               "📍 <b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
-               "💰 <b>مقدار واریز (TON):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n\n" .
+               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
+               "<b>مقدار واریز (TON):</b>\n<code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'TRX') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">🔴</tg-emoji> <b>پرداخت TRX</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان (نرخ نوبیتکس)\n" .
-               "<tg-emoji emoji-id=\"6032850693348399258\">📊</tg-emoji> تقریباً <b>1 TRX ≈ {$formatted_rate} تومان</b>\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n" .
-               "📍 <b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
-               "💰 <b>مقدار واریز (TRX):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n\n" .
+               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
+               "<b>مقدار واریز (TRX):</b>\n<code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'USDT') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">💎</tg-emoji> <b>پرداخت USDT</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان (نرخ نوبیتکس)\n" .
-               "<tg-emoji emoji-id=\"6032850693348399258\">📊</tg-emoji> تقریباً <b>1 USDT ≈ {$formatted_rate} تومان</b>\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n" .
-               "📍 <b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
-               "💰 <b>مقدار واریز (USDT):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n\n" .
+               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
+               "<b>مقدار واریز (USDT):</b>\n<code>{$crypto_amount}</code>";
     }
 
-    return "📍 <b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n💰 <b>مقدار واریز:</b>\n<code>{$crypto_amount}</code>";
+    return "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n<b>مقدار واریز:</b>\n<code>{$crypto_amount}</code>";
 }
