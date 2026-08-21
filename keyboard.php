@@ -1344,10 +1344,11 @@ $Swapinokey = json_encode([
 
 $tronnowpayments = json_encode([
     'keyboard' => [
-        [['text' => "🗂 نام درگاه رمز ارز آفلاین"]],
-        [['text' => "⬇️ حداقل مبلغ رمزارز آفلاین"],['text' => "⬆️ حداکثر مبلغ رمزارز آفلاین"]],
-        [['text' => "📚 تنظیم آموزش  ارزی افلاین"]],
-        [['text' => $textbotlang['Admin']['backadmin']],['text' => $textbotlang['Admin']['backmenu']]]
+        [['text' => "🪙 ارز های موجود"]],
+        [['text' => "⬇️ حداقل مبلغ رمزارز آفلاین"], ['text' => "⬆️ حداکثر مبلغ رمزارز آفلاین"]],
+        [['text' => "🎨 استایل دکمه های ارز آفلاین"]],
+        [['text' => "🗂 نام درگاه رمز ارز آفلاین"], ['text' => "📚 تنظیم آموزش  ارزی افلاین"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
     ],
     'resize_keyboard' => true
 ]);

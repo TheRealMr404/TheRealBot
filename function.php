@@ -2161,3 +2161,52 @@ function convertCustomEmojiToHTML($message)
 
     return $text;
 }
+
+
+function get_crypto_currency($symbol) {
+    $id_text = "offline_" . strtolower($symbol);
+    $res = select("textbot", "text", "id_text", $id_text, "select");
+    if ($res && !empty($res['text'])) {
+        return json_decode($res['text'], true);
+    }
+    return null;
+}
+
+function set_crypto_currency($symbol, $data) {
+    $id_text = "offline_" . strtolower($symbol);
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    
+    $check = select("textbot", "id_text", "id_text", $id_text, "select");
+    if ($check) {
+        update("textbot", "text", $json, "id_text", $id_text);
+    } else {
+        insert("textbot", [
+            "id_text" => $id_text,
+            "text"    => $json
+        ]);
+    }
+}
+
+function get_all_crypto_currencies() {
+    $symbols = ['trx', 'usdt', 'ton'];
+    $list = [];
+    foreach ($symbols as $sym) {
+        $data = get_crypto_currency($sym);
+        if ($data) {
+            $list[$sym] = $data;
+        }
+    }
+    return $list;
+}
+
+function render_crypto_message($template, $data) {
+    $replacements = [
+        '{wallet}'      => !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده',
+        '{network}'     => !empty($data['network']) ? $data['network'] : 'اصلی',
+        '{memo}'        => !empty($data['memo']) ? $data['memo'] : 'ندارد',
+        '{name}'        => $data['name'] ?? '',
+        '{min_deposit}' => $data['min_deposit'] ?? '0',
+    ];
+
+    return str_replace(array_keys($replacements), array_values($replacements), $template);
+}

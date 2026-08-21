@@ -840,6 +840,52 @@ try {
         ['text_extend', '♻️ تمدید سرویس'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
+
+
+$offline_trx_default = json_encode([
+        'symbol'          => 'TRX',
+        'name'            => 'ترون (TRX)',
+        'emoji'           => '🔴',
+        'custom_emoji_id' => '',
+        'status'          => 'on',
+        'wallet'          => '',
+        'network'         => 'TRC20',
+        'memo'            => '',
+        'min_deposit'     => '10',
+        'message'         => "🔴 <b>واریز از طریق شبکه ترون (TRX)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} TRX</b>\n\n📸 لطفاً پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+    $offline_usdt_default = json_encode([
+        'symbol'          => 'USDT',
+        'name'            => 'تتر (USDT)',
+        'emoji'           => '💎',
+        'custom_emoji_id' => '',
+        'status'          => 'on',
+        'wallet'          => '',
+        'network'         => 'TRC20',
+        'memo'            => '',
+        'min_deposit'     => '1',
+        'message'         => "💎 <b>واریز تتر (USDT)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} USDT</b>\n\n📸 لطفاً پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+    $offline_ton_default = json_encode([
+        'symbol'          => 'TON',
+        'name'            => 'تون کوین (TON)',
+        'emoji'           => '🔷',
+        'custom_emoji_id' => '',
+        'status'          => 'on',
+        'wallet'          => '',
+        'network'         => 'TON Network',
+        'memo'            => '',
+        'min_deposit'     => '1',
+        'message'         => "🔷 <b>واریز تون‌کوین (TON)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n📝 ممو (Memo/Tag):\n<code>{memo}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} TON</b>\n⚠️ حتماً در صورت نیاز، ممو را وارد نمایید.\n\n📸 پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+    $insertQueries[] = ['offline_trx', $offline_trx_default];
+    $insertQueries[] = ['offline_usdt', $offline_usdt_default];
+    $insertQueries[] = ['offline_ton', $offline_ton_default];
+
+
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE textbot (
         id_text varchar(600) PRIMARY KEY NOT NULL,
@@ -850,11 +896,15 @@ try {
         }
 
         foreach ($insertQueries as $query) {
-            $connect->query("INSERT INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
+            $id_text = mysqli_real_escape_string($connect, $query[0]);
+            $text_val = mysqli_real_escape_string($connect, $query[1]);
+            $connect->query("INSERT INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
         }
     } else {
         foreach ($insertQueries as $query) {
-            $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
+            $id_text = mysqli_real_escape_string($connect, $query[0]);
+            $text_val = mysqli_real_escape_string($connect, $query[1]);
+            $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
         }
     }
 } catch (Exception $e) {
