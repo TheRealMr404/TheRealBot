@@ -840,45 +840,57 @@ try {
         ['text_extend', '♻️ تمدید سرویس'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
-    $insertQueries[] = ['offline_ton', ''];
-    $insertQueries[] = ['offline_trx', ''];
-    $insertQueries[] = ['offline_usdt', ''];
-
-    $insertQueries[] = ['status_offline_ton', 'on'];
-    $insertQueries[] = ['status_offline_trx', 'on'];
-    $insertQueries[] = ['status_offline_usdt', 'on'];
-
-    $insertQueries[] = ['emoji_offline_ton', '5836907383292436018'];
-    $insertQueries[] = ['emoji_offline_trx', '5836907383292436018'];
-    $insertQueries[] = ['emoji_offline_usdt', '5836907383292436018'];
-
-    $insertQueries[] = ['style_offline_ton', 'primary'];
-    $insertQueries[] = ['style_offline_trx', 'primary'];
-    $insertQueries[] = ['style_offline_usdt', 'primary'];
-
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE textbot (
-            id_text varchar(600) PRIMARY KEY NOT NULL,
-            text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
-            ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        id_text varchar(600) PRIMARY KEY NOT NULL,
+        text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
-            echo "table textbot: " . mysqli_error($connect);
+            echo "table textbot" . mysqli_error($connect);
         }
 
         foreach ($insertQueries as $query) {
-            $id_text  = mysqli_real_escape_string($connect, $query[0]);
-            $text_val = mysqli_real_escape_string($connect, $query[1]);
-            $connect->query("INSERT INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
+            $connect->query("INSERT INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
         }
     } else {
         foreach ($insertQueries as $query) {
-            $id_text  = mysqli_real_escape_string($connect, $query[0]);
-            $text_val = mysqli_real_escape_string($connect, $query[1]);
-            $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
+            $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
         }
     }
 } catch (Exception $e) {
     file_put_contents('error_log', $e->getMessage());
+}
+
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'offline_crypto'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE offline_crypto (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20) NOT NULL UNIQUE,
+            name VARCHAR(100) NOT NULL,
+            wallet VARCHAR(255) DEFAULT '',
+            network VARCHAR(50) DEFAULT 'Mainnet',
+            status ENUM('on', 'off') DEFAULT 'on',
+            emoji_id VARCHAR(50) DEFAULT '5836907383292436018',
+            style VARCHAR(50) DEFAULT 'primary'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $default_cryptos = [
+            ['ton', 'تون کوین (TON)', '', 'TON', 'on', '5836907383292436018', 'primary'],
+            ['trx', 'ترون (TRX)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary']
+        ];
+
+        foreach ($default_cryptos as $cr) {
+            $stmt = $connect->prepare("INSERT INTO offline_crypto (symbol, name, wallet, network, status, emoji_id, style) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("sssssss", $cr[0], $cr[1], $cr[2], $cr[3], $cr[4], $cr[5], $cr[6]);
+            $stmt->execute();
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log offline_crypto', $e->getMessage());
 }
 try {
     $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");

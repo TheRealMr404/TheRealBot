@@ -2162,7 +2162,6 @@ function convertCustomEmojiToHTML($message)
     return $text;
 }
 
-
 function get_crypto_currency($sym) {
     global $connect;
     $sym = strtolower($sym);
@@ -2194,21 +2193,6 @@ function toggle_crypto_status($sym) {
     return $new_status;
 }
 
-function set_crypto_currency($symbol, $data) {
-    $id_text = "offline_" . strtolower($symbol);
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    
-    $check = select("textbot", "id_text", "id_text", $id_text, "select");
-    if ($check) {
-        update("textbot", "text", $json, "id_text", $id_text);
-    } else {
-        insert("textbot", [
-            "id_text" => $id_text,
-            "text"    => $json
-        ]);
-    }
-}
-
 function get_all_crypto_currencies() {
     $symbols = ['trx', 'usdt', 'ton'];
     $list = [];
@@ -2224,24 +2208,25 @@ function get_all_crypto_currencies() {
 function render_crypto_message($data, $amount_toman, $crypto_amount) {
     $sym = strtoupper($data['symbol'] ?? 'CRYPTO');
     $wallet = !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده';
+    $emoji_id = !empty($data['emoji_id']) ? $data['emoji_id'] : '5836907383292436018';
     $formatted_toman = number_format($amount_toman);
 
     if ($sym == 'TON') {
-        return "<tg-emoji emoji-id=\"5836907383292436018\">🔷</tg-emoji> <b>پرداخت TON</b>\n\n" .
+        return "<tg-emoji emoji-id=\"{$emoji_id}\">🔷</tg-emoji> <b>پرداخت TON</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
                "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n" .
                "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
                "<b>مقدار واریز (TON):</b> <code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'TRX') {
-        return "<tg-emoji emoji-id=\"5836907383292436018\">🔴</tg-emoji> <b>پرداخت TRX</b>\n\n" .
+        return "<tg-emoji emoji-id=\"{$emoji_id}\">🔴</tg-emoji> <b>پرداخت TRX</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
                "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n" .
                "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
                "<b>مقدار واریز (TRX):</b> <code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'USDT') {
-        return "<tg-emoji emoji-id=\"5836907383292436018\">💎</tg-emoji> <b>پرداخت USDT</b>\n\n" .
+        return "<tg-emoji emoji-id=\"{$emoji_id}\">💎</tg-emoji> <b>پرداخت USDT</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
                "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n" .
                "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .

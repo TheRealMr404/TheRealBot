@@ -7826,38 +7826,32 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
 }
-// ۱. نمایش لیست ارزها در پنل مدیریت
-if ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
-    $static_names = [
-        'trx' => 'ترون (TRX)',
-        'usdt' => 'تتر (USDT)',
-        'ton' => 'تون کوین (TON)'
-    ];
+
+elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
+    $currencies = get_all_crypto_currencies();
 
     $keyboard = [];
-    foreach ($static_names as $sym => $title) {
-        $info = get_crypto_currency($sym);
+    foreach ($currencies as $sym => $info) {
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "🪙 {$title}", 'callback_data' => "view_wallet_info_{$sym}"]
+            ['text' => "🪙 {$info['name']}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-        "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
+           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+           "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id' => $from_id,
-            'message_id' => $message_id,
-            'text' => $msg,
-            'parse_mode' => 'HTML',
+            'chat_id'      => $from_id,
+            'message_id'   => $message_id,
+            'text'         => $msg,
+            'parse_mode'   => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
@@ -7865,81 +7859,66 @@ if ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list"
     }
 }
 
-// ۲. کلیک روی دکمه تنظیم ولت (شروع مرحله دریافت)
+// ۲. کلیک روی دکمه تنظیم ولت
 elseif (strpos($datain, "set_cr_wallet_") === 0) {
     $sym = str_replace("set_cr_wallet_", "", $datain);
     $info = get_crypto_currency($sym);
     $current_w = !empty($info['wallet']) ? "<code>{$info['wallet']}</code>" : "<i>تنظیم نشده</i>";
 
-    // ذخیره مرحله کاربر
     update("user", "step", "save_cr_wallet_{$sym}", "id", $from_id);
 
-    $msg = "✍️ <b>تنظیم آدرس ولت برای " . strtoupper($sym) . "</b>\n\n" .
-        "📍 <b>آدرس ولت فعلی:</b>\n{$current_w}\n\n" .
-        "لطفاً آدرس ولت جدید را به صورت متنی ارسال کنید:";
+    $msg = "✍️ <b>تنظیم آدرس ولت برای {$info['name']}</b>\n\n" .
+           "📍 <b>آدرس ولت فعلی:</b>\n{$current_w}\n\n" .
+           "لطفاً آدرس ولت جدید را به صورت متنی ارسال کنید:";
 
     telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => $msg,
-        'parse_mode' => 'HTML',
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
+        'text'         => $msg,
+        'parse_mode'   => 'HTML',
         'reply_markup' => json_encode([
             'inline_keyboard' => [[['text' => "🔙 انصراف و بازگشت", 'callback_data' => "back_to_crypto_list"]]]
         ])
     ]);
 }
 
-// ۳. دریافت و ثبت متن ولت از ادمین
+// ۳. ذخیره ولت ارسالی از ادمین
 elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_wallet_") === 0) {
-    $sym = strtolower(str_replace("save_cr_wallet_", "", $user['step']));
-
-    // ذخیره در فیلد اختصاصی رکورد offline_{sym} در دیتابیس
+    $sym = str_replace("save_cr_wallet_", "", $user['step']);
+    
     set_crypto_wallet($sym, $text);
-
-    // ریست کردن استپ
     update("user", "step", "none", "id", $from_id);
 
-    $keyboard = [
-        'inline_keyboard' => [
-            [['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]
-        ]
-    ];
-
-    sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode($keyboard), 'HTML');
+    sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
+        'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
+    ]), 'HTML');
 }
 
-// ۴. تغییر وضعیت روشن/خاموش (Toggle)
+// ۴. تغییر وضعیت روشن/خاموش
 elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     toggle_crypto_status($sym);
 
-    $static_names = [
-        'trx' => 'ترون (TRX)',
-        'usdt' => 'تتر (USDT)',
-        'ton' => 'تون کوین (TON)'
-    ];
-
+    $currencies = get_all_crypto_currencies();
     $keyboard = [];
-    foreach ($static_names as $s => $title) {
-        $info = get_crypto_currency($s);
-        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-
+    foreach ($currencies as $s => $item) {
+        $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "🪙 {$title}", 'callback_data' => "view_wallet_info_{$s}"]
+            ['text' => "🪙 {$item['name']}", 'callback_data' => "view_wallet_info_{$s}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
 }
 
-// ۵. نمایش سریع ولت با کلیک روی نام ارز
+// ۵. نمایش سریع ولت در آلرت
 elseif (strpos($datain, "view_wallet_info_") === 0) {
     $sym = str_replace("view_wallet_info_", "", $datain);
     $info = get_crypto_currency($sym);
@@ -7947,8 +7926,8 @@ elseif (strpos($datain, "view_wallet_info_") === 0) {
 
     telegram('answerCallbackQuery', [
         'callback_query_id' => $callback_query_id,
-        'text' => "📍 ولت " . strtoupper($sym) . ":\n" . $current_wallet,
-        'show_alert' => true
+        'text'              => "📍 ولت " . strtoupper($sym) . ":\n" . $current_wallet,
+        'show_alert'        => true
     ]);
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
