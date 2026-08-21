@@ -2240,3 +2240,20 @@ function render_crypto_message($data, $amount_toman, $crypto_amount) {
 
     return "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n<b>مقدار واریز:</b> <code>{$crypto_amount}</code>";
 }
+
+
+function set_crypto_emoji($sym, $emoji_id) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("UPDATE offline_crypto SET emoji_id = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $emoji_id, $sym);
+    return $stmt->execute();
+}
+
+function set_crypto_style($sym, $style) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("UPDATE offline_crypto SET style = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $style, $sym);
+    return $stmt->execute();
+}

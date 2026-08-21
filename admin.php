@@ -7905,7 +7905,6 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     ]), 'HTML');
 }
 
-// ۴. تغییر وضعیت روشن/خاموش
 elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     toggle_crypto_status($sym);
@@ -7945,14 +7944,24 @@ elseif (strpos($datain, "view_wallet_info_") === 0) {
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
-        $keyboard[] = [
-            ['text' => "{$info['emoji']} تغییر استایل {$info['name']}", 'callback_data' => "set_cr_style_{$sym}"]
+        $btn_item = [
+            'text'          => $info['name'],
+            'callback_data' => "select_cr_style_{$sym}",
+            'style'         => $info['style'] ?? 'primary'
         ];
+
+        // افزودن آیکون ایموجی پریمیوم به دکمه
+        if (!empty($info['emoji_id'])) {
+            $btn_item['icon_custom_emoji_id'] = (int)$info['emoji_id'];
+        }
+
+        $keyboard[] = [$btn_item];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
-    $msg = "🎨 <b>استایل و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
-        "ارز مورد نظر خود را جهت شخصی‌سازی عنوان و ایموجی انتخاب کنید:";
+    $msg = "🎨 <b>مدیریت رنگ و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
+           "پیش‌نمایش زنده دکمه‌ها در زیر قرار دارد.\n" .
+           "برای تغییر رنگ یا ایموجی پریمیوم هر ارز، روی آن کلیک کنید:";
 
     sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
 } elseif ($datain == "optimizebot") {

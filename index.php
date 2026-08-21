@@ -5011,43 +5011,47 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-}
-
-// ۱. نمایش لیست ارزها به صورت زیرِ هم (تک‌ستونه)
-// الف) نمایش لیست ارزهای فعال به کاربر (زیر هم)
-elseif ($datain == "offline_crypto_pay") {
+} elseif ($datain == "offline_crypto_pay") {
     $currencies = get_all_crypto_currencies();
 
     $buttons = [];
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
-            $buttons[] = [
-                ['text' => "💎 " . $info['name'], 'callback_data' => "user_select_crypto_{$sym}"]
+            $btn = [
+                'text' => $info['name'],
+                'callback_data' => "user_select_crypto_{$sym}",
+                'style' => $info['style'] ?? 'primary'
             ];
+
+            // افزودن آیکون ایموجی پریمیوم به دکمه شیشه‌ای
+            if (!empty($info['emoji_id'])) {
+                $btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
+            }
+
+            $buttons[] = [$btn];
         }
     }
-    
-    $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back']];
+
+    $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back', 'style' => 'danger']];
 
     telegram('editMessageText', [
-        'chat_id'      => $from_id,
-        'message_id'   => $message_id,
-        'text'         => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
-        'parse_mode'   => 'HTML',
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
+        'parse_mode' => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 }
-
 // ب) صدور فاکتور و نمایش اطلاعات واریز
 elseif (strpos($datain, "user_select_crypto_") === 0) {
-    $sym  = str_replace("user_select_crypto_", "", $datain);
+    $sym = str_replace("user_select_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
 
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert'        => true
+            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
+            'show_alert' => true
         ]);
         return;
     }
@@ -5061,17 +5065,17 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
 
     $sym_upper = strtoupper($sym);
     $unit_rate = $rates[$sym_upper] ?? ($rates['USD'] ?? 1);
-    $usd_rate  = $rates['USD'] ?? 1;
+    $usd_rate = $rates['USD'] ?? 1;
 
     $crypto_calc_amount = round($user['Processing_value'] / $unit_rate, ($sym_upper == 'USDT' ? 2 : 4));
-    $usdprice           = round($user['Processing_value'] / $usd_rate, 2);
+    $usdprice = round($user['Processing_value'] / $usd_rate, 2);
 
     $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
-    $maxbalancedigitaltron  = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
+    $maxbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
 
     if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
         $mainbalanceplisio = number_format($mainbalancedigitaltron);
-        $maxbalanceplisio  = number_format($maxbalancedigitaltron);
+        $maxbalanceplisio = number_format($maxbalancedigitaltron);
         sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
         return;
     }
@@ -5079,9 +5083,9 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
 
-    $dateacc        = date('Y/m/d H:i:s');
-    $randomString   = bin2hex(random_bytes(5));
-    $invoice        = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+    $dateacc = date('Y/m/d H:i:s');
+    $randomString = bin2hex(random_bytes(5));
+    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
     $payment_Status = "Unpaid";
     $Payment_Method = "offline_" . strtolower($sym);
 
