@@ -7825,23 +7825,21 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         ]
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
-}
-
-// ۱. نمایش لیست ارزها در پنل مدیریت و ریست استپ در صورت انصراف/بازگشت
-elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
-    // ریست کردن مرحله کاربر جهت لغو عملیات دریافت ولت
+} elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
     update("user", "step", "none", "id", $from_id);
 
     $currencies = get_all_crypto_currencies();
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
-        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        $sym_key = strtolower($sym);
+        $fixed_title = $static_names[$sym_key] ?? strtoupper($sym);
+        $status_icon = (($info['status'] ?? 'off') == 'on') ? "✅ روشن" : "❌ خاموش";
 
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "{$info['name']}", 'callback_data' => "view_wallet_info_{$sym}"]
+            ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
@@ -7926,17 +7924,131 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     ]);
 }
 
-// ۵. نمایش سریع آدرس ولت در آلرت
-elseif (strpos($datain, "view_wallet_info_") === 0) {
-    $sym = str_replace("view_wallet_info_", "", $datain);
+// ۱. با کلیک روی نام ارز: باز شدن منوی تنظیمات نام و شبکه
+elseif (strpos($datain, "view_wallet_info_") === 0 && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $sym = strtolower(str_replace("view_wallet_info_", "", $datain));
     $info = get_crypto_currency($sym);
-    $current_wallet = !empty($info['wallet']) ? $info['wallet'] : "هنوز آدرس ولتی تنظیم نشده است.";
 
-    telegram('answerCallbackQuery', [
-        'callback_query_id' => $callback_query_id,
-        'text' => "📍 ولت " . strtoupper($sym) . ":\n" . $current_wallet,
-        'show_alert' => true
+    $current_name = !empty($info['name']) ? $info['name'] : "تنظیم نشده";
+    $current_net = !empty($info['network']) ? $info['network'] : "تعیین نشده";
+    $current_w = !empty($info['wallet']) ? "<code>{$info['wallet']}</code>" : "<i>تنظیم نشده</i>";
+
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => "✏️ تغییر نام نمایشی", 'callback_data' => "set_cr_name_{$sym}"],
+                ['text' => "🌐 تغییر شبکه انتقال", 'callback_data' => "set_cr_network_{$sym}"]
+            ],
+            [
+                ['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]
+            ]
+        ]
+    ];
+
+    $msg = "⚙️ <b>تنظیمات ارز " . strtoupper($sym) . "</b>\n\n" .
+        "🏷 <b>نام نمایشی به کاربر:</b> <code>{$current_name}</code>\n" .
+        "🌐 <b>شبکه انتقال:</b> <code>{$current_net}</code>\n" .
+        "📍 <b>آدرس ولت:</b> {$current_w}\n\n" .
+        "برای ویرایش نام یا شبکه روی دکمه مربوطه بزنید:";
+
+    Editmessagetext($from_id, $message_id, $msg, json_encode($keyboard), 'HTML');
+}
+
+// ۲. کلیک روی «تغییر نام نمایشی»
+elseif (strpos($datain, "set_cr_name_") === 0 && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $sym = strtolower(str_replace("set_cr_name_", "", $datain));
+    $info = get_crypto_currency($sym);
+
+    savedata("clear", "target_crypto_sym", $sym);
+    step("save_cr_name_step", $from_id);
+
+    $msg = "✍️ <b>تنظیم نام نمایشی جدید برای ارز " . strtoupper($sym) . "</b>\n\n" .
+        "🔹 <b>نام فعلی:</b> <code>{$info['name']}</code>\n\n" .
+        "لطفاً عنوان و نام جدیدی که می‌خواهید به کاربر نمایش داده شود را ارسال کنید:\n" .
+        "<i>(مثال: ترون TRC20 یا تتر دلار)</i>";
+
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 انصراف", 'callback_data' => "view_wallet_info_{$sym}"]]
+        ]
     ]);
+
+    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
+}
+
+// دریافت و ذخیره نام جدید
+elseif ($user['step'] == "save_cr_name_step" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("home", $from_id);
+        sendmessage($from_id, "عملیات تغییر نام لغو شد.", $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $sym = $userdata['target_crypto_sym'] ?? '';
+
+    if (!empty($sym) && !empty($text)) {
+        set_crypto_name($sym, $text);
+        step("home", $from_id);
+
+        $keyboard = json_encode([
+            'inline_keyboard' => [
+                [['text' => "🔙 بازگشت به تنظیمات " . strtoupper($sym), 'callback_data' => "view_wallet_info_{$sym}"]]
+            ]
+        ]);
+
+        sendmessage($from_id, "✅ نام نمایشی ارز <b>" . strtoupper($sym) . "</b> با موفقیت به <code>{$text}</code> تغییر یافت.", $keyboard, 'HTML');
+    }
+}
+
+// ۳. کلیک روی «تغییر شبکه انتقال»
+elseif (strpos($datain, "set_cr_network_") === 0 && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $sym = strtolower(str_replace("set_cr_network_", "", $datain));
+    $info = get_crypto_currency($sym);
+
+    savedata("clear", "target_crypto_sym", $sym);
+    step("save_cr_network_step", $from_id);
+
+    $msg = "🌐 <b>تنظیم شبکه انتقال برای ارز " . strtoupper($sym) . "</b>\n\n" .
+        "🔹 <b>شبکه فعلی:</b> <code>{$info['network']}</code>\n\n" .
+        "لطفاً نام شبکه انتقال را ارسال کنید:\n" .
+        "<i>(مثال: TRC20 یا TON یا BEP20)</i>";
+
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 انصراف", 'callback_data' => "view_wallet_info_{$sym}"]]
+        ]
+    ]);
+
+    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
+}
+
+// دریافت و ذخیره شبکه جدید
+elseif ($user['step'] == "save_cr_network_step" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("home", $from_id);
+        sendmessage($from_id, "عملیات تغییر شبکه لغو شد.", $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $sym = $userdata['target_crypto_sym'] ?? '';
+
+    if (!empty($sym) && !empty($text)) {
+        set_crypto_network($sym, $text);
+        step("home", $from_id);
+
+        $keyboard = json_encode([
+            'inline_keyboard' => [
+                [['text' => "🔙 بازگشت به تنظیمات " . strtoupper($sym), 'callback_data' => "view_wallet_info_{$sym}"]]
+            ]
+        ]);
+
+        sendmessage($from_id, "✅ شبکه انتقال ارز <b>" . strtoupper($sym) . "</b> با موفقیت به <code>{$text}</code> تغییر یافت.", $keyboard, 'HTML');
+    }
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
 

@@ -2257,3 +2257,21 @@ function set_crypto_style($sym, $style) {
     $stmt->bind_param("ss", $style, $sym);
     return $stmt->execute();
 }
+
+function set_crypto_name($sym, $name) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $name = trim($name);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET name = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $name, $sym);
+    return $stmt->execute();
+}
+
+function set_crypto_network($sym, $network) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $network = trim($network);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET network = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $network, $sym);
+    return $stmt->execute();
+}
