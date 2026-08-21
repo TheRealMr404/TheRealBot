@@ -418,7 +418,7 @@ try {
         addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
-        $next_num = $max_row['max_num'] ? (int)$max_row['max_num'] + 1 : 15;
+        $next_num = $max_row['max_num'] ? (int) $max_row['max_num'] + 1 : 15;
         $stmt = $connect->query("SELECT id FROM marzban_panel WHERE code_panel IS NULL OR code_panel = ''");
         while ($row = $stmt->fetch_assoc()) {
             $code = '7e' . $next_num;
@@ -841,68 +841,42 @@ try {
         ['text_wgdashboard', $text_wgdashboard]
     ];
 
+// اضافه کردن مقادیر ۳ ارز به لیست insertQueries
+$insertQueries[] = ['offline_ton', ''];
+$insertQueries[] = ['offline_trx', ''];
+$insertQueries[] = ['offline_usdt', ''];
 
-$offline_trx_default = json_encode([
-        'symbol'          => 'TRX',
-        'name'            => 'ترون (TRX)',
-        'emoji'           => '🔴',
-        'custom_emoji_id' => '',
-        'status'          => 'on',
-        'wallet'          => '',
-        'network'         => 'TRC20',
-        'memo'            => '',
-        'min_deposit'     => '10',
-        'message'         => "🔴 <b>واریز از طریق شبکه ترون (TRX)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} TRX</b>\n\n📸 لطفاً پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+$insertQueries[] = ['status_offline_ton', 'on'];
+$insertQueries[] = ['status_offline_trx', 'on'];
+$insertQueries[] = ['status_offline_usdt', 'on'];
 
-    $offline_usdt_default = json_encode([
-        'symbol'          => 'USDT',
-        'name'            => 'تتر (USDT)',
-        'emoji'           => '💎',
-        'custom_emoji_id' => '',
-        'status'          => 'on',
-        'wallet'          => '',
-        'network'         => 'TRC20',
-        'memo'            => '',
-        'min_deposit'     => '1',
-        'message'         => "💎 <b>واریز تتر (USDT)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} USDT</b>\n\n📸 لطفاً پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+$insertQueries[] = ['emoji_offline_ton', '5836907383292436018'];
+$insertQueries[] = ['emoji_offline_trx', '5836907383292436018'];
+$insertQueries[] = ['emoji_offline_usdt', '5836907383292436018'];
 
-    $offline_ton_default = json_encode([
-        'symbol'          => 'TON',
-        'name'            => 'تون کوین (TON)',
-        'emoji'           => '🔷',
-        'custom_emoji_id' => '',
-        'status'          => 'on',
-        'wallet'          => '',
-        'network'         => 'TON Network',
-        'memo'            => '',
-        'min_deposit'     => '1',
-        'message'         => "🔷 <b>واریز تون‌کوین (TON)</b>\n\n🌐 شبکه: <code>{network}</code>\n📍 آدرس ولت:\n<code>{wallet}</code>\n📝 ممو (Memo/Tag):\n<code>{memo}</code>\n\n⚠️ حداقل واریز: <b>{min_deposit} TON</b>\n⚠️ حتماً در صورت نیاز، ممو را وارد نمایید.\n\n📸 پس از پرداخت، تصویر فیش یا هش تراکنش را ارسال کنید."
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+$insertQueries[] = ['style_offline_ton', 'primary'];
+$insertQueries[] = ['style_offline_trx', 'primary'];
+$insertQueries[] = ['style_offline_usdt', 'primary'];
 
-    $insertQueries[] = ['offline_trx', $offline_trx_default];
-    $insertQueries[] = ['offline_usdt', $offline_usdt_default];
-    $insertQueries[] = ['offline_ton', $offline_ton_default];
-
-
+// اجرای ساخت جدول و ثبت مقادیر با ساختار صحیح (id_text و text)
+try {
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE textbot (
-        id_text varchar(600) PRIMARY KEY NOT NULL,
-        text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
-        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+            id_text varchar(600) PRIMARY KEY NOT NULL,
+            text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+            ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
             echo "table textbot" . mysqli_error($connect);
         }
 
         foreach ($insertQueries as $query) {
-            $id_text = mysqli_real_escape_string($connect, $query[0]);
+            $id_text  = mysqli_real_escape_string($connect, $query[0]);
             $text_val = mysqli_real_escape_string($connect, $query[1]);
             $connect->query("INSERT INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
         }
     } else {
         foreach ($insertQueries as $query) {
-            $id_text = mysqli_real_escape_string($connect, $query[0]);
+            $id_text  = mysqli_real_escape_string($connect, $query[0]);
             $text_val = mysqli_real_escape_string($connect, $query[1]);
             $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('{$id_text}', '{$text_val}')");
         }

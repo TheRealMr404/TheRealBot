@@ -2163,13 +2163,35 @@ function convertCustomEmojiToHTML($message)
 }
 
 
-function get_crypto_currency($symbol) {
-    $id_text = "offline_" . strtolower($symbol);
-    $res = select("textbot", "text", "id_text", $id_text, "select");
-    if ($res && !empty($res['text'])) {
-        return json_decode($res['text'], true);
-    }
-    return null;
+function get_crypto_currency($sym) {
+    global $connect;
+    $sym = strtolower($sym);
+    
+    $wallet    = select("textbot", "text", "id_text", "offline_{$sym}", "select")['text'] ?? '';
+    $status    = select("textbot", "text", "id_text", "status_offline_{$sym}", "select")['text'] ?? 'off';
+    $emoji_id  = select("textbot", "text", "id_text", "emoji_offline_{$sym}", "select")['text'] ?? '5836907383292436018';
+    $btn_style = select("textbot", "text", "id_text", "style_offline_{$sym}", "select")['text'] ?? 'primary';
+
+    return [
+        'symbol'   => strtoupper($sym),
+        'wallet'   => trim($wallet),
+        'status'   => $status,
+        'emoji_id' => $emoji_id,
+        'style'    => $btn_style
+    ];
+}
+
+function set_crypto_wallet($sym, $wallet) {
+    $sym = strtolower($sym);
+    update("textbot", "text", trim($wallet), "id_text", "offline_{$sym}");
+}
+
+function toggle_crypto_status($sym) {
+    $sym = strtolower($sym);
+    $current = select("textbot", "text", "id_text", "status_offline_{$sym}", "select")['text'] ?? 'off';
+    $new_status = ($current == 'on') ? 'off' : 'on';
+    update("textbot", "text", $new_status, "id_text", "status_offline_{$sym}");
+    return $new_status;
 }
 
 function set_crypto_currency($symbol, $data) {
