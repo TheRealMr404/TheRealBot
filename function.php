@@ -2207,24 +2207,24 @@ function render_crypto_message($data, $amount_toman, $crypto_amount) {
     if ($sym == 'TON') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">🔷</tg-emoji> <b>پرداخت TON</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n\n" .
-               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
-               "<b>مقدار واریز (TON):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n" .
+               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
+               "<b>مقدار واریز (TON):</b> <code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'TRX') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">🔴</tg-emoji> <b>پرداخت TRX</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n\n" .
-               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
-               "<b>مقدار واریز (TRX):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n" .
+               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
+               "<b>مقدار واریز (TRX):</b> <code>{$crypto_amount}</code>";
 
     } elseif ($sym == 'USDT') {
         return "<tg-emoji emoji-id=\"5836907383292436018\">💎</tg-emoji> <b>پرداخت USDT</b>\n\n" .
                "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n\n" .
-               "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n\n" .
-               "<b>مقدار واریز (USDT):</b>\n<code>{$crypto_amount}</code>";
+               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n" .
+               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
+               "<b>مقدار واریز (USDT):</b> <code>{$crypto_amount}</code>";
     }
 
-    return "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n<b>مقدار واریز:</b>\n<code>{$crypto_amount}</code>";
+    return "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n<b>مقدار واریز:</b> <code>{$crypto_amount}</code>";
 }
