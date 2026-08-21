@@ -7827,13 +7827,17 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
 }
 
-// ۱. نمایش لیست ارزها به ادمین (دکمه‌های سه‌تایی)
+// ۱. نمایش لیست ارزها در پنل مدیریت و ریست استپ در صورت انصراف/بازگشت
 elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
+    // ریست کردن مرحله کاربر جهت لغو عملیات دریافت ولت
+    update("user", "step", "none", "id", $from_id);
+
     $currencies = get_all_crypto_currencies();
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
@@ -7843,16 +7847,16 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-        "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
+           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+           "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id' => $from_id,
-            'message_id' => $message_id,
-            'text' => $msg,
-            'parse_mode' => 'HTML',
+            'chat_id'      => $from_id,
+            'message_id'   => $message_id,
+            'text'         => $msg,
+            'parse_mode'   => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
@@ -7883,9 +7887,16 @@ elseif (strpos($datain, "set_cr_wallet_") === 0) {
     ]);
 }
 
-// ۳. ذخیره متن ولت ارسالی از ادمین
+// دریافت و ذخیره آدرس ولت
 elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_wallet_") === 0) {
-    $sym = str_replace("save_cr_wallet_", "", $user['step']);
+    // اگر کاربر دکمه بازگشت یا انصراف متنی زد
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        update("user", "step", "none", "id", $from_id);
+        sendmessage($from_id, "عملیات تنظیم ولت لغو شد.", $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $sym = strtolower(str_replace("save_cr_wallet_", "", $user['step']));
     set_crypto_wallet($sym, $text);
     update("user", "step", "none", "id", $from_id);
 
