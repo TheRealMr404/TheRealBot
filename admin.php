@@ -7889,7 +7889,7 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "🪙 {$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
+            ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
         ];
     }
     $keyboard[] = [['text' => "🎨 تغییر رنگ و ایموجی دکمه‌ها", 'callback_data' => 'manage_crypto_styles']];
