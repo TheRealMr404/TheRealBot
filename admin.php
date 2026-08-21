@@ -7887,24 +7887,25 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
 } // ۱. کلیک روی دکمه متنی یا بازخوانی لیست برای مدیر
-if ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
+// ۱. کلیک روی دکمه متنی «🪙 ارز های موجود» یا بازگشت به لیست
+elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
     $currencies = get_all_crypto_currencies();
 
-    // نام‌های کاملاً ثابت برای مدیریت
     $static_names = [
-        'trx' => 'ترون (TRX)',
+        'trx'  => 'ترون (TRX)',
         'usdt' => 'تتر (USDT)',
-        'ton' => 'تون کوین (TON)'
+        'ton'  => 'تون کوین (TON)'
     ];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-
+        
+        // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
         $keyboard[] = [
-            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"]
+            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
@@ -7915,16 +7916,51 @@ if ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list"
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id' => $from_id,
-            'message_id' => $message_id,
-            'text' => $msg,
-            'parse_mode' => 'HTML',
+            'chat_id'      => $from_id,
+            'message_id'   => $message_id,
+            'text'         => $msg,
+            'parse_mode'   => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
         sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
     }
+}
 
+// ۲. تغییر وضعیت روشن / خاموش (Toggle)
+elseif (strpos($datain, "toggle_crypto_") === 0) {
+    $sym = str_replace("toggle_crypto_", "", $datain);
+    $info = get_crypto_currency($sym);
+    if ($info) {
+        $info['status'] = ($info['status'] == 'on') ? 'off' : 'on';
+        set_crypto_currency($sym, $info);
+    }
+
+    $currencies = get_all_crypto_currencies();
+    $static_names = [
+        'trx'  => 'ترون (TRX)',
+        'usdt' => 'تتر (USDT)',
+        'ton'  => 'تون کوین (TON)'
+    ];
+
+    $keyboard = [];
+    foreach ($currencies as $s => $item) {
+        $fixed_title = $static_names[strtolower($s)] ?? strtoupper($s);
+        $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        
+        // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
+        $keyboard[] = [
+            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$s}"]
+        ];
+    }
+    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
+
+    telegram('editMessageReplyMarkup', [
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
+        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
+    ]);
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
 
