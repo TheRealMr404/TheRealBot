@@ -2162,47 +2162,52 @@ function convertCustomEmojiToHTML($message)
     return $text;
 }
 
-function get_crypto_currency($sym) {
-    global $connect;
-    $sym = strtolower($sym);
-    
-    $wallet    = select("textbot", "text", "id_text", "offline_{$sym}", "select")['text'] ?? '';
-    $status    = select("textbot", "text", "id_text", "status_offline_{$sym}", "select")['text'] ?? 'off';
-    $emoji_id  = select("textbot", "text", "id_text", "emoji_offline_{$sym}", "select")['text'] ?? '5836907383292436018';
-    $btn_style = select("textbot", "text", "id_text", "style_offline_{$sym}", "select")['text'] ?? 'primary';
-
-    return [
-        'symbol'   => strtoupper($sym),
-        'wallet'   => trim($wallet),
-        'status'   => $status,
-        'emoji_id' => $emoji_id,
-        'style'    => $btn_style
-    ];
-}
-
-function set_crypto_wallet($sym, $wallet) {
-    $sym = strtolower($sym);
-    update("textbot", "text", trim($wallet), "id_text", "offline_{$sym}");
-}
-
-function toggle_crypto_status($sym) {
-    $sym = strtolower($sym);
-    $current = select("textbot", "text", "id_text", "status_offline_{$sym}", "select")['text'] ?? 'off';
-    $new_status = ($current == 'on') ? 'off' : 'on';
-    update("textbot", "text", $new_status, "id_text", "status_offline_{$sym}");
-    return $new_status;
-}
-
 function get_all_crypto_currencies() {
-    $symbols = ['trx', 'usdt', 'ton'];
+    global $connect;
+    $res = $connect->query("SELECT * FROM offline_crypto ORDER BY id ASC");
     $list = [];
-    foreach ($symbols as $sym) {
-        $data = get_crypto_currency($sym);
-        if ($data) {
-            $list[$sym] = $data;
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $list[$row['symbol']] = $row;
         }
     }
     return $list;
+}
+
+// دریافت اطلاعات یک ارز بر اساس نماد
+function get_crypto_currency($sym) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE symbol = ?");
+    $stmt->bind_param("s", $sym);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    return $res->fetch_assoc();
+}
+
+// ذخیره ولت
+function set_crypto_wallet($sym, $wallet) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $wallet = trim($wallet);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET wallet = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $wallet, $sym);
+    return $stmt->execute();
+}
+
+// تغییر وضعیت روشن/خاموش
+function toggle_crypto_status($sym) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $info = get_crypto_currency($sym);
+    if ($info) {
+        $new_status = ($info['status'] == 'on') ? 'off' : 'on';
+        $stmt = $connect->prepare("UPDATE offline_crypto SET status = ? WHERE symbol = ?");
+        $stmt->bind_param("ss", $new_status, $sym);
+        $stmt->execute();
+        return $new_status;
+    }
+    return 'off';
 }
 
 function render_crypto_message($data, $amount_toman, $crypto_amount) {
