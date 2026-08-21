@@ -4293,9 +4293,9 @@ $text_expie_agent
     $info = get_crypto_currency($sym);
 
     $static_names = [
-        'trx' => 'ترون (TRX)',
-        'usdt' => 'تتر (USDT)',
-        'ton' => 'تون کوین (TON)'
+        'trx' => 'TRON - USDT',
+        'usdt' => 'BNB - USDT',
+        'ton' => 'GRSM - USDT'
     ];
     $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
 
