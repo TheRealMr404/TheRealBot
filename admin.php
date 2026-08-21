@@ -7847,7 +7847,6 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
             ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
-    $keyboard[] = [['text' => "🎨 تغییر رنگ و ایموجی دکمه‌ها", 'callback_data' => 'manage_crypto_styles']];
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
@@ -7892,7 +7891,6 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
             ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
         ];
     }
-    $keyboard[] = [['text' => "🎨 تغییر رنگ و ایموجی دکمه‌ها", 'callback_data' => 'manage_crypto_styles']];
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     telegram('editMessageReplyMarkup', [
