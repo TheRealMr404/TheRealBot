@@ -5099,7 +5099,25 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
     $stmt->execute();
 
-    // ایجاد دکمه شیشه‌ای ارسال رسید دقیقاً متصل به سیستم قبلی
+// ۱. دریافت نرخ واحد ارز به تومان و محاسبه مقدار نهایی
+    $sym_upper = strtoupper($sym);
+    $unit_rate = $rates[$sym_upper] ?? ($rates['USD'] ?? 1);
+    $crypto_calc_amount = round($user['Processing_value'] / $unit_rate, ($sym_upper == 'USDT' ? 2 : 4));
+
+    // ۲. دریافت متن جزئیات ارز و ولت
+    $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
+
+    // ۳. چینش ساختار نهایی متن پیام
+    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
+        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
+        $rendered_crypto_msg . "\n\n" .
+        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
+
+    // در صورتی که ارز انتخابی غیر از ترون باشد، نمایش معادل ترون نیز در انتها اضافه شود
+    if ($sym_upper != 'TRX') {
+        $textnowpayments .= "\n<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به ترون: <b>$trxprice TRX</b>";
+    }
+
     $paymentkeyboard = json_encode([
         'inline_keyboard' => [
             [
@@ -5108,15 +5126,8 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
         ]
     ]);
 
-    // متن پیام اختصاصی ارز با جایگذاری ولت و شبکه
-    $rendered_crypto_msg = render_crypto_message($info['message'], $info);
-
-    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-        $rendered_crypto_msg . "\n\n" .
-        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به ترون: <b>$trxprice TRX</b>\n" .
-        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>\n";
-
+    $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
+    updatePaymentMessageId($sent_msg, $randomString);
     // ارسال راهنمای پرداخت در صورت وجود
     $gethelp = getPaySettingValue('helpofflinearze');
     if ($gethelp !== null && $gethelp != 2) {
