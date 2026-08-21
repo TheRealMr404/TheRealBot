@@ -7829,37 +7829,85 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     update("user", "step", "none", "id", $from_id);
 
     $currencies = get_all_crypto_currencies();
+    $static_names = [
+        'trx'  => 'ترون (TRX)',
+        'usdt' => 'تتر (USDT)',
+        'ton'  => 'تون کوین (TON)'
+    ];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $sym_key = strtolower($sym);
         $fixed_title = $static_names[$sym_key] ?? strtoupper($sym);
-        $status_icon = (($info['status'] ?? 'off') == 'on') ? "✅ روشن" : "❌ خاموش";
-
+        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
             ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
+    $keyboard[] = [['text' => "🎨 تغییر رنگ و ایموجی دکمه‌ها", 'callback_data' => 'manage_crypto_styles']];
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-        "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
+           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+           "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id' => $from_id,
-            'message_id' => $message_id,
-            'text' => $msg,
-            'parse_mode' => 'HTML',
+            'chat_id'      => $from_id,
+            'message_id'   => $message_id,
+            'text'         => $msg,
+            'parse_mode'   => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
         sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
     }
+}
+
+elseif (strpos($datain, "toggle_crypto_") === 0) {
+    $sym = str_replace("toggle_crypto_", "", $datain);
+    $current_status = toggle_crypto_status($sym);
+
+    $currencies = get_all_crypto_currencies();
+    $static_names = [
+        'trx'  => 'ترون (TRX)',
+        'usdt' => 'تتر (USDT)',
+        'ton'  => 'تون کوین (TON)'
+    ];
+
+    $keyboard = [];
+    foreach ($currencies as $s => $item) {
+        $sym_key = strtolower($s);
+        $fixed_title = $static_names[$sym_key] ?? strtoupper($s);
+        $st = ($s === $sym) ? $current_status : ($item['status'] ?? 'off');
+        $status_icon = ($st == 'on') ? "✅ روشن" : "❌ خاموش";
+        
+        $keyboard[] = [
+            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
+            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
+        ];
+    }
+    $keyboard[] = [['text' => "🎨 تغییر رنگ و ایموجی دکمه‌ها", 'callback_data' => 'manage_crypto_styles']];
+    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
+
+    telegram('editMessageReplyMarkup', [
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
+        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
+    ]);
+}
+
+// ۳. هندلر بستن یا بازگشت سراسری از منوهای شیشه‌ای ادمین
+elseif ($datain == "close_admin_inline" && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    update("user", "step", "none", "id", $from_id);
+    deletemessage($from_id, $message_id);
+    sendmessage($from_id, $textbotlang['Admin']['Back-Admin'], $keyboardadmin, 'HTML');
 }
 
 // ۲. کلیک روی دکمه تنظیم ولت
@@ -7901,29 +7949,7 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
         'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
     ]), 'HTML');
-} elseif (strpos($datain, "toggle_crypto_") === 0) {
-    $sym = str_replace("toggle_crypto_", "", $datain);
-    toggle_crypto_status($sym);
-
-    $currencies = get_all_crypto_currencies();
-    $keyboard = [];
-    foreach ($currencies as $s => $item) {
-        $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        $keyboard[] = [
-            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "{$item['name']}", 'callback_data' => "view_wallet_info_{$s}"]
-        ];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
-    ]);
-}
-
+} 
 // ۱. با کلیک روی نام ارز: باز شدن منوی تنظیمات نام و شبکه
 elseif (strpos($datain, "view_wallet_info_") === 0 && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
@@ -8262,11 +8288,6 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
         "برای تغییر استایل هر ارز، روی دکمه آن کلیک کنید:";
 
     Editmessagetext($from_id, $message_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
-} elseif ($datain == "close_admin_inline" && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    update("user", "step", "none", "id", $from_id);
-    deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['Admin']['Back-Admin'], $keyboardadmin, 'HTML');
 } elseif ($datain == "optimizebot") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست'");
     $stmt->execute();
