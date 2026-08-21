@@ -1792,31 +1792,23 @@ links2 : لینک ساب بدون کپی شدن
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
     update("textbot", "text", $savetext, "id_text", "textafterpayibsng");
     step('home', $from_id);
-} elseif (isset($text) && preg_match('/^save_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $user['step'], $matches)) {
-    $field = $matches[1];
-    $sym = $matches[2];
+} elseif (isset($text) && preg_match('/^save_cr_style_([a-zA-Z0-9]+)$/', $user['step'], $matches)) {
+    $sym  = $matches[1];
     $info = get_crypto_currency($sym);
 
     if ($info) {
-        if ($field == 'wallet') {
-            $info['wallet'] = trim($text);
-        } elseif ($field == 'network') {
-            $info['network'] = trim($text);
-        } elseif ($field == 'msg') {
-            $info['message'] = $text;
-        } elseif ($field == 'style') {
-            $parts = explode(' ', trim($text), 2);
-            $info['emoji'] = $parts[0] ?? '💎';
-            $info['name'] = $parts[1] ?? $parts[0];
-        }
+        $parts = explode(' ', trim($text), 2);
+        $info['emoji']        = $parts[0] ?? '💎';
+        $info['display_name'] = $parts[1] ?? $parts[0]; // فقط نام نمایشی کاربر آپدیت می‌شود
 
         set_crypto_currency($sym, $info);
         update("user", "step", "none", "id", $from_id);
 
-        sendmessage($from_id, "✅ تنظیمات با موفقیت ذخیره شد.", json_encode([
-            'inline_keyboard' => [[['text' => "🔙 بازگشت به تنظیمات ارز", 'callback_data' => "edit_crypto_{$sym}"]]]
+        sendmessage($from_id, "✅ استایل و نام نمایشی ارز برای کاربران با موفقیت ذخیره شد.", json_encode([
+            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => "edit_crypto_{$sym}"]]]
         ]), 'HTML');
     }
+
 
 } elseif ($text == "متن کارت به کارت" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_cart']}</code>", $backadmin, 'HTML');
@@ -4331,17 +4323,21 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         'message_id' => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
-}
-
-// منوی ویرایش جزئیات یک ارز خاص (ساده و بهینه‌شده)
-elseif (strpos($datain, "edit_crypto_") === 0) {
+} elseif (strpos($datain, "edit_crypto_") === 0) {
     $sym = str_replace("edit_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
 
+    $static_names = [
+        'trx' => 'ترون (TRX)',
+        'usdt' => 'تتر (USDT)',
+        'ton' => 'تون کوین (TON)'
+    ];
+    $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
+
     $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
     $network_display = !empty($info['network']) ? $info['network'] : "<i>تعیین نشده</i>";
+    $user_view_title = ($info['emoji'] ?? '💎') . ' ' . ($info['display_name'] ?? $info['name']);
 
-    // کیبورد تمیز بدون ممو و بدون تنظیم ایموجی/نام
     $keyboard = [
         'inline_keyboard' => [
             [
@@ -4357,8 +4353,8 @@ elseif (strpos($datain, "edit_crypto_") === 0) {
         ]
     ];
 
-    // متن پیام ادمین بدون نمایش متن طولانی اختصاصی
-    $text_msg = "⚙️ <b>تنظیمات ارز {$info['emoji']} {$info['name']}:</b>\n\n" .
+    $text_msg = "⚙️ <b>تنظیمات ارز: {$fixed_title}</b>\n\n" .
+        "👁‍🗨 <b>عنوان نمایشی به کاربر:</b> <code>{$user_view_title}</code>\n" .
         "📍 <b>آدرس ولت:</b> <code>{$wallet_display}</code>\n" .
         "🌐 <b>شبکه:</b> <code>{$network_display}</code>\n\n" .
         "جهت تغییر هر مورد، روی دکمه مربوطه کلیک کنید:";
@@ -7890,24 +7886,45 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         ]
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
-} elseif ($text == "🪙 ارز های موجود") {
+} // ۱. کلیک روی دکمه متنی یا بازخوانی لیست برای مدیر
+if ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
     $currencies = get_all_crypto_currencies();
+
+    // نام‌های کاملاً ثابت برای مدیریت
+    $static_names = [
+        'trx' => 'ترون (TRX)',
+        'usdt' => 'تتر (USDT)',
+        'ton' => 'تون کوین (TON)'
+    ];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
+        $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+
         $keyboard[] = [
-            ['text' => "{$info['emoji']} {$info['name']}", 'callback_data' => "edit_crypto_{$sym}"],
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت (روشن/خاموش) کلیک کنید.\n" .
-        "🔹 برای <b>تنظیم آدرس ولت، متن پیام، شبکه و ممو</b> روی نام ارز کلیک کنید:";
+        "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت کلیک کنید.\n" .
+        "🔹 برای <b>تنظیم آدرس ولت، متن پیام و شبکه</b> روی نام ارز کلیک کنید:";
 
-    sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+    if ($datain == "back_to_crypto_list") {
+        telegram('editMessageText', [
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'text' => $msg,
+            'parse_mode' => 'HTML',
+            'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
+        ]);
+    } else {
+        sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+    }
+
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
 
