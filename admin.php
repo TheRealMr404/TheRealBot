@@ -7886,8 +7886,7 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         ]
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
-} // ۱. کلیک روی دکمه متنی یا بازخوانی لیست برای مدیر
-// ۱. کلیک روی دکمه متنی «🪙 ارز های موجود» یا بازگشت به لیست
+}// ۱. کلیک روی دکمه متنی یا بازگشت به لیست
 elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
     $currencies = get_all_crypto_currencies();
 
@@ -7902,7 +7901,7 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
         $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
         
-        // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
+        // چپ: وضعیت | راست: نام ارز
         $keyboard[] = [
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
             ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"]
@@ -7948,7 +7947,7 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         $fixed_title = $static_names[strtolower($s)] ?? strtoupper($s);
         $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
         
-        // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
+        // چپ: وضعیت | راست: نام ارز
         $keyboard[] = [
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
             ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$s}"]
@@ -7961,6 +7960,7 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         'message_id'   => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
+
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
 
