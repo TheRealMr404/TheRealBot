@@ -5017,28 +5017,32 @@ $textinvite
     $buttons = [];
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
+            // ترکیب نام ارز و شبکه انتقال
+            $network_text = !empty($info['network']) ? " - " . strtoupper($info['network']) : "";
+            $btn_title    = $info['name'] . $network_text;
+
             $btn = [
-                'text' => $info['name'],
+                'text'          => $btn_title,
                 'callback_data' => "user_select_crypto_{$sym}",
-                'style' => $info['style'] ?? 'primary'
+                'style'         => $info['style'] ?? 'primary'
             ];
-
-            // افزودن آیکون ایموجی پریمیوم به دکمه شیشه‌ای
+            
+            // افزودن آیکون ایموجی پریمیوم
             if (!empty($info['emoji_id'])) {
-                $btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
+                $btn['icon_custom_emoji_id'] = (int)$info['emoji_id'];
             }
-
+            
             $buttons[] = [$btn];
         }
     }
-
+    
     $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back', 'style' => 'danger']];
 
     telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
-        'parse_mode' => 'HTML',
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
+        'text'         => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
+        'parse_mode'   => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 }
