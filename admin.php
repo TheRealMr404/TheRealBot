@@ -7837,7 +7837,7 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        
+
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
@@ -7847,16 +7847,16 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-           "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
+        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+        "🔹 با زدن روی نام ارز، ولت فعلی را مشاهده کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id'      => $from_id,
-            'message_id'   => $message_id,
-            'text'         => $msg,
-            'parse_mode'   => 'HTML',
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'text' => $msg,
+            'parse_mode' => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
@@ -7903,9 +7903,7 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
         'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
     ]), 'HTML');
-}
-
-elseif (strpos($datain, "toggle_crypto_") === 0) {
+} elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     toggle_crypto_status($sym);
 
@@ -7945,14 +7943,14 @@ elseif (strpos($datain, "view_wallet_info_") === 0) {
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $btn_item = [
-            'text'          => $info['name'],
+            'text' => $info['name'],
             'callback_data' => "select_cr_style_{$sym}",
-            'style'         => $info['style'] ?? 'primary'
+            'style' => $info['style'] ?? 'primary'
         ];
 
         // افزودن آیکون ایموجی پریمیوم به دکمه
         if (!empty($info['emoji_id'])) {
-            $btn_item['icon_custom_emoji_id'] = (int)$info['emoji_id'];
+            $btn_item['icon_custom_emoji_id'] = (int) $info['emoji_id'];
         }
 
         $keyboard[] = [$btn_item];
@@ -7960,10 +7958,198 @@ elseif (strpos($datain, "view_wallet_info_") === 0) {
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "🎨 <b>مدیریت رنگ و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
-           "پیش‌نمایش زنده دکمه‌ها در زیر قرار دارد.\n" .
-           "برای تغییر رنگ یا ایموجی پریمیوم هر ارز، روی آن کلیک کنید:";
+        "پیش‌نمایش زنده دکمه‌ها در زیر قرار دارد.\n" .
+        "برای تغییر رنگ یا ایموجی پریمیوم هر ارز، روی آن کلیک کنید:";
 
     sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+}
+
+// کلیک روی دکمه ارز جهت شروع تغییر استایل
+elseif (strpos($datain, "select_cr_style_") === 0 && in_array($from_id, $admin_ids)) {
+    $sym = strtolower(str_replace("select_cr_style_", "", $datain));
+    $info = get_crypto_currency($sym);
+
+    if (!$info) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "❌ ارز یافت نشد.",
+            'show_alert' => true
+        ]);
+        return;
+    }
+
+    // ذخیره ارز انتخاب‌شده و تنظیم مرحله ۱
+    savedata("clear", "style_target_sym", $sym);
+    step("cr_step_get_color", $from_id);
+
+    $msg = "🎨 <b>مرحله ۱ از ۲: تنظیم رنگ دکمه برای {$info['name']}</b>\n\n" .
+        "لطفاً یکی از رنگ‌های زیر را ارسال کنید:\n" .
+        "🟢 <b>سبز</b> (Success)\n" .
+        "🔴 <b>قرمز</b> (Danger)\n" .
+        "🔵 <b>آبی</b> (Primary)\n" .
+        "⚪️ <b>بی رنگ / خاکستری</b> (Secondary)\n\n" .
+        "<i>(می‌توانید فارسی، انگلیسی یا به حروف مختلف بنویسید)</i>";
+
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 انصراف", 'callback_data' => "back_to_cr_styles"]]
+        ]
+    ]);
+
+    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
+}
+
+// مرحله ۱: دریافت و نرمال‌سازی رنگ
+elseif ($user['step'] == "cr_step_get_color" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("home", $from_id);
+        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $keyboardadmin, 'HTML');
+        return;
+    }
+
+    // نرمال‌سازی دقیق متن ورودی (حذف فاصله‌ها، تبدیل حروف آ/ا و کوچیک‌سازی انگلیسی)
+    $input = trim(mb_strtolower($text, 'UTF-8'));
+    $input = str_replace(['آ', 'إ', 'أ'], 'ا', $input);
+    $input = str_replace([' ', '_', '-'], '', $input);
+
+    $color = null;
+
+    // نگاشت انواع املاهای ممکن فارسی و انگلیسی
+    if (in_array($input, ['سبز', 'green', 'success'])) {
+        $color = 'success';
+    } elseif (in_array($input, ['قرمز', 'red', 'danger'])) {
+        $color = 'danger';
+    } elseif (in_array($input, ['ابی', 'نیلی', 'blue', 'primary'])) {
+        $color = 'primary';
+    } elseif (in_array($input, ['بیرنگ', 'بی_رنگ', 'خاکستری', 'سفید', 'طوسی', 'gray', 'grey', 'white', 'secondary', 'none'])) {
+        $color = 'secondary';
+    }
+
+    if ($color === null) {
+        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backadmin, 'HTML');
+        return;
+    }
+
+    // ذخیره موقت رنگ و رفتن به مرحله بعد
+    savedata("save", "style_temp_color", $color);
+    step("cr_step_get_emoji", $from_id);
+
+    $color_names_fa = [
+        'success' => '🟢 سبز',
+        'danger' => '🔴 قرمز',
+        'primary' => '🔵 آبی',
+        'secondary' => '⚪️ بی رنگ / خاکستری'
+    ];
+
+    $msg = "✅ رنگ <b>{$color_names_fa[$color]}</b> با موفقیت انتخاب شد.\n\n" .
+        "💎 <b>مرحله ۲ از ۲: تنظیم ایموجی پریمیوم</b>\n" .
+        "لطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی ایموجی</b> را ارسال کنید:\n\n" .
+        "<i>(در صورت عدم تمایل به ایموجی، عدد <code>0</code> را ارسال فرمایید)</i>";
+
+    sendmessage($from_id, $msg, $backadmin, 'HTML');
+}
+
+// مرحله ۲: دریافت و ذخیره ایموجی و اعمال تغییرات
+elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("home", $from_id);
+        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $userdata = json_decode($user['Processing_value'], true);
+    $sym = $userdata['style_target_sym'] ?? '';
+    $color = $userdata['style_temp_color'] ?? 'primary';
+
+    if (empty($sym)) {
+        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات ارز رخ داد. لطفاً مجدداً از منو دکمه را انتخاب کنید.", $keyboardadmin, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+
+    $custom_emoji_id = null;
+    $trimmed_text = trim((string) $text);
+
+    // ۱. اگر ادمین عدد 0 ارسال کرده باشد (حذف ایموجی)
+    if ($trimmed_text === '0') {
+        $custom_emoji_id = '';
+    }
+
+    // ۲. بررسی مستقیم entities تلگرام
+    $raw_msg = $update['message'] ?? [];
+    if ($custom_emoji_id === null && !empty($raw_msg['entities']) && is_array($raw_msg['entities'])) {
+        foreach ($raw_msg['entities'] as $entity) {
+            if (isset($entity['type']) && $entity['type'] === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
+                $custom_emoji_id = (string) $entity['custom_emoji_id'];
+                break;
+            }
+        }
+    }
+
+    // ۳. بررسی با تابع تبدیل ایموجی
+    if ($custom_emoji_id === null && function_exists('convertCustomEmojiToHTML')) {
+        $html_emoji = convertCustomEmojiToHTML($raw_msg);
+        if (preg_match('/emoji-id="(\d+)"/', (string) $html_emoji, $matches_emoji)) {
+            $custom_emoji_id = (string) $matches_emoji[1];
+        }
+    }
+
+    // ۴. بررسی آیدی عددی ارسالی
+    if ($custom_emoji_id === null && preg_match('/^\d{15,22}$/', $trimmed_text)) {
+        $custom_emoji_id = $trimmed_text;
+    }
+
+    if ($custom_emoji_id === null) {
+        sendmessage($from_id, "❌ شناسه ایموجی پریمیوم شناسایی نشد.\nلطفاً یک <b>ایموجی پریمیوم</b> یا <b>شناسه عددی</b> ارسال کنید (یا عدد <code>0</code> برای حذف):", $backadmin, 'HTML');
+        return;
+    }
+
+    // ذخیره نهایی هر دو فیلد رنگ و ایموجی در جدول offline_crypto
+    set_crypto_style($sym, $color);
+    set_crypto_emoji($sym, $custom_emoji_id);
+
+    step("home", $from_id);
+
+    $info = get_crypto_currency($sym);
+    $preview_btn = [
+        'text' => $info['name'],
+        'callback_data' => "noop",
+        'style' => $info['style'] ?? 'primary'
+    ];
+    if (!empty($info['emoji_id'])) {
+        $preview_btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
+    }
+
+    $final_keyboard = json_encode([
+        'inline_keyboard' => [
+            [$preview_btn],
+            [['text' => "🔙 بازگشت به لیست استایل‌ها", 'callback_data' => "back_to_cr_styles"]]
+        ]
+    ]);
+
+    sendmessage($from_id, "✅ <b>استایل دکمه ارز " . strtoupper($sym) . " با موفقیت به‌روزرسانی شد.</b>\n\nپیش‌نمایش دکمه جدید:", $final_keyboard, 'HTML');
+} elseif ($datain == "back_to_cr_styles" && in_array($from_id, $admin_ids)) {
+    update("user", "step", "none", "id", $from_id);
+    $currencies = get_all_crypto_currencies();
+
+    $keyboard = [];
+    foreach ($currencies as $sym => $info) {
+        $btn_item = [
+            'text' => $info['name'],
+            'callback_data' => "select_cr_style_{$sym}",
+            'style' => $info['style'] ?? 'primary'
+        ];
+        if (!empty($info['emoji_id'])) {
+            $btn_item['icon_custom_emoji_id'] = (int) $info['emoji_id'];
+        }
+        $keyboard[] = [$btn_item];
+    }
+    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
+
+    $msg = "🎨 <b>مدیریت رنگ و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
+        "برای تغییر استایل هر ارز، روی دکمه آن کلیک کنید:";
+
+    Editmessagetext($from_id, $message_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
 } elseif ($datain == "optimizebot") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست'");
     $stmt->execute();
