@@ -1538,6 +1538,6 @@ try {
 }
 
 
-// telegram('setwebhook', [
-//     'url' => "https://$domainhosts/index.php"
-// ]);
+telegram('setwebhook', [
+    'url' => "https://$domainhosts/index.php"
+]);
