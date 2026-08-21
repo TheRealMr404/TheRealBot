@@ -8150,6 +8150,11 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
         "برای تغییر استایل هر ارز، روی دکمه آن کلیک کنید:";
 
     Editmessagetext($from_id, $message_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
+} elseif ($datain == "close_admin_inline" && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    update("user", "step", "none", "id", $from_id);
+    deletemessage($from_id, $message_id);
+    sendmessage($from_id, $textbotlang['Admin']['Back-Admin'], $keyboardadmin, 'HTML');
 } elseif ($datain == "optimizebot") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست'");
     $stmt->execute();
