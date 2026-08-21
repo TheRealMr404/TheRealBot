@@ -4381,7 +4381,7 @@ elseif ($datain == "back_to_crypto_list") {
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
-    $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
+    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
         "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت (روشن/خاموش) کلیک کنید.\n" .
         "🔹 برای <b>تنظیم آدرس ولت، متن پیام، شبکه و ممو</b> روی نام ارز کلیک کنید:";
 
@@ -7905,12 +7905,12 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
         // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
         $keyboard[] = [
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"]
+            ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
-    $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
+    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
         "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت کلیک کنید.\n" .
         "🔹 برای <b>تنظیم آدرس ولت، متن پیام و شبکه</b> روی نام ارز کلیک کنید:";
 
@@ -7951,7 +7951,7 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         // قرارگیری وضعیت در چپ (عنصر اول) و نام ارز در راست (عنصر دوم)
         $keyboard[] = [
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "🪙 {$fixed_title}", 'callback_data' => "edit_crypto_{$s}"]
+            ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$s}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
