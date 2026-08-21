@@ -8849,14 +8849,14 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
-            [
-                ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
-            ],
+            // [
+            //     ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
+            // ],
         ]
     ]);
     sendmessage($from_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
 
-⚠️ تیم میرزا هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status, 'HTML');
+⚠️ تیم  هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status, 'HTML');
 } elseif ($text == "🎁 کش بک تمدید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "📌 مقدار درصدی که می خواهید حساب کاربر بعد از تمدید به عنوان هدیه شارژ شود را ارسال کنید.
 ⚠️ در صورتی که میخواهید غیرفعال باشد عدد 0 را ارسال کنید", $backadmin, 'HTML');
@@ -9073,14 +9073,14 @@ n2", $backadmin, 'HTML');
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
-            [
-                ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
-            ],
+            // [
+            //     ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
+            // ],
         ]
     ]);
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
 
-⚠️ تیم میرزا هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
+⚠️ تیم  هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
 } elseif ($text == "💰 کش بک کارت به کارت") {
     sendmessage($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
     step("getcashcart", $from_id);
