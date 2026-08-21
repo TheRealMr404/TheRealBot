@@ -5014,38 +5014,36 @@ $textinvite
 }
 
 // ۱. نمایش لیست ارزها به صورت زیرِ هم (تک‌ستونه)
+// الف) نمایش لیست ارزهای فعال به کاربر (زیر هم)
 elseif ($datain == "offline_crypto_pay") {
     $currencies = get_all_crypto_currencies();
 
     $buttons = [];
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
-            $btn_title = ($info['emoji'] ?? '💎') . ' ' . ($info['display_name'] ?? $info['name']);
-            // قرار دادن هر ارز در یک ردیف مجزا برای چینش عمودی
             $buttons[] = [
-                ['text' => $btn_title, 'callback_data' => "user_select_crypto_{$sym}"]
+                ['text' => "💎 " . $info['name'], 'callback_data' => "user_select_crypto_{$sym}"]
             ];
         }
     }
-
-    // دکمه بازگشت
+    
     $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back']];
 
     telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را برای پرداخت انتخاب نمایید:",
-        'parse_mode' => 'HTML',
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
+        'text'         => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
+        'parse_mode'   => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 }
 
-// ۲. پردازش کلیک روی یک ارز و نمایش ولت + پیام اختصاصی
+// ب) صدور فاکتور و نمایش اطلاعات واریز
 elseif (strpos($datain, "user_select_crypto_") === 0) {
     $sym  = str_replace("user_select_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
 
-    if (!$info || $info['status'] !== 'on') {
+    if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
             'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
@@ -5118,7 +5116,6 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
 
     $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
     updatePaymentMessageId($sent_msg, $randomString);
-
 
 } elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
