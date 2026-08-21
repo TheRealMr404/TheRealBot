@@ -840,33 +840,29 @@ try {
         ['text_extend', '♻️ تمدید سرویس'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
+    $insertQueries[] = ['offline_ton', ''];
+    $insertQueries[] = ['offline_trx', ''];
+    $insertQueries[] = ['offline_usdt', ''];
 
-// اضافه کردن مقادیر ۳ ارز به لیست insertQueries
-$insertQueries[] = ['offline_ton', ''];
-$insertQueries[] = ['offline_trx', ''];
-$insertQueries[] = ['offline_usdt', ''];
+    $insertQueries[] = ['status_offline_ton', 'on'];
+    $insertQueries[] = ['status_offline_trx', 'on'];
+    $insertQueries[] = ['status_offline_usdt', 'on'];
 
-$insertQueries[] = ['status_offline_ton', 'on'];
-$insertQueries[] = ['status_offline_trx', 'on'];
-$insertQueries[] = ['status_offline_usdt', 'on'];
+    $insertQueries[] = ['emoji_offline_ton', '5836907383292436018'];
+    $insertQueries[] = ['emoji_offline_trx', '5836907383292436018'];
+    $insertQueries[] = ['emoji_offline_usdt', '5836907383292436018'];
 
-$insertQueries[] = ['emoji_offline_ton', '5836907383292436018'];
-$insertQueries[] = ['emoji_offline_trx', '5836907383292436018'];
-$insertQueries[] = ['emoji_offline_usdt', '5836907383292436018'];
+    $insertQueries[] = ['style_offline_ton', 'primary'];
+    $insertQueries[] = ['style_offline_trx', 'primary'];
+    $insertQueries[] = ['style_offline_usdt', 'primary'];
 
-$insertQueries[] = ['style_offline_ton', 'primary'];
-$insertQueries[] = ['style_offline_trx', 'primary'];
-$insertQueries[] = ['style_offline_usdt', 'primary'];
-
-// اجرای ساخت جدول و ثبت مقادیر با ساختار صحیح (id_text و text)
-try {
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE textbot (
             id_text varchar(600) PRIMARY KEY NOT NULL,
             text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
             ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
-            echo "table textbot" . mysqli_error($connect);
+            echo "table textbot: " . mysqli_error($connect);
         }
 
         foreach ($insertQueries as $query) {
@@ -884,7 +880,6 @@ try {
 } catch (Exception $e) {
     file_put_contents('error_log', $e->getMessage());
 }
-
 try {
     $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");
     $table_exists = ($result->num_rows > 0);
