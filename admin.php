@@ -4290,40 +4290,7 @@ $text_expie_agent
     step('GetLocationEdit', $from_id);
 }
 
-// بستن پیام اینلاین با دکمه بازگشت
-if ($datain == "close_admin_inline") {
-    telegram('deleteMessage', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id
-    ]);
-}
-
-// تغییر وضعیت روشن / خاموش هر ارز
-elseif (strpos($datain, "toggle_crypto_") === 0) {
-    $sym = str_replace("toggle_crypto_", "", $datain);
-    $info = get_crypto_currency($sym);
-    if ($info) {
-        $info['status'] = ($info['status'] == 'on') ? 'off' : 'on';
-        set_crypto_currency($sym, $info);
-    }
-
-    $currencies = get_all_crypto_currencies();
-    $keyboard = [];
-    foreach ($currencies as $s => $item) {
-        $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        $keyboard[] = [
-            ['text' => "{$item['emoji']} {$item['name']}", 'callback_data' => "edit_crypto_{$s}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"]
-        ];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
-    ]);
-} elseif (strpos($datain, "edit_crypto_") === 0) {
+ elseif (strpos($datain, "edit_crypto_") === 0) {
     $sym = str_replace("edit_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
 
