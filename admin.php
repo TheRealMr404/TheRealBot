@@ -7827,7 +7827,7 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         ]
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
-}// ۱. کلیک روی دکمه متنی یا بازگشت به لیست
+}
 elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
     $currencies = get_all_crypto_currencies();
 
@@ -7840,19 +7840,20 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
-        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        $status_icon = (($info['status'] ?? 'off') == 'on') ? "✅ روشن" : "❌ خاموش";
         
-        // چپ: وضعیت | راست: نام ارز
+        // ترتیب در تلگرام فارسی: راست: نام ارز | وسط: وضعیت | چپ: تنظیم ولت
         $keyboard[] = [
+            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$sym}"]
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "view_wallet_info_{$sym}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
-    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای <b>فعال / غیرفعال‌سازی</b> روی وضعیت کلیک کنید.\n" .
-        "🔹 برای <b>تنظیم آدرس ولت، متن پیام و شبکه</b> روی نام ارز کلیک کنید:";
+    $msg = "🪙 <b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
+        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
@@ -7867,12 +7868,12 @@ elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_l
     }
 }
 
-// ۲. تغییر وضعیت روشن / خاموش (Toggle)
+// ۲. تغییر وضعیت روشن / خاموش ارز
 elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
     if ($info) {
-        $info['status'] = ($info['status'] == 'on') ? 'off' : 'on';
+        $info['status'] = (($info['status'] ?? 'off') == 'on') ? 'off' : 'on';
         set_crypto_currency($sym, $info);
     }
 
@@ -7886,12 +7887,12 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
     $keyboard = [];
     foreach ($currencies as $s => $item) {
         $fixed_title = $static_names[strtolower($s)] ?? strtoupper($s);
-        $status_icon = ($item['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
+        $status_icon = (($item['status'] ?? 'off') == 'on') ? "✅ روشن" : "❌ خاموش";
         
-        // چپ: وضعیت | راست: نام ارز
         $keyboard[] = [
+            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "{$fixed_title}", 'callback_data' => "edit_crypto_{$s}"]
+            ['text' => "🪙 {$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
         ];
     }
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
@@ -7901,7 +7902,19 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         'message_id'   => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
+}
 
+// ۳. نمایش سریع آدرس ولت فعلی با زدن روی دکمه نام ارز (به صورت آلرت)
+elseif (strpos($datain, "view_wallet_info_") === 0) {
+    $sym = str_replace("view_wallet_info_", "", $datain);
+    $info = get_crypto_currency($sym);
+    $current_wallet = !empty($info['wallet']) ? $info['wallet'] : "تنظیم نشده";
+
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id,
+        'text'              => "📍 ولت فعلی " . strtoupper($sym) . ":\n" . $current_wallet,
+        'show_alert'        => true
+    ]);
 } elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
     $currencies = get_all_crypto_currencies();
 
