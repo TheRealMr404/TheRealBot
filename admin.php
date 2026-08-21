@@ -1792,25 +1792,22 @@ links2 : لینک ساب بدون کپی شدن
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
     update("textbot", "text", $savetext, "id_text", "textafterpayibsng");
     step('home', $from_id);
-}
-elseif (isset($text) && preg_match('/^save_cr_(wallet|network|memo|style|msg)_([a-zA-Z0-9]+)$/', $user['step'], $matches)) {
+} elseif (isset($text) && preg_match('/^save_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $user['step'], $matches)) {
     $field = $matches[1];
-    $sym   = $matches[2];
-    $info  = get_crypto_currency($sym);
+    $sym = $matches[2];
+    $info = get_crypto_currency($sym);
 
     if ($info) {
         if ($field == 'wallet') {
             $info['wallet'] = trim($text);
         } elseif ($field == 'network') {
             $info['network'] = trim($text);
-        } elseif ($field == 'memo') {
-            $info['memo'] = trim($text);
         } elseif ($field == 'msg') {
             $info['message'] = $text;
         } elseif ($field == 'style') {
             $parts = explode(' ', trim($text), 2);
             $info['emoji'] = $parts[0] ?? '💎';
-            $info['name']  = $parts[1] ?? $parts[0];
+            $info['name'] = $parts[1] ?? $parts[0];
         }
 
         set_crypto_currency($sym, $info);
@@ -1820,12 +1817,8 @@ elseif (isset($text) && preg_match('/^save_cr_(wallet|network|memo|style|msg)_([
             'inline_keyboard' => [[['text' => "🔙 بازگشت به تنظیمات ارز", 'callback_data' => "edit_crypto_{$sym}"]]]
         ]), 'HTML');
     }
-}
 
-
-
-
-elseif ($text == "متن کارت به کارت" && $adminrulecheck['rule'] == "administrator") {
+} elseif ($text == "متن کارت به کارت" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_cart']}</code>", $backadmin, 'HTML');
     sendmessage($from_id, "نام های فارسی متغییر : 
 price : مبلغ تراکنش
@@ -4340,27 +4333,23 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
     ]);
 }
 
-// منوی ویرایش جزئیات یک ارز خاص
+// منوی ویرایش جزئیات یک ارز خاص (ساده و بهینه‌شده)
 elseif (strpos($datain, "edit_crypto_") === 0) {
     $sym = str_replace("edit_crypto_", "", $datain);
     $info = get_crypto_currency($sym);
 
     $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
-    $memo_display = !empty($info['memo']) ? $info['memo'] : "<i>ندارد</i>";
     $network_display = !empty($info['network']) ? $info['network'] : "<i>تعیین نشده</i>";
 
+    // کیبورد تمیز بدون ممو و بدون تنظیم ایموجی/نام
     $keyboard = [
         'inline_keyboard' => [
             [
                 ['text' => "💳 تنظیم آدرس ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
-                ['text' => "🌐 تنظیم شبکه", 'callback_data' => "set_cr_network_{$sym}"]
+                ['text' => "🌐 تنظیم شبکه انتقال", 'callback_data' => "set_cr_network_{$sym}"]
             ],
             [
-                ['text' => "📝 تنظیم ممو (Memo)", 'callback_data' => "set_cr_memo_{$sym}"],
-                ['text' => "🎨 ایموجی و نام", 'callback_data' => "set_cr_style_{$sym}"]
-            ],
-            [
-                ['text' => "✏️ ویرایش متن اختصاصی نمایش", 'callback_data' => "set_cr_msg_{$sym}"]
+                ['text' => "✏️ ویرایش متن اختصاصی پیام", 'callback_data' => "set_cr_msg_{$sym}"]
             ],
             [
                 ['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]
@@ -4368,11 +4357,11 @@ elseif (strpos($datain, "edit_crypto_") === 0) {
         ]
     ];
 
+    // متن پیام ادمین بدون نمایش متن طولانی اختصاصی
     $text_msg = "⚙️ <b>تنظیمات ارز {$info['emoji']} {$info['name']}:</b>\n\n" .
         "📍 <b>آدرس ولت:</b> <code>{$wallet_display}</code>\n" .
-        "🌐 <b>شبکه:</b> <code>{$network_display}</code>\n" .
-        "📝 <b>ممو (Memo):</b> <code>{$memo_display}</code>\n\n" .
-        "📄 <b>متن اختصاصی کاربر:</b>\n<blockquote>" . htmlspecialchars($info['message']) . "</blockquote>";
+        "🌐 <b>شبکه:</b> <code>{$network_display}</code>\n\n" .
+        "جهت تغییر هر مورد، روی دکمه مربوطه کلیک کنید:";
 
     telegram('editMessageText', [
         'chat_id' => $from_id,
@@ -4382,7 +4371,6 @@ elseif (strpos($datain, "edit_crypto_") === 0) {
         'reply_markup' => json_encode($keyboard)
     ]);
 }
-
 // بازگشت به لیست ارزها از منوی ویرایش
 elseif ($datain == "back_to_crypto_list") {
     $currencies = get_all_crypto_currencies();
@@ -4411,7 +4399,7 @@ elseif ($datain == "back_to_crypto_list") {
 }
 
 // تغییر استپ برای دریافت مقادیر ورودی از ادمین
-elseif (preg_match('/^set_cr_(wallet|network|memo|style|msg)_([a-zA-Z0-9]+)$/', $datain, $matches)) {
+elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $datain, $matches)) {
     $field = $matches[1];
     $sym = $matches[2];
 
@@ -4420,9 +4408,8 @@ elseif (preg_match('/^set_cr_(wallet|network|memo|style|msg)_([a-zA-Z0-9]+)$/', 
     $field_names = [
         'wallet' => 'آدرس ولت',
         'network' => 'شبکه انتقال (مثلاً TRC20 یا TON)',
-        'memo' => 'ممو / تگ (Memo)',
         'style' => 'ایموجی و نام دکمه (مثال: 💎 تتر TRC20)',
-        'msg' => "متن پیام اختصاصی (از تگ‌های {wallet}، {network}، {memo}، {min_deposit} می‌توانید استفاده کنید)"
+        'msg' => "متن پیام اختصاصی (از تگ‌های {wallet} و {network} می‌توانید استفاده کنید)"
     ];
 
     telegram('editMessageText', [
@@ -4432,6 +4419,7 @@ elseif (preg_match('/^set_cr_(wallet|network|memo|style|msg)_([a-zA-Z0-9]+)$/', 
         'parse_mode' => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => [[['text' => "🔙 انصراف", 'callback_data' => "edit_crypto_{$sym}"]]]])
     ]);
+
 } elseif ($user['step'] == "GetLocationEdit") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $text, "select");
     if ($marzban_list_get['type'] == "x-ui_tunnel") {
