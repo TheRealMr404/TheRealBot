@@ -880,7 +880,10 @@ try {
         $default_cryptos = [
             ['ton', 'تون کوین (TON)', '', 'TON', 'on', '5836907383292436018', 'primary'],
             ['trx', 'ترون (TRX)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
-            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary']
+            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['btc', 'بیت‌کوین (BTC)', '', 'BTC / Lightning', 'on', '5836907383292436018', 'primary'],
+            ['eth', 'اتریوم (ETH)', '', 'ERC20 / Arbitrum', 'on', '5836907383292436018', 'primary'],
+            ['bnb', 'بایننس کوین (BNB)', '', 'BEP20 (BSC)', 'on', '5836907383292436018', 'primary']
         ];
 
         foreach ($default_cryptos as $cr) {

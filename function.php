@@ -2210,35 +2210,32 @@ function toggle_crypto_status($sym) {
     return 'off';
 }
 
-function render_crypto_message($data, $amount_toman, $crypto_amount) {
+function render_crypto_message($data, $amount_toman, $crypto_amount, $unit_price = null) {
     $sym = strtoupper($data['symbol'] ?? 'CRYPTO');
     $wallet = !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده';
     $emoji_id = !empty($data['emoji_id']) ? $data['emoji_id'] : '5836907383292436018';
+    $network = !empty($data['network']) ? $data['network'] : 'اصلی';
     $formatted_toman = number_format($amount_toman);
+    $unit_price_text = ($unit_price !== null) ? number_format($unit_price) . " تومان" : "درحال استعلام...";
 
-    if ($sym == 'TON') {
-        return "<tg-emoji emoji-id=\"{$emoji_id}\">🔷</tg-emoji> <b>پرداخت TON</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TON مدام عوض می‌شود).\n\n" .
-               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
-               "<b>مقدار واریز (TON):</b> <code>{$crypto_amount}</code>";
+    $titles = [
+        'TON'  => ['icon' => '🔷', 'name' => 'تون کوین (TON)'],
+        'TRX'  => ['icon' => '🔴', 'name' => 'ترون (TRX)'],
+        'USDT' => ['icon' => '💎', 'name' => 'تتر (USDT)'],
+        'BTC'  => ['icon' => '🪙', 'name' => 'بیت‌کوین (BTC)'],
+        'ETH'  => ['icon' => '🔷', 'name' => 'اتریوم (ETH)'],
+        'BNB'  => ['icon' => '🟡', 'name' => 'بایننس کوین (BNB)']
+    ];
 
-    } elseif ($sym == 'TRX') {
-        return "<tg-emoji emoji-id=\"{$emoji_id}\">🔴</tg-emoji> <b>پرداخت TRX</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت TRX مدام عوض می‌شود).\n\n" .
-               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
-               "<b>مقدار واریز (TRX):</b> <code>{$crypto_amount}</code>";
+    $title_info = $titles[$sym] ?? ['icon' => '💎', 'name' => "پرداخت {$sym}"];
 
-    } elseif ($sym == 'USDT') {
-        return "<tg-emoji emoji-id=\"{$emoji_id}\">💎</tg-emoji> <b>پرداخت USDT</b>\n\n" .
-               "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n\n" .
-               "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت USDT مدام عوض می‌شود).\n\n" .
-               "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n" .
-               "<b>مقدار واریز (USDT):</b> <code>{$crypto_amount}</code>";
-    }
-
-    return "<b>مقصد (ولت دریافت):</b> <code>{$wallet}</code>\n\n<b>مقدار واریز:</b> <code>{$crypto_amount}</code>";
+    return "<tg-emoji emoji-id=\"{$emoji_id}\">{$title_info['icon']}</tg-emoji> <b>پرداخت {$title_info['name']}</b>\n\n" .
+           "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n" .
+           "<tg-emoji emoji-id=\"5348418461838098123\">📊</tg-emoji> <b>نرخ هر واحد:</b> {$unit_price_text}\n" .
+           "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>شبکه انتقال:</b> <code>{$network}</code>\n\n" .
+           "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت لحظه‌ای تغییر می‌کند).\n\n" .
+           "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
+           "<b>مقدار واریز ({$sym}):</b> <code>{$crypto_amount}</code>";
 }
 
 
@@ -2274,4 +2271,55 @@ function set_crypto_network($sym, $network) {
     $stmt = $connect->prepare("UPDATE offline_crypto SET network = ? WHERE symbol = ?");
     $stmt->bind_param("ss", $network, $sym);
     return $stmt->execute();
+}
+
+function arz_nobitex() {
+    $rates = [];
+
+    // ۱. دریافت همزمان قیمت زنده بازارهای نوبیتکس
+    $ch = curl_init("https://api.nobitex.ir/market/stats");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 4,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode([
+            'srcCurrency' => 'usdt,btc,eth,bnb,trx,ton',
+            'dstCurrency' => 'rls,usdt'
+        ]),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json']
+    ]);
+    
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $data = json_decode((string)$response, true);
+
+    // ۲. استخراج قیمت تتر به تومان (تبدیل ریال به تومان)
+    $usdt_rls = (float)($data['stats']['usdt-rls']['latest'] ?? 0);
+    $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
+
+    $rates['USD']  = $usdt_toman;
+    $rates['USDT'] = $usdt_toman;
+
+    // ۳. محاسبه قیمت زنده ارزها بر اساس مارکت تتری یا ریالی نوبیتکس
+    $crypto_keys = ['btc', 'eth', 'bnb', 'trx', 'ton'];
+
+    foreach ($crypto_keys as $sym) {
+        $sym_upper = strtoupper($sym);
+        $tether_pair = $sym . '-usdt';
+        $rial_pair   = $sym . '-rls';
+
+        if (!empty($data['stats'][$tether_pair]['latest'])) {
+            // محاسبه بر اساس قیمت دلاری زنده صرافی
+            $price_in_usd = (float)$data['stats'][$tether_pair]['latest'];
+            $rates[$sym_upper] = intval($price_in_usd * $usdt_toman);
+        } elseif (!empty($data['stats'][$rial_pair]['latest'])) {
+            // محاسبه بر اساس نرخ ریالی مستقیم
+            $price_in_rls = (float)$data['stats'][$rial_pair]['latest'];
+            $rates[$sym_upper] = intval($price_in_rls / 10);
+        }
+    }
+
+    return $rates;
 }

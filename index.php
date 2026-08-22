@@ -5017,7 +5017,6 @@ $textinvite
     $buttons = [];
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
-            // ترکیب نام ارز و شبکه انتقال
             $network_text = !empty($info['network']) ? " - " . strtoupper($info['network']) : "";
             $btn_title    = $info['name'] . $network_text;
 

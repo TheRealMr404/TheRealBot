@@ -4293,10 +4293,13 @@ $text_expie_agent
     $info = get_crypto_currency($sym);
 
     $static_names = [
-        'trx' => 'TRON - USDT',
-        'usdt' => 'BNB - USDT',
-        'ton' => 'GRAM - USDT'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
     $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
 
     $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
@@ -7830,10 +7833,13 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-        'trx'  => 'ترون (TRX)',
-        'usdt' => 'تتر (USDT)',
-        'ton'  => 'تون کوین (TON)'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
@@ -7873,10 +7879,13 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-        'trx'  => 'ترون (TRX)',
-        'usdt' => 'تتر (USDT)',
-        'ton'  => 'تون کوین (TON)'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
 
     $keyboard = [];
     foreach ($currencies as $s => $item) {
