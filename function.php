@@ -2275,59 +2275,71 @@ function set_crypto_network($sym, $network) {
 
 function arz_nobitex() {
     $rates = [];
-    
-    // لیست ارزهای مورد نظر جهت ارسال درخواست تکی
+
+    // ۱. دریافت قیمت دلار/تتر به ریال از نوبیتکس
+    $url_usdt = "https://apiv2.nobitex.ir/market/stats?srcCurrency=usdt&dstCurrency=rls";
+    $ch = curl_init($url_usdt);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 4,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json']
+    ]);
+    $res_usdt = curl_exec($ch);
+    curl_close($ch);
+
+    $json_usdt = json_decode((string)$res_usdt, true);
+    $usdt_rls  = (float)($json_usdt['stats']['usdt-rls']['latest'] ?? 0);
+    $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
+
+    $rates['USD']  = $usdt_toman;
+    $rates['USDT'] = $usdt_toman;
+
+    // ۲. استعلام تک‌به‌تک هر رمزارز با مشخص کردن مقصد ریال و تتر
     $currencies = [
-        'usdt' => 'USDT',
-        'btc'  => 'BTC',
-        'eth'  => 'ETH',
-        'bnb'  => 'BNB',
-        'trx'  => 'TRX',
-        'ton'  => 'TON'
+        'btc' => 'BTC',
+        'eth' => 'ETH',
+        'bnb' => 'BNB',
+        'trx' => 'TRX',
+        'ton' => 'TON'
     ];
 
-    $usdt_toman = 60000; // نرخ پایه اضطراری
+    foreach ($currencies as $src => $app_key) {
+        $url = "https://apiv2.nobitex.ir/market/stats?srcCurrency=" . $src . "&dstCurrency=rls";
 
-    foreach ($currencies as $src => $key) {
-        $url = "https://apiv2.nobitex.ir/market/stats?srcCurrency=" . $src;
-
-        // دقیقاً معادل کدهای پایتون: GET Request با هدر Accept: application/json
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-        curl_setopt($ch, CURLOPT_TIMEOUT, 4);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Accept: application/json'
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 4,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json']
         ]);
-
         $response = curl_exec($ch);
         curl_close($ch);
 
-        $result = json_decode((string)$response, true);
-        $stats  = $result['stats'] ?? [];
+        $data = json_decode((string)$response, true);
+        $pair_rls = "{$src}-rls";
 
-        // استخراج و تبدیل به تومان
-        if ($src === 'usdt') {
-            if (!empty($stats['usdt-rls']['latest'])) {
-                $usdt_toman = intval((float)$stats['usdt-rls']['latest'] / 10);
-            } elseif (!empty($stats['usdt-irt']['latest'])) {
-                $usdt_toman = intval((float)$stats['usdt-irt']['latest']);
-            }
-            $rates['USD']  = $usdt_toman;
-            $rates['USDT'] = $usdt_toman;
+        if (!empty($data['stats'][$pair_rls]['latest'])) {
+            // قیمت ریالی تبدیل به تومان
+            $rates[$app_key] = intval((float)$data['stats'][$pair_rls]['latest'] / 10);
         } else {
-            $rls_key  = "{$src}-rls";
-            $irt_key  = "{$src}-irt";
-            $usdt_key = "{$src}-usdt";
+            // در صورت عدم وجود بازار ریالی، استعلام با بازار تتری
+            $url_usdt_pair = "https://apiv2.nobitex.ir/market/stats?srcCurrency=" . $src . "&dstCurrency=usdt";
+            $ch_u = curl_init($url_usdt_pair);
+            curl_setopt_array($ch_u, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 4,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_HTTPHEADER     => ['Accept: application/json']
+            ]);
+            $res_u = curl_exec($ch_u);
+            curl_close($ch_u);
 
-            if (!empty($stats[$rls_key]['latest'])) {
-                $rates[$key] = intval((float)$stats[$rls_key]['latest'] / 10);
-            } elseif (!empty($stats[$irt_key]['latest'])) {
-                $rates[$key] = intval((float)$stats[$irt_key]['latest']);
-            } elseif (!empty($stats[$usdt_key]['latest'])) {
-                $rates[$key] = intval((float)$stats[$usdt_key]['latest'] * $usdt_toman);
+            $data_u = json_decode((string)$res_u, true);
+            $pair_usdt = "{$src}-usdt";
+            if (!empty($data_u['stats'][$pair_usdt]['latest'])) {
+                $rates[$app_key] = intval((float)$data_u['stats'][$pair_usdt]['latest'] * $usdt_toman);
             }
         }
     }
