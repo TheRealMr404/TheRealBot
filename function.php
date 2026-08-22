@@ -2276,8 +2276,8 @@ function set_crypto_network($sym, $network) {
 function arz_nobitex() {
     $rates = [];
 
-    // ارسال درخواست مستقیم GET طبق اندپوینت جدید v2 نوبیتکس
-    $url = "https://apiv2.nobitex.ir/market/stats?srcCurrency=usdt,btc,eth,bnb,trx,ton&dstCurrency=rls,irt,usdt";
+    // فراخوانی کلیه مارکت‌های فعال نوبیتکس بدون محدودسازی در Query String
+    $url = "https://apiv2.nobitex.ir/market/stats";
     
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -2297,21 +2297,21 @@ function arz_nobitex() {
     $res = json_decode((string)$response, true);
     $stats = $res['stats'] ?? [];
 
-    // ۱. استخراج دقیق نرخ تتر به تومان
+    // ۱. استخراج دقیق نرخ تتر به تومان (اولویت با جفت‌ارز ریالی تقسیم بر ۱۰)
     $usdt_toman = 0;
-    if (!empty($stats['usdt-irt']['latest'])) {
-        $usdt_toman = intval($stats['usdt-irt']['latest']);
-    } elseif (!empty($stats['usdt-rls']['latest'])) {
+    if (!empty($stats['usdt-rls']['latest'])) {
         $usdt_toman = intval($stats['usdt-rls']['latest'] / 10);
+    } elseif (!empty($stats['usdt-irt']['latest'])) {
+        $usdt_toman = intval($stats['usdt-irt']['latest']);
     } else {
-        $usdt_toman = 60000; // پیش‌فرض اضطراری
+        $usdt_toman = 60000;
     }
 
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // ۲. محاسبه دقیق قیمت هر واحد به تومان
-    $currencies = [
+    // ۲. نگاشت کلیدها و دریافت مستقیم قیمت ریالی/تومانی تمام ارزها
+    $target_cryptos = [
         'btc' => 'BTC',
         'eth' => 'ETH',
         'bnb' => 'BNB',
@@ -2319,20 +2319,20 @@ function arz_nobitex() {
         'ton' => 'TON'
     ];
 
-    foreach ($currencies as $src => $key) {
-        $pair_irt  = "{$src}-irt";
-        $pair_usdt = "{$src}-usdt";
-        $pair_rls  = "{$src}-rls";
+    foreach ($target_cryptos as $src => $app_key) {
+        $rls_key  = "{$src}-rls";
+        $irt_key  = "{$src}-irt";
+        $usdt_key = "{$src}-usdt";
 
-        if (!empty($stats[$pair_irt]['latest'])) {
-            // ۱. اولویت اول: قیمت مستقیم تومانی
-            $rates[$key] = intval($stats[$pair_irt]['latest']);
-        } elseif (!empty($stats[$pair_usdt]['latest'])) {
-            // ۲. اولویت دوم: قیمت دلاری ضربدر نرخ تتر
-            $rates[$key] = intval((float)$stats[$pair_usdt]['latest'] * $usdt_toman);
-        } elseif (!empty($stats[$pair_rls]['latest'])) {
-            // ۳. اولویت سوم: قیمت ریالی تقسیم بر ۱۰
-            $rates[$key] = intval((float)$stats[$pair_rls]['latest'] / 10);
+        if (!empty($stats[$rls_key]['latest'])) {
+            // قیمت ریالی تبدیل به تومان
+            $rates[$app_key] = intval((float)$stats[$rls_key]['latest'] / 10);
+        } elseif (!empty($stats[$irt_key]['latest'])) {
+            // قیمت تومانی
+            $rates[$app_key] = intval((float)$stats[$irt_key]['latest']);
+        } elseif (!empty($stats[$usdt_key]['latest'])) {
+            // در صورت نبود بازار ریالی، محاسبه بر اساس قیمت تتری
+            $rates[$app_key] = intval((float)$stats[$usdt_key]['latest'] * $usdt_toman);
         }
     }
 
