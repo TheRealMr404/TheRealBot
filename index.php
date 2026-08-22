@@ -5045,52 +5045,46 @@ $textinvite
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 }
-// ب) صدور فاکتور و نمایش اطلاعات واریز
 elseif (strpos($datain, "user_select_crypto_") === 0) {
-    $sym = str_replace("user_select_crypto_", "", $datain);
+    $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
     $info = get_crypto_currency($sym);
 
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert' => true
+            'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
+            'show_alert'        => true
         ]);
         return;
     }
 
-    $rates = rate_arze();
-    if ($rates === null) {
-        sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-
+    $rates = arz_nobitex();
     $sym_upper = strtoupper($sym);
-    $unit_rate = $rates[$sym_upper] ?? ($rates['USD'] ?? 1);
-    $usd_rate = $rates['USD'] ?? 1;
 
-    $crypto_calc_amount = round($user['Processing_value'] / $unit_rate, ($sym_upper == 'USDT' ? 2 : 4));
-    $usdprice = round($user['Processing_value'] / $usd_rate, 2);
+    // بررسی قیمت اختصاصی ارز انتخابی
+    $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
+    $usd_rate  = $rates['USD'] ?? 60000;
 
-    $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
-    $maxbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
+    // تعداد اعشار دقیق
+    $decimals = match ($sym_upper) {
+        'USDT'        => 2,
+        'TRX', 'TON'  => 4,
+        'BNB'         => 5,
+        'BTC', 'ETH'  => 8,
+        default       => 4
+    };
 
-    if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
-        $mainbalanceplisio = number_format($mainbalancedigitaltron);
-        $maxbalanceplisio = number_format($maxbalancedigitaltron);
-        sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
-        return;
-    }
+    $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
+    $usdprice           = round($user['Processing_value'] / $usd_rate, 2);
 
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
 
-    $dateacc = date('Y/m/d H:i:s');
-    $randomString = bin2hex(random_bytes(5));
-    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+    $dateacc        = date('Y/m/d H:i:s');
+    $randomString   = bin2hex(random_bytes(5));
+    $invoice        = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
     $payment_Status = "Unpaid";
-    $Payment_Method = "offline_" . strtolower($sym);
+    $Payment_Method = "offline_" . $sym;
 
     $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
@@ -5102,27 +5096,16 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
         ]
     ]);
 
+    // ارسال نرخ واحد اختصاصی ($unit_rate)
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
-    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-        $rendered_crypto_msg . "\n\n" .
-        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
 
-    $gethelp = getPaySettingValue('helpofflinearze');
-    if ($gethelp !== null && $gethelp != 2) {
-        $data_help = json_decode($gethelp, true);
-        if ($data_help['type'] == "text") {
-            sendmessage($from_id, $data_help['text'], null, 'HTML');
-        } elseif ($data_help['type'] == "photo") {
-            sendphoto($from_id, $data_help['photoid'], null);
-        } elseif ($data_help['type'] == "video") {
-            sendvideo($from_id, $data_help['videoid'], null);
-        }
-    }
+    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
+                       "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
+                       $rendered_crypto_msg . "\n\n" .
+                       "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
 
     $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
     updatePaymentMessageId($sent_msg, $randomString);
-
 } elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
     if (!isValidPublicIpv4($ip)) {
