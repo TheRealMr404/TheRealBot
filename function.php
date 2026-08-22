@@ -2280,7 +2280,7 @@ function arz_nobitex() {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 6,
+        CURLOPT_TIMEOUT        => 5,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -2299,33 +2299,33 @@ function arz_nobitex() {
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // نگاشت تمام نمادها (حروف کوچک و بزرگ برای جلوگیری از هرگونه عدم تطابق)
-    $list = [
-        'btc' => 'BTC',
-        'eth' => 'ETH',
-        'bnb' => 'BNB',
-        'trx' => 'TRX',
-        'ton' => 'TON'
+    // نگاشت مستقل کلیدها
+    $map = [
+        'btc'  => ['btc-rls', 'btc-irt', 'btc-usdt'],
+        'eth'  => ['eth-rls', 'eth-irt', 'eth-usdt'],
+        'bnb'  => ['bnb-rls', 'bnb-irt', 'bnb-usdt'],
+        'trx'  => ['trx-rls', 'trx-irt', 'trx-usdt'],
+        'ton'  => ['ton-rls', 'ton-irt', 'ton-usdt', 'gram-rls', 'gram-usdt']
     ];
 
-    foreach ($list as $src => $key) {
-        $rls_pair  = "{$src}-rls";
-        $irt_pair  = "{$src}-irt";
-        $usdt_pair = "{$src}-usdt";
-
-        $final_price = 0;
-
-        if (!empty($stats[$rls_pair]['latest'])) {
-            $final_price = intval((float)$stats[$rls_pair]['latest'] / 10);
-        } elseif (!empty($stats[$irt_pair]['latest'])) {
-            $final_price = intval((float)$stats[$irt_pair]['latest']);
-        } elseif (!empty($stats[$usdt_pair]['latest'])) {
-            $final_price = intval((float)$stats[$usdt_pair]['latest'] * $usdt_toman);
+    foreach ($map as $key => $pairs) {
+        $price = 0;
+        foreach ($pairs as $pair) {
+            if (!empty($stats[$pair]['latest'])) {
+                $val = (float)$stats[$pair]['latest'];
+                if (str_ends_with($pair, '-rls')) {
+                    $price = intval($val / 10);
+                } elseif (str_ends_with($pair, '-irt')) {
+                    $price = intval($val);
+                } elseif (str_ends_with($pair, '-usdt')) {
+                    $price = intval($val * $usdt_toman);
+                }
+                break;
+            }
         }
 
-        // ذخیره با هر دو حالت کوچک و بزرگ
-        $rates[$key] = $final_price;
-        $rates[$src] = $final_price;
+        $rates[strtoupper($key)] = $price > 0 ? $price : $usdt_toman;
+        $rates[strtolower($key)] = $price > 0 ? $price : $usdt_toman;
     }
 
     return $rates;
