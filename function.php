@@ -2285,7 +2285,7 @@ function arz_nobitex() {
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => json_encode([
-            'srcCurrency' => 'usdt,btc,eth,bnb,trx,ton',
+            'srcCurrency' => 'usdt,btc,eth,bnb,trx,gram',
             'dstCurrency' => 'rls,usdt'
         ]),
         CURLOPT_HTTPHEADER     => ['Content-Type: application/json']
@@ -2303,19 +2303,25 @@ function arz_nobitex() {
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // ۲. استخراج قیمت ۵ ارز دیگر
-    $currencies = ['btc', 'eth', 'bnb', 'trx', 'ton'];
-    foreach ($currencies as $sym) {
-        $sym_upper   = strtoupper($sym);
-        $tether_pair = "{$sym}-usdt";
-        $rial_pair   = "{$sym}-rls";
+    // ۲. نگاشت نماد API نوبیتکس به نمادهای سیستم ربات
+    $symbols_map = [
+        'btc'  => 'BTC',
+        'eth'  => 'ETH',
+        'bnb'  => 'BNB',
+        'trx'  => 'TRX',
+        'gram' => 'TON' // دریافت قیمت gram و ست کردن روی کلید TON
+    ];
+
+    foreach ($symbols_map as $api_sym => $app_key) {
+        $tether_pair = "{$api_sym}-usdt";
+        $rial_pair   = "{$api_sym}-rls";
 
         if (!empty($res['stats'][$tether_pair]['latest'])) {
             $price_usd = (float)$res['stats'][$tether_pair]['latest'];
-            $rates[$sym_upper] = intval($price_usd * $usdt_toman);
+            $rates[$app_key] = intval($price_usd * $usdt_toman);
         } elseif (!empty($res['stats'][$rial_pair]['latest'])) {
             $price_rls = (float)$res['stats'][$rial_pair]['latest'];
-            $rates[$sym_upper] = intval($price_rls / 10);
+            $rates[$app_key] = intval($price_rls / 10);
         }
     }
 
