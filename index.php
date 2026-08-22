@@ -5092,7 +5092,7 @@ $textinvite
     $paymentkeyboard = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $info['wallet'] ?? '']]
+                ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $info['wallet'] ?? '']]
             ],
             [
                 ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
