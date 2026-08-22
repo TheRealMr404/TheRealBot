@@ -2276,12 +2276,13 @@ function set_crypto_network($sym, $network) {
 function arz_nobitex() {
     $rates = [];
 
-    // ۱. دریافت همزمان قیمت زنده بازارهای نوبیتکس
     $ch = curl_init("https://api.nobitex.ir/market/stats");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 4,
+        CURLOPT_TIMEOUT        => 5,
         CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => json_encode([
             'srcCurrency' => 'usdt,btc,eth,bnb,trx,ton',
@@ -2289,35 +2290,32 @@ function arz_nobitex() {
         ]),
         CURLOPT_HTTPHEADER     => ['Content-Type: application/json']
     ]);
-    
+
     $response = curl_exec($ch);
     curl_close($ch);
 
-    $data = json_decode((string)$response, true);
+    $res = json_decode((string)$response, true);
 
-    // ۲. استخراج قیمت تتر به تومان (تبدیل ریال به تومان)
-    $usdt_rls = (float)($data['stats']['usdt-rls']['latest'] ?? 0);
+    // ۱. استخراج قیمت تتر به تومان
+    $usdt_rls = (float)($res['stats']['usdt-rls']['latest'] ?? 0);
     $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
 
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // ۳. محاسبه قیمت زنده ارزها بر اساس مارکت تتری یا ریالی نوبیتکس
-    $crypto_keys = ['btc', 'eth', 'bnb', 'trx', 'ton'];
+    // ۲. استخراج قیمت ۵ ارز دیگر
+    $currencies = ['btc', 'eth', 'bnb', 'trx', 'ton'];
+    foreach ($currencies as $sym) {
+        $sym_upper   = strtoupper($sym);
+        $tether_pair = "{$sym}-usdt";
+        $rial_pair   = "{$sym}-rls";
 
-    foreach ($crypto_keys as $sym) {
-        $sym_upper = strtoupper($sym);
-        $tether_pair = $sym . '-usdt';
-        $rial_pair   = $sym . '-rls';
-
-        if (!empty($data['stats'][$tether_pair]['latest'])) {
-            // محاسبه بر اساس قیمت دلاری زنده صرافی
-            $price_in_usd = (float)$data['stats'][$tether_pair]['latest'];
-            $rates[$sym_upper] = intval($price_in_usd * $usdt_toman);
-        } elseif (!empty($data['stats'][$rial_pair]['latest'])) {
-            // محاسبه بر اساس نرخ ریالی مستقیم
-            $price_in_rls = (float)$data['stats'][$rial_pair]['latest'];
-            $rates[$sym_upper] = intval($price_in_rls / 10);
+        if (!empty($res['stats'][$tether_pair]['latest'])) {
+            $price_usd = (float)$res['stats'][$tether_pair]['latest'];
+            $rates[$sym_upper] = intval($price_usd * $usdt_toman);
+        } elseif (!empty($res['stats'][$rial_pair]['latest'])) {
+            $price_rls = (float)$res['stats'][$rial_pair]['latest'];
+            $rates[$sym_upper] = intval($price_rls / 10);
         }
     }
 

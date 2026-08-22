@@ -5018,30 +5018,30 @@ $textinvite
     foreach ($currencies as $sym => $info) {
         if (($info['status'] ?? 'off') === 'on') {
             $network_text = !empty($info['network']) ? " - " . strtoupper($info['network']) : "";
-            $btn_title    = $info['name'] . $network_text;
+            $btn_title = $info['name'] . $network_text;
 
             $btn = [
-                'text'          => $btn_title,
+                'text' => $btn_title,
                 'callback_data' => "user_select_crypto_{$sym}",
-                'style'         => $info['style'] ?? 'primary'
+                'style' => $info['style'] ?? 'primary'
             ];
-            
+
             // افزودن آیکون ایموجی پریمیوم
             if (!empty($info['emoji_id'])) {
-                $btn['icon_custom_emoji_id'] = (int)$info['emoji_id'];
+                $btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
             }
-            
+
             $buttons[] = [$btn];
         }
     }
-    
+
     $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back', 'style' => 'danger']];
 
     telegram('editMessageText', [
-        'chat_id'      => $from_id,
-        'message_id'   => $message_id,
-        'text'         => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
-        'parse_mode'   => 'HTML',
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
+        'parse_mode' => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 }
@@ -5102,8 +5102,7 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
         ]
     ]);
 
-    $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount);
-
+    $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
     $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
         "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
         $rendered_crypto_msg . "\n\n" .
