@@ -5044,16 +5044,15 @@ $textinvite
         'parse_mode' => 'HTML',
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
-}
-elseif (strpos($datain, "user_select_crypto_") === 0) {
+} elseif (strpos($datain, "user_select_crypto_") === 0) {
     $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
     $info = get_crypto_currency($sym);
 
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert'        => true
+            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
+            'show_alert' => true
         ]);
         return;
     }
@@ -5063,26 +5062,26 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
 
     // بررسی قیمت اختصاصی ارز انتخابی
     $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
-    $usd_rate  = $rates['USD'] ?? 60000;
+    $usd_rate = $rates['USD'] ?? 60000;
 
     // تعداد اعشار دقیق
     $decimals = match ($sym_upper) {
-        'USDT'        => 2,
-        'TRX', 'TON'  => 4,
-        'BNB'         => 5,
-        'BTC', 'ETH'  => 8,
-        default       => 4
+        'USDT' => 2,
+        'TRX', 'TON' => 4,
+        'BNB' => 5,
+        'BTC', 'ETH' => 8,
+        default => 4
     };
 
     $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
-    $usdprice           = round($user['Processing_value'] / $usd_rate, 2);
+    $usdprice = round($user['Processing_value'] / $usd_rate, 2);
 
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
 
-    $dateacc        = date('Y/m/d H:i:s');
-    $randomString   = bin2hex(random_bytes(5));
-    $invoice        = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+    $dateacc = date('Y/m/d H:i:s');
+    $randomString = bin2hex(random_bytes(5));
+    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
     $payment_Status = "Unpaid";
     $Payment_Method = "offline_" . $sym;
 
@@ -5092,7 +5091,12 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
 
     $paymentkeyboard = json_encode([
         'inline_keyboard' => [
-            [['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]]
+            [
+                ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $info['wallet'] ?? '']]
+            ],
+            [
+                ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
+            ]
         ]
     ]);
 
@@ -5100,9 +5104,9 @@ elseif (strpos($datain, "user_select_crypto_") === 0) {
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
 
     $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-                       "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-                       $rendered_crypto_msg . "\n\n" .
-                       "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
+        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
+        $rendered_crypto_msg . "\n\n" .
+        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
 
     $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
     updatePaymentMessageId($sent_msg, $randomString);

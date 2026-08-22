@@ -2274,13 +2274,22 @@ function set_crypto_network($sym, $network) {
 }
 
 function arz_nobitex() {
-    $rates = [];
+    $cache_file = sys_get_temp_dir() . '/nobitex_rates_cache.json';
+    
+    // اگر از زمان آخرین استعلام کمتر از ۶۰ ثانیه گذشته باشد، از کش بخواند
+    if (file_exists($cache_file) && (time() - filemtime($cache_file) < 60)) {
+        $cached_data = json_decode(@file_get_contents($cache_file), true);
+        if (!empty($cached_data)) {
+            return $cached_data;
+        }
+    }
 
+    $rates = [];
     $url = "https://apiv2.nobitex.ir/market/stats";
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_TIMEOUT        => 4,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -2292,14 +2301,12 @@ function arz_nobitex() {
     $res = json_decode((string)$response, true);
     $stats = $res['stats'] ?? [];
 
-    // استخراج قیمت تتر به تومان
     $usdt_rls = (float)($stats['usdt-rls']['latest'] ?? 0);
     $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
 
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // نگاشت مستقل کلیدها
     $map = [
         'btc'  => ['btc-rls', 'btc-irt', 'btc-usdt'],
         'eth'  => ['eth-rls', 'eth-irt', 'eth-usdt'],
@@ -2323,10 +2330,11 @@ function arz_nobitex() {
                 break;
             }
         }
-
         $rates[strtoupper($key)] = $price > 0 ? $price : $usdt_toman;
         $rates[strtolower($key)] = $price > 0 ? $price : $usdt_toman;
     }
+
+    @file_put_contents($cache_file, json_encode($rates));
 
     return $rates;
 }
