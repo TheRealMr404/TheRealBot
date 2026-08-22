@@ -2276,52 +2276,63 @@ function set_crypto_network($sym, $network) {
 function arz_nobitex() {
     $rates = [];
 
-    $ch = curl_init("https://api.nobitex.ir/market/stats");
+    // ارسال درخواست مستقیم GET طبق اندپوینت جدید v2 نوبیتکس
+    $url = "https://apiv2.nobitex.ir/market/stats?srcCurrency=usdt,btc,eth,bnb,trx,ton&dstCurrency=rls,irt,usdt";
+    
+    $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_TIMEOUT        => 6,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode([
-            'srcCurrency' => 'usdt,btc,eth,bnb,trx,gram',
-            'dstCurrency' => 'rls,usdt'
-        ]),
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json']
+        CURLOPT_HTTPHEADER     => [
+            'Accept: application/json'
+        ]
     ]);
 
     $response = curl_exec($ch);
     curl_close($ch);
 
     $res = json_decode((string)$response, true);
+    $stats = $res['stats'] ?? [];
 
-    // ۱. استخراج قیمت تتر به تومان
-    $usdt_rls = (float)($res['stats']['usdt-rls']['latest'] ?? 0);
-    $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
+    // ۱. استخراج دقیق نرخ تتر به تومان
+    $usdt_toman = 0;
+    if (!empty($stats['usdt-irt']['latest'])) {
+        $usdt_toman = intval($stats['usdt-irt']['latest']);
+    } elseif (!empty($stats['usdt-rls']['latest'])) {
+        $usdt_toman = intval($stats['usdt-rls']['latest'] / 10);
+    } else {
+        $usdt_toman = 60000; // پیش‌فرض اضطراری
+    }
 
     $rates['USD']  = $usdt_toman;
     $rates['USDT'] = $usdt_toman;
 
-    // ۲. نگاشت نماد API نوبیتکس به نمادهای سیستم ربات
-    $symbols_map = [
-        'btc'  => 'BTC',
-        'eth'  => 'ETH',
-        'bnb'  => 'BNB',
-        'trx'  => 'TRX',
-        'gram' => 'TON' // دریافت قیمت gram و ست کردن روی کلید TON
+    // ۲. محاسبه دقیق قیمت هر واحد به تومان
+    $currencies = [
+        'btc' => 'BTC',
+        'eth' => 'ETH',
+        'bnb' => 'BNB',
+        'trx' => 'TRX',
+        'ton' => 'TON'
     ];
 
-    foreach ($symbols_map as $api_sym => $app_key) {
-        $tether_pair = "{$api_sym}-usdt";
-        $rial_pair   = "{$api_sym}-rls";
+    foreach ($currencies as $src => $key) {
+        $pair_irt  = "{$src}-irt";
+        $pair_usdt = "{$src}-usdt";
+        $pair_rls  = "{$src}-rls";
 
-        if (!empty($res['stats'][$tether_pair]['latest'])) {
-            $price_usd = (float)$res['stats'][$tether_pair]['latest'];
-            $rates[$app_key] = intval($price_usd * $usdt_toman);
-        } elseif (!empty($res['stats'][$rial_pair]['latest'])) {
-            $price_rls = (float)$res['stats'][$rial_pair]['latest'];
-            $rates[$app_key] = intval($price_rls / 10);
+        if (!empty($stats[$pair_irt]['latest'])) {
+            // ۱. اولویت اول: قیمت مستقیم تومانی
+            $rates[$key] = intval($stats[$pair_irt]['latest']);
+        } elseif (!empty($stats[$pair_usdt]['latest'])) {
+            // ۲. اولویت دوم: قیمت دلاری ضربدر نرخ تتر
+            $rates[$key] = intval((float)$stats[$pair_usdt]['latest'] * $usdt_toman);
+        } elseif (!empty($stats[$pair_rls]['latest'])) {
+            // ۳. اولویت سوم: قیمت ریالی تقسیم بر ۱۰
+            $rates[$key] = intval((float)$stats[$pair_rls]['latest'] / 10);
         }
     }
 
