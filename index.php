@@ -5090,6 +5090,7 @@ $textinvite
     $stmt->execute();
 
     $wallet_address = trim($info['wallet'] ?? '');
+
     if (empty($wallet_address)) {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
@@ -5099,23 +5100,27 @@ $textinvite
         return;
     }
 
-    $keyboard_buttons = [];
-
-    if (!empty($wallet_address)) {
-        $keyboard_buttons[] = [
-            ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
-        ];
-    }
-
-    $keyboard_buttons[] = [
-        ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
+    $keyboard_buttons = [
+        [
+            [
+                'text' => "📋 کپی آدرس ولت",
+                'copy_text' => ['text' => $wallet_address],
+                'icon_custom_emoji_id' => 5843606192244398823 // ایموجی سفارشی تلگرام
+            ]
+        ],
+        [
+            [
+                'text' => "✅ ارسال لینک واریز یا تصویر واریزی",
+                'callback_data' => "sendresidarze-{$randomString}",
+                'style' => 'primary'
+            ]
+        ]
     ];
 
     $paymentkeyboard = json_encode([
         'inline_keyboard' => $keyboard_buttons
     ]);
 
-    // ارسال نرخ واحد اختصاصی ($unit_rate)
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
 
     $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
