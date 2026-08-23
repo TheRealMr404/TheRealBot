@@ -5059,61 +5059,49 @@ $textinvite
         $info = $stmt->get_result()->fetch_assoc();
     }
 
-    // ۲. بررسی فعال بودن ارز
+    // ۲. بررسی فعال بودن ارز در ربات
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert' => true
+            'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
+            'show_alert'        => true
         ]);
         return;
     }
 
-    // ۳. بررسی ولت (دقیقاً در همین جا قبل از ارسال هر پیامی به کاربر)
-    $wallet_address = trim($info['wallet'] ?? '');
-    if (empty($wallet_address)) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "⚠️ آدرس ولت این ارز هنوز توسط مدیریت تنظیم نشده است.",
-            'show_alert' => true
-        ]);
-        return; // توقف قبل از پاک کردن پیام و قبل از ارسال پیام لودینگ
-    }
-
-    // ۴. بررسی سقف و کف پرداخت
+    // ۳. بررسی سقف و کف پرداخت
     $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
-    $maxbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
+    $maxbalancedigitaltron  = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
 
     if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
         $mainbalanceplisio = number_format($mainbalancedigitaltron);
-        $maxbalanceplisio = number_format($maxbalancedigitaltron);
+        $maxbalanceplisio  = number_format($maxbalancedigitaltron);
         sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
         return;
     }
 
-    // ۵. حالا که همه چیز تایید شد، پیام قبلی پاک شده و پیام لودینگ ارسال می‌شود
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
 
-    // ۶. دریافت نرخ‌ها و محاسبه مبلغ
+    // ۴. دریافت نرخ و محاسبات ریاضی
     $rates = arz_nobitex();
     $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
-    $usd_rate = $rates['USD'] ?? 60000;
+    $usd_rate  = $rates['USD'] ?? 60000;
 
     $decimals = match ($sym_upper) {
-        'USDT' => 2,
-        'TRX', 'TON' => 4,
-        'BNB' => 5,
-        'BTC', 'ETH' => 8,
-        default => 4
+        'USDT'        => 2,
+        'TRX', 'TON'  => 4,
+        'BNB'         => 5,
+        'BTC', 'ETH'  => 8,
+        default       => 4
     };
 
     $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
-    $usdprice = round($user['Processing_value'] / $usd_rate, 2);
+    $usdprice           = round($user['Processing_value'] / $usd_rate, 2);
 
-    $dateacc = date('Y/m/d H:i:s');
-    $randomString = bin2hex(random_bytes(5));
-    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+    $dateacc        = date('Y/m/d H:i:s');
+    $randomString   = bin2hex(random_bytes(5));
+    $invoice        = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
     $payment_Status = "Unpaid";
     $Payment_Method = "offline_" . $sym;
 
@@ -5121,24 +5109,29 @@ $textinvite
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
     $stmt->execute();
 
-    // ۷. ساخت دکمه‌ها با دکمه کپی
-    $paymentkeyboard = json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
-            ],
-            [
-                ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
-            ]
-        ]
-    ]);
+    // ۵. ساخت کیبورد به‌صورت کاملاً امن (دکمه کپی فقط در صورت پر بودن ولت)
+    $wallet_address = trim($info['wallet'] ?? '');
+    $keyboard_rows = [];
 
+    if (!empty($wallet_address)) {
+        $keyboard_rows[] = [
+            ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
+        ];
+    }
+
+    $keyboard_rows[] = [
+        ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
+    ];
+
+    $paymentkeyboard = json_encode(['inline_keyboard' => $keyboard_rows]);
+
+    // ۶. ارسال پیام فاکتور
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
 
     $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-        $rendered_crypto_msg . "\n\n" .
-        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
+                       "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
+                       $rendered_crypto_msg . "\n\n" .
+                       "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
 
     $gethelp = getPaySettingValue('helpofflinearze');
     if ($gethelp !== null && $gethelp != 2) {
