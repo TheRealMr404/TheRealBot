@@ -5050,7 +5050,6 @@ $textinvite
     $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
     $sym_upper = strtoupper($sym);
 
-    // ۱. دریافت اطلاعات ارز از دیتابیس
     $info = get_crypto_currency($sym);
     if (!$info) {
         $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE LOWER(symbol) = ? LIMIT 1");
@@ -5059,7 +5058,6 @@ $textinvite
         $info = $stmt->get_result()->fetch_assoc();
     }
 
-    // ۲. بررسی فعال بودن ارز در ربات
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
@@ -5069,7 +5067,6 @@ $textinvite
         return;
     }
 
-    // ۳. بررسی سقف و کف پرداخت
     $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
     $maxbalancedigitaltron  = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
 
@@ -5083,7 +5080,6 @@ $textinvite
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
 
-    // ۴. دریافت نرخ و محاسبات ریاضی
     $rates = arz_nobitex();
     $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
     $usd_rate  = $rates['USD'] ?? 60000;
@@ -5109,13 +5105,12 @@ $textinvite
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
     $stmt->execute();
 
-    // ۵. ساخت کیبورد به‌صورت کاملاً امن (دکمه کپی فقط در صورت پر بودن ولت)
     $wallet_address = trim($info['wallet'] ?? '');
     $keyboard_rows = [];
 
     if (!empty($wallet_address)) {
         $keyboard_rows[] = [
-            ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
+            ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
         ];
     }
 
@@ -5125,7 +5120,6 @@ $textinvite
 
     $paymentkeyboard = json_encode(['inline_keyboard' => $keyboard_rows]);
 
-    // ۶. ارسال پیام فاکتور
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
 
     $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
