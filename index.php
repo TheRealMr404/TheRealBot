@@ -5045,9 +5045,21 @@ $textinvite
         'reply_markup' => json_encode(['inline_keyboard' => $buttons])
     ]);
 } elseif (strpos($datain, "user_select_crypto_") === 0) {
-    $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
-    $info = get_crypto_currency($sym);
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
+    $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
+    $sym_upper = strtoupper($sym);
+
+    // ۱. دریافت اطلاعات ارز از دیتابیس
+    $info = get_crypto_currency($sym);
+    if (!$info) {
+        $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE LOWER(symbol) = ? LIMIT 1");
+        $stmt->bind_param("s", $sym);
+        $stmt->execute();
+        $info = $stmt->get_result()->fetch_assoc();
+    }
+
+    // ۲. بررسی فعال بودن ارز
     if (!$info || ($info['status'] ?? 'off') !== 'on') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
@@ -5057,14 +5069,37 @@ $textinvite
         return;
     }
 
-    $rates = arz_nobitex();
-    $sym_upper = strtoupper($sym);
+    // ۳. بررسی ولت (دقیقاً در همین جا قبل از ارسال هر پیامی به کاربر)
+    $wallet_address = trim($info['wallet'] ?? '');
+    if (empty($wallet_address)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "⚠️ آدرس ولت این ارز هنوز توسط مدیریت تنظیم نشده است.",
+            'show_alert' => true
+        ]);
+        return; // توقف قبل از پاک کردن پیام و قبل از ارسال پیام لودینگ
+    }
 
-    // بررسی قیمت اختصاصی ارز انتخابی
+    // ۴. بررسی سقف و کف پرداخت
+    $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
+    $maxbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
+
+    if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
+        $mainbalanceplisio = number_format($mainbalancedigitaltron);
+        $maxbalanceplisio = number_format($maxbalancedigitaltron);
+        sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
+        return;
+    }
+
+    // ۵. حالا که همه چیز تایید شد، پیام قبلی پاک شده و پیام لودینگ ارسال می‌شود
+    deletemessage($from_id, $message_id);
+    sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+
+    // ۶. دریافت نرخ‌ها و محاسبه مبلغ
+    $rates = arz_nobitex();
     $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
     $usd_rate = $rates['USD'] ?? 60000;
 
-    // تعداد اعشار دقیق
     $decimals = match ($sym_upper) {
         'USDT' => 2,
         'TRX', 'TON' => 4,
@@ -5076,9 +5111,6 @@ $textinvite
     $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
     $usdprice = round($user['Processing_value'] / $usd_rate, 2);
 
-    deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
-
     $dateacc = date('Y/m/d H:i:s');
     $randomString = bin2hex(random_bytes(5));
     $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
@@ -5089,36 +5121,16 @@ $textinvite
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
     $stmt->execute();
 
-    $wallet_address = trim($info['wallet'] ?? '');
-
-    if (empty($wallet_address)) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "⚠️ آدرس ولت این ارز هنوز توسط مدیریت تنظیم نشده است.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    $keyboard_buttons = [
-        [
+    // ۷. ساخت دکمه‌ها با دکمه کپی
+    $paymentkeyboard = json_encode([
+        'inline_keyboard' => [
             [
-                'text' => "📋 کپی آدرس ولت",
-                'copy_text' => ['text' => $wallet_address],
-                'icon_custom_emoji_id' => 5843606192244398823 // ایموجی سفارشی تلگرام
-            ]
-        ],
-        [
+                ['text' => "📋 کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
+            ],
             [
-                'text' => "✅ ارسال لینک واریز یا تصویر واریزی",
-                'callback_data' => "sendresidarze-{$randomString}",
-                'style' => 'primary'
+                ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
             ]
         ]
-    ];
-
-    $paymentkeyboard = json_encode([
-        'inline_keyboard' => $keyboard_buttons
     ]);
 
     $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
@@ -5127,6 +5139,18 @@ $textinvite
         "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
         $rendered_crypto_msg . "\n\n" .
         "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
+
+    $gethelp = getPaySettingValue('helpofflinearze');
+    if ($gethelp !== null && $gethelp != 2) {
+        $data_help = json_decode($gethelp, true);
+        if ($data_help['type'] == "text") {
+            sendmessage($from_id, $data_help['text'], null, 'HTML');
+        } elseif ($data_help['type'] == "photo") {
+            sendphoto($from_id, $data_help['photoid'], null);
+        } elseif ($data_help['type'] == "video") {
+            sendvideo($from_id, $data_help['videoid'], null);
+        }
+    }
 
     $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
     updatePaymentMessageId($sent_msg, $randomString);
