@@ -7448,7 +7448,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         return;
     }
     deletemessage($from_id, $message_id);
-    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش ترون را ارسال نمایید.", $backuser, 'HTML');
+    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش را ارسال نمایید.", $backuser, 'HTML');
     step('getresidcurrency', $from_id);
     update("user", "Processing_value", $dataget[1], "id", $from_id);
 } elseif ($user['step'] == "getresidcurrency") {

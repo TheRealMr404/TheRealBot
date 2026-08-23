@@ -524,16 +524,66 @@ function generateUUID()
 function rate_arze()
 {
     $arze_rate = [];
-    $requests_tron = json_decode(file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000'), true);
-    $html_read = file_get_contents("https://www.bon-bast.com/");
-    preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read, $matches);
-    if (!empty($matches[1])) {
-        $requestsusd = str_replace(',', '', $matches[1]);
-    }
-    $arze_rate['USD'] = intval($requestsusd);
-    $arze_rate['TRX'] = intval($requests_tron['Price'] * $arze_rate['USD']);
 
-    return $arze_rate;
+$base_usdt_price = 180000; 
+$base_trx_price  = 60000; 
+
+$cache_file = __DIR__ . "/arze_rate_cache.json";
+
+$arze_rate['USD'] = $base_usdt_price;
+$arze_rate['TRX'] = $base_trx_price;
+
+if (file_exists($cache_file)) {
+    $cache_data = json_decode(file_get_contents($cache_file), true);
+
+    if (is_array($cache_data)) {
+        if (!empty($cache_data['USD']) && intval($cache_data['USD']) > 0) {
+            $arze_rate['USD'] = intval($cache_data['USD']);
+        }
+
+        if (!empty($cache_data['TRX']) && intval($cache_data['TRX']) > 0) {
+            $arze_rate['TRX'] = intval($cache_data['TRX']);
+        }
+    }
+}
+
+$requests_tron_raw = @file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000');
+$requests_tron = $requests_tron_raw ? json_decode($requests_tron_raw, true) : null;
+
+if (
+    is_array($requests_tron) &&
+    isset($requests_tron['Price']) &&
+    floatval($requests_tron['Price']) > 0
+) {
+    $arze_rate['TRX'] = intval($requests_tron['Price']);
+}
+
+$html_read = @file_get_contents("https://www.bon-bast.com/");
+preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read ?: '', $matches);
+
+if (!empty($matches[1])) {
+    $requestsusd = str_replace(',', '', $matches[1]);
+
+    if (intval($requestsusd) > 0) {
+        $arze_rate['USD'] = intval($requestsusd);
+    }
+}
+
+if (intval($arze_rate['USD']) <= 0) {
+    $arze_rate['USD'] = $base_usdt_price;
+}
+
+if (intval($arze_rate['TRX']) <= 0) {
+    $arze_rate['TRX'] = $base_trx_price;
+}
+
+@file_put_contents($cache_file, json_encode([
+    'USD' => intval($arze_rate['USD']),
+    'TRX' => intval($arze_rate['TRX']),
+    'updated_at' => date('Y-m-d H:i:s')
+], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+
+return $arze_rate;
 }
 function updatePaymentMessageId($response, $orderId)
 {
