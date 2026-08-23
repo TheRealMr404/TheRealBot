@@ -5089,15 +5089,30 @@ $textinvite
     $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
     $stmt->execute();
 
+    $wallet_address = trim($info['wallet'] ?? '');
+    if (empty($wallet_address)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "⚠️ آدرس ولت این ارز هنوز توسط مدیریت تنظیم نشده است.",
+            'show_alert' => true
+        ]);
+        return;
+    }
+
+    $keyboard_buttons = [];
+
+    if (!empty($wallet_address)) {
+        $keyboard_buttons[] = [
+            ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
+        ];
+    }
+
+    $keyboard_buttons[] = [
+        ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
+    ];
+
     $paymentkeyboard = json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $info['wallet'] ?? '']]
-            ],
-            [
-                ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
-            ]
-        ]
+        'inline_keyboard' => $keyboard_buttons
     ]);
 
     // ارسال نرخ واحد اختصاصی ($unit_rate)
