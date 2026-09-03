@@ -383,9 +383,8 @@ $step_payment = [
     ];   
     }
     if ($statusabangateway == "onabangateway") {
-        $btn_text_aban = !empty($datatextbot['abangateway']) ? $datatextbot['abangateway'] : "💳 درگاه پرداخت آبان پی";
         $step_payment['inline_keyboard'][] = [
-            ['text' => $btn_text_aban, 'callback_data' => "pay_abangateway", 'style' => 'primary']
+            ['text' => $datatextbot['abangateway'], 'callback_data' => "pay_abangateway", 'style' => 'primary']
         ];
     }
     $step_payment['inline_keyboard'][] = [
