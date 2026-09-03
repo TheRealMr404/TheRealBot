@@ -8991,6 +8991,7 @@ n2", $backadmin, 'HTML');
             $valuenew = "onabangateway";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
     }
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');

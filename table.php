@@ -976,7 +976,12 @@ try {
         ['statusnowpayment', '0'],
         ['Exception_auto_cart', '{}'],
         ['marchent_floypay', '0'],
+        ['statusabangateway', 'offabangateway'],
         ['api_abangateway', '0'],
+        ['chashbackabangateway', '0'],
+        ['minbalanceabangateway', $main],
+        ['maxbalanceabangateway', $max],
+        ['helpabangateway', '2'],
     ];
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (
