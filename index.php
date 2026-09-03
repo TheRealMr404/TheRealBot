@@ -7355,41 +7355,38 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $message_id = sendmessage($from_id, $textstar, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
     } elseif ($datain == "pay_abangateway") {
-    $price = intval($user['Processing_value']);
-    $mainbalance = select("PaySetting", "ValuePay", "NamePay", "minbalanceabangateway", "select")['ValuePay'];
-    $maxbalance = select("PaySetting", "ValuePay", "NamePay", "maxbalanceabangateway", "select")['ValuePay'];
+        $price = intval($user['Processing_value']);
+        $mainbalance = select("PaySetting", "ValuePay", "NamePay", "minbalanceabangateway", "select")['ValuePay'];
+        $maxbalance = select("PaySetting", "ValuePay", "NamePay", "maxbalanceabangateway", "select")['ValuePay'];
 
-    if ($price < $mainbalance || $price > $maxbalance) {
-        $mainbalance = number_format($mainbalance);
-        $maxbalance = number_format($maxbalance);
-        sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalance و حداکثر $maxbalance تومان باشد", null, 'HTML');
-        return;
-    }
+        if ($price < $mainbalance || $price > $maxbalance) {
+            $mainbalance = number_format($mainbalance);
+            $maxbalance = number_format($maxbalance);
+            sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalance و حداکثر $maxbalance تومان باشد", null, 'HTML');
+            return;
+        }
 
-    $randomString = bin2hex(random_bytes(5));
-    $dateacc = date('Y/m/d H:i:s');
-    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-    $payment_Status = "Unpaid";
-    $Payment_Method = "abangateway";
+        $randomString = bin2hex(random_bytes(5));
+        $dateacc = date('Y/m/d H:i:s');
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $payment_Status = "Unpaid";
+        $Payment_Method = "abangateway";
 
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $price, $payment_Status, $Payment_Method, $invoice);
-    $stmt->execute();
-    $stmt->close();
+        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $price, $payment_Status, $Payment_Method, $invoice);
+        $stmt->execute();
+        $stmt->close();
 
-    // دریافت پاسخ از تابع درگاه آبان‌پی
-    $res = abangateway($randomString, $price);
+        $res = abangateway($randomString, $price);
 
-    // بررسی وضعیت موفقیت بر اساس ساختار خروجی (پشتیبانی از کلیدهای مختلف احتمالی)
-    $is_success = isset($res['success']) ? $res['success'] : ($res['IsSuccessful'] ?? false);
+        $is_success = isset($res['success']) ? $res['success'] : ($res['IsSuccessful'] ?? false);
 
-    // اگر درخواست با خطا مواجه شد یا موفقیت‌آمیز نبود
-    if ($is_success != "true" && $is_success !== true) {
-        $text_error = json_encode($res, JSON_UNESCAPED_UNICODE);
-        sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
-        step('home', $from_id);
+        if ($is_success != "true" && $is_success !== true) {
+            $text_error = json_encode($res, JSON_UNESCAPED_UNICODE);
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
 
-        $ErrorsLinkPayment = "
+            $ErrorsLinkPayment = "
 ⭕️ یک کاربر قصد پرداخت داشت که ساخت لینک پرداخت آبان‌پی با خطا مواجه شده و به کاربر لینک داده نشد
 ✍️ دلیل خطا : $text_error
             
@@ -7397,62 +7394,62 @@ elseif ($datain == "confirm_pay_tun_custom") {
 روش پرداخت : آبان‌پی (AbanPay)
 نام کاربری کاربر : @$username";
 
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id' => $setting['Channel_Report'],
-                'message_thread_id' => $errorreport,
-                'text' => $ErrorsLinkPayment,
-                'parse_mode' => "HTML"
-            ]);
-        }
-        return;
-    }
-
-    // استخراج لینک پرداخت از متغیر صحیح $res
-    $payment_url = $res['payment_url'] ?? $res['data']['payment_url'] ?? $res['url'] ?? '';
-
-    if (!empty($payment_url)) {
-        deletemessage($from_id, $message_id);
-
-        $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpabangateway", "select")['ValuePay'];
-        if ($gethelp != 2 && !empty($gethelp)) {
-            $data = json_decode($gethelp, true);
-            if (is_array($data)) {
-                if ($data['type'] == "text") {
-                    sendmessage($from_id, $data['text'], null, 'HTML');
-                } elseif ($data['type'] == "photo") {
-                    sendphoto($from_id, $data['photoid'], $data['text']);
-                } elseif ($data['type'] == "video") {
-                    sendvideo($from_id, $data['videoid'], $data['text']);
-                }
-            } else {
-                sendmessage($from_id, $gethelp, null, 'HTML');
+            if (strlen($setting['Channel_Report']) > 0) {
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $errorreport,
+                    'text' => $ErrorsLinkPayment,
+                    'parse_mode' => "HTML"
+                ]);
             }
+            return;
         }
 
-        $btn_pay = json_encode([
-            'inline_keyboard' => [
-                [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
-                [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
-            ]
-        ]);
+        $payment_url = $res['payment_url'] ?? $res['data']['payment_url'] ?? $res['url'] ?? '';
 
-        $text_pay = "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان پی)</b>\n\n"
-            . "💵 <b>مبلغ قابل پرداخت:</b> " . number_format($price) . " تومان\n"
-            . "🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>\n\n"
-            . "👇 جهت پرداخت روی دکمه زیر کلیک کنید:";
+        if (!empty($payment_url)) {
+            deletemessage($from_id, $message_id);
 
-        $sent = telegram('sendmessage', [
-            'chat_id' => $from_id,
-            'text' => $text_pay,
-            'reply_markup' => $btn_pay,
-            'parse_mode' => "html",
-        ]);
+            $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpabangateway", "select")['ValuePay'];
+            if ($gethelp != 2 && !empty($gethelp)) {
+                $data = json_decode($gethelp, true);
+                if (is_array($data)) {
+                    if ($data['type'] == "text") {
+                        sendmessage($from_id, $data['text'], null, 'HTML');
+                    } elseif ($data['type'] == "photo") {
+                        sendphoto($from_id, $data['photoid'], $data['text']);
+                    } elseif ($data['type'] == "video") {
+                        sendvideo($from_id, $data['videoid'], $data['text']);
+                    }
+                } else {
+                    sendmessage($from_id, $gethelp, null, 'HTML');
+                }
+            }
 
-        if (isset($sent['result']['message_id'])) {
-            updatePaymentMessageId($sent['result']['message_id'], $randomString);
+            $btn_pay = json_encode([
+                'inline_keyboard' => [
+                    [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
+                    [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
+                ]
+            ]);
+
+            $text_pay = "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان پی)</b>\n\n"
+                . "💵 <b>مبلغ قابل پرداخت:</b> " . number_format($price) . " تومان\n"
+                . "🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>\n\n"
+                . "👇 جهت پرداخت روی دکمه زیر کلیک کنید:";
+
+            $sent = telegram('sendmessage', [
+                'chat_id' => $from_id,
+                'text' => $text_pay,
+                'reply_markup' => $btn_pay,
+                'parse_mode' => "html",
+            ]);
+
+            if (isset($sent['result']['message_id'])) {
+                updatePaymentMessageId($sent['result']['message_id'], $randomString);
+            }
+            step('home', $from_id);
         }
-        step('home', $from_id);
     }
 }
 if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
