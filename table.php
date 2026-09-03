@@ -984,6 +984,7 @@ try {
         ['helpabangateway', '2'],
         ['endpointabangateway', '0'],
     ];
+
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (
         NamePay varchar(500) PRIMARY KEY NOT NULL,
@@ -998,13 +999,8 @@ try {
         }
     } else {
         foreach ($settings as $setting) {
-            $connect->query("INSERT IGNORE INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}')");
+            $connect->query("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}') ON DUPLICATE KEY UPDATE NamePay = NamePay");
         }
-
-
-
-
-
     }
 } catch (Exception $e) {
     file_put_contents('error_log', $e->getMessage());
