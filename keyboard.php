@@ -277,7 +277,7 @@ $NowPaymentsManage = json_encode([
 ]);
 $AbanGatewayManage = json_encode([
     'keyboard' => [
-        [['text' => "🌐 تنظیم آدرس درگاه"]],
+        [['text' => "🌐 تنظیم آدرس درگاه آبان پی"]],
         [['text' => "🗂 نام درگاه آبان پی"], ['text' => "API آبان پی"]],
         [['text' => "💰 کش بک آبان پی"]],
         [['text' => "⬇️ حداقل مبلغ آبان پی"], ['text' => "⬆️ حداکثر مبلغ آبان پی"]],
