@@ -2436,7 +2436,7 @@ function abangateway($order_id, $price)
         CURLOPT_POSTFIELDS => json_encode([
             'amount' => intval($price),
             'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/abangateway.php",
+            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
         ], JSON_UNESCAPED_UNICODE),
     ]);
 
