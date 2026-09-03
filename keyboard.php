@@ -383,8 +383,9 @@ $step_payment = [
     ];   
     }
     if ($statusabangateway == "onabangateway") {
+        $aban_text_query = select("textbot", "text", "id_text", "abangateway", "select");
         $step_payment['inline_keyboard'][] = [
-            ['text' => $datatextbot['abangateway'], 'callback_data' => "pay_abangateway", 'style' => 'primary']
+            ['text' => $aban_text_query['text'], 'callback_data' => "pay_abangateway", 'style' => 'primary']
         ];
     }
     $step_payment['inline_keyboard'][] = [
