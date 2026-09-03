@@ -1,4 +1,5 @@
 <?php
+@file_put_contents(__DIR__ . '/hit.txt', date('Y-m-d H:i:s') . ' | ' . ($_SERVER['REQUEST_METHOD'] ?? '') . ' | ' . ($_SERVER['REQUEST_URI'] ?? '') . PHP_EOL, FILE_APPEND);
 
 ini_set('display_errors', '0');
 ini_set('error_log', __DIR__ . '/error_log');
