@@ -4259,6 +4259,11 @@ $text_expie_agent
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $keyboardadmin, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_tronseller");
     step('home', $from_id);
+} elseif ($datain == "abangatewaysetting" && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id
+    ]);
+    sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه آبان‌پی خوش آمدید:", $AbanGatewayManage, 'HTML');
 } elseif ($datain == "aqayepardakhtsetting" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $aqayepardakht, 'HTML');
 } elseif ($datain == "zarinpalsetting" && $adminrulecheck['rule'] == "administrator") {
