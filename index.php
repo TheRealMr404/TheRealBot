@@ -7095,6 +7095,78 @@ elseif ($datain == "confirm_pay_tun_custom") {
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
+    } elseif ($datain == "pay_abangateway") {
+        $mainbalance = getPaySettingValue('minbalanceabangateway', '0');
+        $maxbalance = getPaySettingValue('maxbalanceabangateway', '0');
+        if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
+            $mainbalance = number_format($mainbalance);
+            $maxbalance = number_format($maxbalance);
+            sendmessage($from_id, strtr($textbotlang['users']['Balance']['depositRangePlisio'], ['{mainbalance}' => $mainbalance, '{maxbalance}' => $maxbalance]), null, 'HTML');
+            return;
+        }
+
+        $dateacc = date('Y/m/d');
+        $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND time LIKE :today");
+        $stmt->execute([':today' => '%' . $dateacc . '%']);
+        $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (intval($sumpayment['price']) > 50000000) { // سقف روزانه قابل تنظیم است
+            sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
+            return;
+        }
+
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+
+        $dateacc = date('Y/m/d H:i:s');
+        $randomString = bin2hex(random_bytes(5));
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $Payment_Method = "AbanGateway";
+        $stmt->execute([$from_id, $randomString, $dateacc, $user['Processing_value'], "Unpaid", $Payment_Method, $invoice]);
+
+        $pay = abangateway($randomString, $user['Processing_value']);
+
+        $payment_url = $pay['payment_link'] ?? $pay['payment_url'] ?? $pay['url'] ?? $pay['data']['payment_url'] ?? null;
+        $is_success = isset($pay['success']) ? $pay['success'] : (!empty($payment_url) ? true : false);
+
+        if (!$is_success || empty($payment_url)) {
+            $text_error = json_encode($pay, JSON_UNESCAPED_UNICODE);
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+
+            $ErrorsLinkPayment = sprintf($textbotlang['Admin']['reportgroup']['errorPaymentLink3'] ?? "⭕️ خطا در ساخت لینک پرداخت آبان‌پی:\n%s\n\nکاربر: %s\nروش: %s\nیوزرنیم: @%s", $text_error, $from_id, $Payment_Method, $username);
+
+            if (strlen($setting['Channel_Report']) > 0) {
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $errorreport,
+                    'text' => $ErrorsLinkPayment,
+                    'parse_mode' => "HTML"
+                ]);
+            }
+            return;
+        }
+
+        $pricetoman = number_format($user['Processing_value'], 0);
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => $textbotlang['users']['Balance']['payments'] ?? "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]
+                ],
+                [
+                    ['text' => "❌ انصراف", 'callback_data' => "colselist"]
+                ]
+            ]
+        ]);
+
+        $text_aban = isset($textbotlang['users']['Balance']['transactionCreated3'])
+            ? sprintf($textbotlang['users']['Balance']['transactionCreated3'], $randomString, $pricetoman)
+            : "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان‌پی)</b>\n\n💵 <b>مبلغ قابل پرداخت:</b> {$pricetoman} تومان\n🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>";
+
+        $message_id = sendmessage($from_id, $text_aban, $paymentkeyboard, 'HTML');
+        updatePaymentMessageId($message_id, $randomString);
+        step('home', $from_id);
     } elseif ($datain == "iranpay3") {
         $dateacc = date('Y/m/d');
         $query = "SELECT SUM(price) as price FROM Payment_report WHERE  Payment_Method = 'Currency Rial 1' AND  time LIKE '%$dateacc%'";

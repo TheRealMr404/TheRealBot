@@ -2396,48 +2396,56 @@ function arz_nobitex() {
     return $rates;
 }
 
+function abangatewayEndpoint(): ?string
+{
+    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'));
+    if ($endpoint === '' || $endpoint === '0') {
+        return null;
+    }
+
+    $parts = parse_url($endpoint);
+    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
+        return null;
+    }
+
+    return rtrim($endpoint, '/');
+}
+
 function abangateway($order_id, $price)
 {
     global $domainhosts;
+
+    $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
+    $endpoint = abangatewayEndpoint();
     
-    $apiKey = select("PaySetting", "*", "NamePay", "api_abangateway", "select")['ValuePay'];
-    $callbackUrl = "https://" . rtrim($domainhosts, '/') . "/payment/abangateway.php";
-    
-    $amountRial = intval($price) * 10;
-    
-    $payload = [
-        "amount"       => $amountRial,
-        "callback_url" => $callbackUrl,
-        "order_id"     => (string)$order_id,
-        "description"  => "پرداخت سفارش شماره " . $order_id
-    ];
+    if ($api_key === '' || $api_key === '0' || $endpoint === null) {
+        return ['success' => false, 'message' => 'abangateway: key or endpoint is unset'];
+    }
 
     $curl = curl_init();
     curl_setopt_array($curl, [
-        CURLOPT_URL            => "https://abangateway.ir/api/v1/payment/create",
+        CURLOPT_URL => $endpoint . '/create',
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_CUSTOMREQUEST  => 'POST',
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_HTTPHEADER     => [
-            'Authorization: Bearer ' . trim($apiKey),
+        CURLOPT_TIMEOUT => 25,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Accept: application/json'
+            'Accept: application/json',
+            'Authorization: Bearer ' . $api_key,
         ],
+        CURLOPT_POSTFIELDS => json_encode([
+            'amount' => intval($price),
+            'order_id' => $order_id,
+            'callback_url' => "https://$domainhosts/payment/abangateway.php",
+        ], JSON_UNESCAPED_UNICODE),
     ]);
 
     $response = curl_exec($curl);
-    $curl_error = curl_error($curl);
-    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    if ($response === false) {
+        curl_close($curl);
+        return ['success' => false, 'message' => 'abangateway: gateway unreachable'];
+    }
     curl_close($curl);
 
-    file_put_contents(__DIR__ . "/aban_create_order.log", print_r([
-        "time"         => date("Y-m-d H:i:s"),
-        "send_data"    => $payload,
-        "raw_response" => $response,
-        "http_code"    => $http_code,
-        "curl_error"   => $curl_error
-    ], true) . "\n--------------------------\n", FILE_APPEND);
-
-    return json_decode($response, true);
+    return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
 }
