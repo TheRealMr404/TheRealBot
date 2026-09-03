@@ -8840,6 +8840,11 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
                 ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
             ],
             [
+                ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
+                ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
+                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
+            ],
+            [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
                 ['text' => $aqayepardakhtstatus, 'callback_data' => "editpayment-aqayepardakht-$aqayepardakht"],
                 ['text' => "🔵 آقای پرداخت", 'callback_data' => "aqayepardakht"],
