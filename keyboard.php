@@ -275,6 +275,16 @@ $NowPaymentsManage = json_encode([
     ],
     'resize_keyboard' => true
 ]);
+$AbanGatewayManage = json_encode([
+    'keyboard' => [
+        [['text' => "🗂 نام درگاه آبان پی"], ['text' => "API آبان پی"]],
+        [['text' => "💰 کش بک آبان پی"]],
+        [['text' => "⬇️ حداقل مبلغ آبان پی"], ['text' => "⬆️ حداکثر مبلغ آبان پی"]],
+        [['text' => "📚 تنظیم آموزش آبان پی"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
+    ],
+    'resize_keyboard' => true
+]);
 $setting_panel =  json_encode([
     'keyboard' => [
         [['text' => "⚙️ وضعیت قابلیت ها"]],
@@ -306,6 +316,7 @@ $arzireyali3 = getPaySettingValue("statusiranpay3");
 $paymentstatussnotverify = getPaySettingValue("paymentstatussnotverify");
 $paymentsstartelegram = getPaySettingValue("statusstar");
 $payment_status_nowpayment = getPaySettingValue("statusnowpayment");
+$statusabangateway = getPaySettingValue("statusabangateway");
 $step_payment = [
     'inline_keyboard' => []
     ];
@@ -370,6 +381,11 @@ $step_payment = [
      $step_payment['inline_keyboard'][] = [
             ['text' => $datatextbot['text_star_telegram'] , 'callback_data' => "startelegrams" , 'style'=>'primary' ]
     ];   
+    }
+    if ($statusabangateway == "onabangateway") {
+        $step_payment['inline_keyboard'][] = [
+            ['text' => $datatextbot['abangateway'] , 'callback_data' => "pay_abangateway" , 'style' => 'primary' ]
+        ];
     }
     $step_payment['inline_keyboard'][] = [
             ['text' => "بستن لیست" , 'callback_data' => "colselist" ,'style'=>'danger' , 'icon_custom_emoji_id'=> 5875082500023258804 ]

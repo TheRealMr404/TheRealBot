@@ -4293,13 +4293,13 @@ $text_expie_agent
     $info = get_crypto_currency($sym);
 
     $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
+        'usdt' => 'تتر (USDT)',
+        'trx' => 'ترون (TRX)',
+        'ton' => 'تون کوین (TON)',
+        'btc' => 'بیت‌کوین (BTC)',
+        'eth' => 'اتریوم (ETH)',
+        'bnb' => 'بایننس کوین (BNB)'
+    ];
     $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
 
     $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
@@ -7776,6 +7776,13 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     sendmessage($from_id, "✅  متن با موفقیت تنظیم گردید.", $keyboardzarinpal, 'HTML');
     update("textbot", "text", $text, "id_text", "zarinpal");
     step("home", $from_id);
+} elseif ($text == "🗂 نام درگاه آبان پی") {
+    sendmessage($from_id, " 📌 نام درگاه را ارسال نمايید", $backadmin, 'HTML');
+    step("gettextabangateway", $from_id);
+} elseif ($user['step'] == "gettextabangateway") {
+    sendmessage($from_id, "✅  متن با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
+    update("textbot", "text", $text, "id_text", "abangateway");
+    step("home", $from_id);
 } elseif ($text == "⚙️  اینباند اکانت غیرفعال" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['Inbound']['GetProtocol'], $keyboardprotocol, 'HTML');
     step('getprotocoldisable', $from_id);
@@ -7833,20 +7840,20 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
+        'usdt' => 'تتر (USDT)',
+        'trx' => 'ترون (TRX)',
+        'ton' => 'تون کوین (TON)',
+        'btc' => 'بیت‌کوین (BTC)',
+        'eth' => 'اتریوم (ETH)',
+        'bnb' => 'بایننس کوین (BNB)'
+    ];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $sym_key = strtolower($sym);
         $fixed_title = $static_names[$sym_key] ?? strtoupper($sym);
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        
+
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
@@ -7856,36 +7863,34 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-           "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
+        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+        "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id'      => $from_id,
-            'message_id'   => $message_id,
-            'text'         => $msg,
-            'parse_mode'   => 'HTML',
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'text' => $msg,
+            'parse_mode' => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
         sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
     }
-}
-
-elseif (strpos($datain, "toggle_crypto_") === 0) {
+} elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     $current_status = toggle_crypto_status($sym);
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
+        'usdt' => 'تتر (USDT)',
+        'trx' => 'ترون (TRX)',
+        'ton' => 'تون کوین (TON)',
+        'btc' => 'بیت‌کوین (BTC)',
+        'eth' => 'اتریوم (ETH)',
+        'bnb' => 'بایننس کوین (BNB)'
+    ];
 
     $keyboard = [];
     foreach ($currencies as $s => $item) {
@@ -7893,7 +7898,7 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
         $fixed_title = $static_names[$sym_key] ?? strtoupper($s);
         $st = ($s === $sym) ? $current_status : ($item['status'] ?? 'off');
         $status_icon = ($st == 'on') ? "✅ روشن" : "❌ خاموش";
-        
+
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
@@ -7903,8 +7908,8 @@ elseif (strpos($datain, "toggle_crypto_") === 0) {
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     telegram('editMessageReplyMarkup', [
-        'chat_id'      => $from_id,
-        'message_id'   => $message_id,
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
 }
@@ -7956,7 +7961,7 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
         'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
     ]), 'HTML');
-} 
+}
 // ۱. با کلیک روی نام ارز: باز شدن منوی تنظیمات نام و شبکه
 elseif (strpos($datain, "view_wallet_info_") === 0 && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
@@ -8969,9 +8974,17 @@ n2", $backadmin, 'HTML');
             $valuenew = "1";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusnowpayment");
+    } elseif ($type == "abangateway") {
+        if ($value == "onabangateway") {
+            $valuenew = "offabangateway";
+        } else {
+            $valuenew = "onabangateway";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
     }
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
+    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
     $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
     $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot');
     $arzireyali2 = getPaySettingValue('statustarnado', 'offternado');
@@ -9021,6 +9034,10 @@ n2", $backadmin, 'HTML');
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
     ][$payment_status_nowpayment];
+    $abangatewaystatus = [
+        'onabangateway' => $textbotlang['Admin']['Status']['statuson'],
+        'offabangateway' => $textbotlang['Admin']['Status']['statusoff']
+    ][$abangateway];
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
@@ -9057,6 +9074,11 @@ n2", $backadmin, 'HTML');
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
                 ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
                 ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
+            ],
+            [
+                ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
+                ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
+                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
@@ -12831,4 +12853,55 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $Swapinokey, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_floypay");
     step('home', $from_id);
+} elseif ($text == "API آبان پی") {
+    sendmessage($from_id, "📌 کلید API دریافتی از آبان‌پی را ارسال نمایید.", $backadmin, 'HTML');
+    step("getapiabangateway", $from_id);
+} elseif ($user['step'] == "getapiabangateway") {
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "api_abangateway");
+    sendmessage($from_id, "✅ کلید API با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
+
+} elseif ($text == "💰 کش بک آبان پی") {
+    sendmessage($from_id, "📌 درصد کش‌بک را به عدد ارسال نمایید (مثال: 5 یا 10 برای درصد، عدد 0 برای غیرفعال‌سازی):", $backadmin, 'HTML');
+    step("getcashbackabangateway", $from_id);
+} elseif ($user['step'] == "getcashbackabangateway") {
+    if (!is_numeric($text)) {
+        sendmessage($from_id, "❌ لطفاً فقط مقدار عددی ارسال نمایید.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "chashbackabangateway");
+    sendmessage($from_id, "✅ درصد کش‌بک با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
+
+} elseif ($text == "⬇️ حداقل مبلغ آبان پی") {
+    sendmessage($from_id, "📌 حداقل مبلغ شارژ را به تومان وارد نمایید:", $backadmin, 'HTML');
+    step("getminbalanceabangateway", $from_id);
+} elseif ($user['step'] == "getminbalanceabangateway") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ لطفاً فقط عدد انگلیسی وارد نمایید.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "minbalanceabangateway");
+    sendmessage($from_id, "✅ حداقل مبلغ با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
+
+} elseif ($text == "⬆️ حداکثر مبلغ آبان پی") {
+    sendmessage($from_id, "📌 حداکثر مبلغ شارژ را به تومان وارد نمایید:", $backadmin, 'HTML');
+    step("getmaxbalanceabangateway", $from_id);
+} elseif ($user['step'] == "getmaxbalanceabangateway") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ لطفاً فقط عدد انگلیسی وارد نمایید.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "maxbalanceabangateway");
+    sendmessage($from_id, "✅ حداکثر مبلغ با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
+
+} elseif ($text == "📚 تنظیم آموزش آبان پی") {
+    sendmessage($from_id, "📌 متن آموزش و راهنمای پرداخت را ارسال نمایید (جهت غیرفعال‌سازی عدد 2 را بفرستید):", $backadmin, 'HTML');
+    step("gethelpabangateway", $from_id);
+} elseif ($user['step'] == "gethelpabangateway") {
+    update("PaySetting", "ValuePay", $text, "NamePay", "helpabangateway");
+    sendmessage($from_id, "✅ راهنمای درگاه با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
 }

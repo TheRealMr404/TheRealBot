@@ -687,35 +687,42 @@ function trnado($order_id, $price)
     global $domainhosts;
     $apitronseller = select("PaySetting", "*", "NamePay", "apiternado", "select")['ValuePay'];
     $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
-    $urlpay = select("PaySetting", "*", "NamePay", "urlpaymenttron", "select")['ValuePay'];
+    
+    $urlpay = "https://bot.tronado.cloud/api/v5/GetOrderToken";
+    
     $curl = curl_init();
     $data = array(
-        "PaymentID" => $order_id,
-        "WalletAddress" => $walletaddress,
-        "TronAmount" => $price,
-        "CallbackUrl" => "https://" . $domainhosts . "/payment/tronado.php"
+        "PaymentID"     => (string)$order_id,
+        "WalletAddress" => trim($walletaddress),
+        "TronAmount"    => floatval($price),
+        "CallbackUrl"   => "https://" . $domainhosts . "/payment/tronado.php"
     );
-    $datasend = json_encode($data);
+    
     curl_setopt_array($curl, array(
-        CURLOPT_URL => "$urlpay",
+        CURLOPT_URL            => $urlpay,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
-            'x-api-key:' . $apitronseller,
-            'Content-Type: application/json',
-            'Cookie: ASP.NET_SessionId=spou2s5lo4nnxkjtavscrrlo'
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_POSTFIELDS     => json_encode($data),
+        CURLOPT_HTTPHEADER     => array(
+            'x-api-key: ' . trim($apitronseller),
+            'Content-Type: application/json'
         ),
     ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, $datasend);
 
     $response = curl_exec($curl);
-
+    $curl_error = curl_error($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
+
+    file_put_contents(__DIR__ . "/tronado_create_order.log", print_r([
+        "time"         => date("Y-m-d H:i:s"),
+        "send_data"    => $data,
+        "raw_response" => $response,
+        "http_code"    => $http_code,
+        "curl_error"   => $curl_error
+    ], true) . "\n--------------------------\n", FILE_APPEND);
+
     return json_decode($response, true);
 }
 function formatBytes($bytes, $precision = 2): string
@@ -2387,4 +2394,50 @@ function arz_nobitex() {
     @file_put_contents($cache_file, json_encode($rates));
 
     return $rates;
+}
+
+function abangateway($order_id, $price)
+{
+    global $domainhosts;
+    
+    $apiKey = select("PaySetting", "*", "NamePay", "api_abangateway", "select")['ValuePay'];
+    $callbackUrl = "https://" . rtrim($domainhosts, '/') . "/payment/abangateway.php";
+    
+    $amountRial = intval($price) * 10;
+    
+    $payload = [
+        "amount"       => $amountRial,
+        "callback_url" => $callbackUrl,
+        "order_id"     => (string)$order_id,
+        "description"  => "پرداخت سفارش شماره " . $order_id
+    ];
+
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL            => "https://abangateway.ir/api/v1/payment/create",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . trim($apiKey),
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ],
+    ]);
+
+    $response = curl_exec($curl);
+    $curl_error = curl_error($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    curl_close($curl);
+
+    file_put_contents(__DIR__ . "/aban_create_order.log", print_r([
+        "time"         => date("Y-m-d H:i:s"),
+        "send_data"    => $payload,
+        "raw_response" => $response,
+        "http_code"    => $http_code,
+        "curl_error"   => $curl_error
+    ], true) . "\n--------------------------\n", FILE_APPEND);
+
+    return json_decode($response, true);
 }

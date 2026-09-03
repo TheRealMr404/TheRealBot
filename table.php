@@ -823,6 +823,7 @@ try {
         ['aqayepardakht', '🔵 درگاه آقای پرداخت'],
         ['mowpayment', '💸 پرداخت با ارز دیجیتال'],
         ['zarinpal', '🟡 زرین پال'],
+        ['abangateway', '💳 درگاه پرداخت آبان‌پی'],
         ['textafterpay', $textafterpay],
         ['textafterpayibsng', $textafterpayibsng],
         ['textaftertext', $textaftertext],
@@ -975,6 +976,7 @@ try {
         ['statusnowpayment', '0'],
         ['Exception_auto_cart', '{}'],
         ['marchent_floypay', '0'],
+        ['api_abangateway', '0'],
     ];
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (

@@ -7354,6 +7354,82 @@ elseif ($datain == "confirm_pay_tun_custom") {
         }
         $message_id = sendmessage($from_id, $textstar, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
+    } elseif ($datain == "pay_abangateway") {
+        $price = intval($user['Processing_value']);
+        $mainbalance = select("PaySetting", "ValuePay", "NamePay", "minbalanceabangateway", "select")['ValuePay'];
+        $maxbalance = select("PaySetting", "ValuePay", "NamePay", "maxbalanceabangateway", "select")['ValuePay'];
+
+        if ($price < $mainbalance || $price > $maxbalance) {
+            $mainbalance = number_format($mainbalance);
+            $maxbalance = number_format($maxbalance);
+            sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalance و حداکثر $maxbalance تومان باشد", null, 'HTML');
+            return;
+        }
+
+        $randomString = bin2hex(random_bytes(5));
+        $dateacc = date('Y/m/d H:i:s');
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $payment_Status = "Unpaid";
+        $Payment_Method = "abangateway";
+
+        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $price, $payment_Status, $Payment_Method, $invoice);
+        $stmt->execute();
+        $stmt->close();
+
+        $res = abangateway($randomString, $price);
+        $payment_url = $res['payment_url'] ?? $res['data']['payment_url'] ?? $res['url'] ?? null;
+
+        if (!empty($payment_url)) {
+            deletemessage($from_id, $message_id);
+
+            $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpabangateway", "select")['ValuePay'];
+            if ($gethelp != 2 && !empty($gethelp)) {
+                $data = json_decode($gethelp, true);
+                if (is_array($data)) {
+                    if ($data['type'] == "text") {
+                        sendmessage($from_id, $data['text'], null, 'HTML');
+                    } elseif ($data['type'] == "photo") {
+                        sendphoto($from_id, $data['photoid'], $data['text']);
+                    } elseif ($data['type'] == "video") {
+                        sendvideo($from_id, $data['videoid'], $data['text']);
+                    }
+                } else {
+                    sendmessage($from_id, $gethelp, null, 'HTML');
+                }
+            }
+
+            $btn_pay = json_encode([
+                'inline_keyboard' => [
+                    [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
+                    [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
+                ]
+            ]);
+
+            $text_pay = "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان پی)</b>\n\n"
+                      . "💵 <b>مبلغ قابل پرداخت:</b> " . number_format($price) . " تومان\n"
+                      . "🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>\n\n"
+                      . "👇 جهت پرداخت روی دکمه زیر کلیک کنید:";
+
+            $sent = telegram('sendmessage', [
+                'chat_id'      => $from_id,
+                'text'         => $text_pay,
+                'reply_markup' => $btn_pay,
+                'parse_mode'   => "html",
+            ]);
+
+            if (isset($sent['result']['message_id'])) {
+                updatePaymentMessageId($sent['result']['message_id'], $randomString);
+            }
+            step('home', $from_id);
+        } else {
+            $err = $res['message'] ?? 'خطا در ارتباط با درگاه بانکی';
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text'              => "❌ {$err}",
+                'show_alert'        => true
+            ]);
+        }
     }
 }
 if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
