@@ -4264,7 +4264,7 @@ $text_expie_agent
         'callback_query_id' => $callback_query_id
     ]);
     sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه آبان‌پی خوش آمدید:", $AbanGatewayManage, 'HTML');
-} elseif ($datain == "editpayment-endpointabangateway") {
+}elseif ($datain == "editpayment-endpointabangateway") {
     step('set_endpointabangateway', $from_id);
     telegram('answerCallbackQuery', [
         'callback_query_id' => $callback_query_id,
@@ -12950,3 +12950,16 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     step("home", $from_id);
 }
 
+elseif ($text == "🌐 تنظیم آدرس درگاه آبان پی") {
+    sendmessage($from_id, "📌 لطفاً آدرس جدید درگاه (Endpoint) را ارسال کنید (مثال: https://abanpay.com/api):", $backadmin, 'HTML');
+    step("set_endpointabangateway", $from_id);
+} elseif ($user['step'] == "set_endpointabangateway") {
+    $new_endpoint = trim($text);
+    if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
+        sendmessage($from_id, "❌ آدرس وارد شده معتبر نیست. لطفاً یک URL معتبر بفرستید:", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $new_endpoint, "NamePay", "endpointabangateway");
+    sendmessage($from_id, "✅ آدرس درگاه با موفقیت به روز شد.", $AbanGatewayManage, 'HTML');
+    step("home", $from_id);
+}
