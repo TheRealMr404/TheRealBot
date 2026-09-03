@@ -44,13 +44,14 @@ if (!$payment) {
     abangateway_finish(false, $failedTitle, 'این سفارش پیدا نشد.');
 }
 
-if ($payment['payment_Status'] === 'paid') {
+if ($payment['payment_Status'] === 'paid' || $payment['payment_Status'] === 'Paid') {
     abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
 }
 
 $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
-$endpoint = abangatewayEndpoint();
-if ($api_key === '' || $api_key === '0' || $endpoint === null) {
+$endpoint = function_exists('abangatewayEndpoint') ? abangatewayEndpoint() : rtrim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'), '/');
+
+if ($api_key === '' || $api_key === '0' || empty($endpoint)) {
     abangateway_finish(false, $failedTitle, 'درگاه پیکربندی نشده است.');
 }
 
