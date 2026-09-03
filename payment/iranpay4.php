@@ -1,6 +1,8 @@
 <?php
 
-ini_set('error_log', 'error_log');
+ini_set('display_errors', '0');
+ini_set('error_log', __DIR__ . '/error_log');
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../Marzban.php';
@@ -13,11 +15,23 @@ require __DIR__ . '/../vendor/autoload.php';
 $ManagePanel = new ManagePanel();
 $textbotlang = languagechange();
 
-// کلید سکرت وبهوک که از داشبورد گرفتید
-const ABAN_WEBHOOK_SECRET = 'whs_izsfippejxpm8vwpmhwm2hmh';
+// تابع لاگ‌گیری دقیق در فایل abangateway_debug.log
+function aban_log($title, $data) {
+    $file = __DIR__ . '/abangateway_debug.log';
+    $time = date('Y-m-d H:i:s');
+    $content = is_scalar($data) ? (string)$data : json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    @file_put_contents($file, "[{$time}] === {$title} ===\n{$content}\n\n", FILE_APPEND);
+}
 
-function aban_output(bool $ok, string $title, string $detail, bool $isWebhook = false): never
+function abangateway_finish(bool $ok, string $title, string $detail, bool $isWebhook = false): never
 {
+    aban_log("RESPONSE TO CLIENT/GATEWAY", [
+        'ok' => $ok,
+        'title' => $title,
+        'detail' => $detail,
+        'isWebhook' => $isWebhook
+    ]);
+
     if ($isWebhook) {
         http_response_code($ok ? 200 : 400);
         header('Content-Type: application/json; charset=utf-8');
@@ -39,39 +53,43 @@ function aban_output(bool $ok, string $title, string $detail, bool $isWebhook = 
     exit;
 }
 
+// ثبت تمامی ورودی‌های ارسالی به فایل
+$rawBody = file_get_contents('php://input');
+aban_log("INCOMING REQUEST", [
+    'GET' => $_GET,
+    'POST' => $_POST,
+    'RAW_BODY' => $rawBody,
+    'X_SIGNATURE' => $_SERVER['HTTP_X_SIGNATURE'] ?? null,
+    'CONTENT_TYPE' => $_SERVER['CONTENT_TYPE'] ?? null
+]);
+
 $failedTitle  = $textbotlang['paymentGateway']['statusFailed'] ?? 'پرداخت ناموفق';
 $successTitle = $textbotlang['paymentGateway']['statusSuccess'] ?? 'پرداخت موفق';
 
-$rawBody   = file_get_contents('php://input');
-$signature = $_SERVER['HTTP_X_SIGNATURE'] ?? '';
-$isWebhook = !empty($signature);
+$isWebhook = !empty($_SERVER['HTTP_X_SIGNATURE']);
+$order_id = trim((string) ($_GET['order_id'] ?? $_POST['order_id'] ?? ''));
+$invoice_id = trim((string) ($_GET['invoice_id'] ?? $_POST['invoice_id'] ?? $_GET['authority'] ?? $_POST['authority'] ?? ''));
 
-// الف: تشخیص و بررسی امضای وب‌هوک سرور
-if ($isWebhook) {
-    if (!hash_equals(hash_hmac('sha256', $rawBody, ABAN_WEBHOOK_SECRET), $signature)) {
-        http_response_code(401);
-        exit('Invalid signature');
+// اگر از طریق وب‌هوک JSON آمده باشد
+if ($rawBody !== '') {
+    $jsonInput = json_decode($rawBody, true);
+    if (is_array($jsonInput)) {
+        if ($order_id === '' && !empty($jsonInput['order_id'])) {
+            $order_id = trim((string) $jsonInput['order_id']);
+        }
+        if ($invoice_id === '' && !empty($jsonInput['invoice_id'])) {
+            $invoice_id = trim((string) $jsonInput['invoice_id']);
+        }
     }
-
-    $event = json_decode($rawBody, true);
-    if (($event['event'] ?? '') !== 'invoice.paid') {
-        http_response_code(200);
-        exit;
-    }
-
-    $order_id   = trim((string) ($event['order_id'] ?? ''));
-    $invoice_id = trim((string) ($event['invoice_id'] ?? ''));
-} else {
-    // ب: بازگشت مستقیم خریدار در مرورگر
-    $order_id   = trim((string) ($_GET['order_id'] ?? $_POST['order_id'] ?? ''));
-    $invoice_id = trim((string) ($_GET['invoice_id'] ?? $_POST['invoice_id'] ?? ''));
 }
+
+aban_log("PARSED IDS", ['order_id' => $order_id, 'invoice_id' => $invoice_id]);
 
 if ($order_id === '' && $invoice_id === '') {
-    aban_output(false, $failedTitle, 'شناسه سفارش نامشخص است.', $isWebhook);
+    abangateway_finish(false, $failedTitle, 'شناسه سفارش یا فاکتور دریافت نشد.', $isWebhook);
 }
 
-// یافتن سفارش در جدول گزارش پرداخت
+// بررسی دیتابیس
 if ($order_id !== '') {
     $payment = select("Payment_report", "*", "id_order", $order_id, "select");
 } else {
@@ -81,82 +99,112 @@ if ($order_id !== '') {
     }
 }
 
+aban_log("DATABASE RECORD", $payment ?: 'RECORD NOT FOUND');
+
 if (!$payment) {
-    aban_output(false, $failedTitle, 'سفارش در سیستم پیدا نشد.', $isWebhook);
+    abangateway_finish(false, $failedTitle, 'سفارش در دیتابیس یافت نشد.', $isWebhook);
 }
 
-// تسویه قبلی
 if ($payment['payment_Status'] === 'paid' || $payment['payment_Status'] === 'Paid') {
-    aban_output(true, $successTitle, 'این پرداخت قبلاً تایید شده است.', $isWebhook);
+    abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.', $isWebhook);
 }
 
-$api_key  = trim((string) getPaySettingValue('api_abangateway', ''));
-$endpoint = rtrim((string) getPaySettingValue('endpointabangateway', 'https://api.abangateway.ir'), '/');
+$api_key = trim((string) getPaySettingValue('apiiranpay4', getPaySettingValue('api_abangateway', '')));
+$endpoint = rtrim((string) getPaySettingValue('endpointiranpay4', getPaySettingValue('endpointabangateway', 'https://api.abangateway.ir')), '/');
+
+aban_log("CONFIG VALUES", ['api_key' => $api_key ? substr($api_key, 0, 8) . '***' : 'EMPTY', 'endpoint' => $endpoint]);
+
+if ($api_key === '' || $api_key === '0') {
+    abangateway_finish(false, $failedTitle, 'کلید درگاه تنظیم نشده است.', $isWebhook);
+}
 
 $targetInvoice = $invoice_id !== '' ? $invoice_id : ($payment['authority'] ?? '');
 
-// پ: اجرای verify طبق نمونه کد رسمی
+// تعیین آدرس و متد وریفای بر اساس اینکه میرزاپرو است یا API رسمی
+$isMirza = str_contains($endpoint, 'mirzapro');
+
+if ($isMirza) {
+    $verifyUrl = $endpoint . '/verify';
+    $postPayload = json_encode([
+        'order_id' => $order_id,
+        'amount'   => intval($payment['price']),
+    ], JSON_UNESCAPED_UNICODE);
+} else {
+    $verifyUrl = $endpoint . '/api/v1/invoices/' . rawurlencode($targetInvoice) . '/verify';
+    $postPayload = '{}';
+}
+
+aban_log("VERIFY REQUEST", [
+    'mode' => $isMirza ? 'MirzaPro' : 'Official API',
+    'url' => $verifyUrl,
+    'payload' => $postPayload
+]);
+
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL            => $verifyUrl,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 25,
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => $postPayload,
+    CURLOPT_HTTPHEADER     => [
+        'Authorization: Bearer ' . $api_key,
+        'Content-Type: application/json',
+        'Accept: application/json',
+    ],
+]);
+
+$responseRaw = curl_exec($ch);
+$httpCode    = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$curlError   = curl_error($ch);
+curl_close($ch);
+
+aban_log("VERIFY RESPONSE", [
+    'http_code' => $httpCode,
+    'curl_error' => $curlError ?: 'None',
+    'response_raw' => $responseRaw
+]);
+
+$verifyData = is_string($responseRaw) ? json_decode($responseRaw, true) : null;
 $verified = false;
 
-if (!empty($targetInvoice) && !empty($api_key)) {
-    $ch = curl_init($endpoint . "/api/v1/invoices/{$targetInvoice}/verify");
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => '{}',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_HTTPHEADER     => [
-            'Authorization: Bearer ' . $api_key,
-            'Content-Type: application/json',
-            'Accept: application/json',
-        ],
-    ]);
-    $rawResponse = curl_exec($ch);
-    $httpCode    = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    $verifyData = json_decode($rawResponse ?: '{}', true);
-
-    if ($httpCode === 200 && !empty($verifyData['verified'])) {
+if ($httpCode === 200 && is_array($verifyData)) {
+    if (!empty($verifyData['verified']) || !empty($verifyData['success']) || ($verifyData['status'] ?? '') === 'paid') {
         $verified = true;
-    } elseif ($httpCode >= 400 && ($verifyData['error']['code'] ?? '') === 'already_verified') {
+    }
+} elseif ($httpCode === 400 || $httpCode === 409) {
+    $errCode = $verifyData['error']['code'] ?? $verifyData['message'] ?? '';
+    if ($errCode === 'already_verified') {
         $verified = true;
     }
 }
 
-// در شرایطی که امضای وبهوک معتبر است اما استعلام مجدد ارور موقت بدهد
-if (!$verified && $isWebhook) {
-    $verified = true;
-}
-
 if (!$verified) {
-    aban_output(false, $failedTitle, 'پرداخت مورد تایید درگاه قرار نگرفت.', $isWebhook);
+    abangateway_finish(false, $failedTitle, 'درگاه پرداخت را تایید نکرد. جزئیات در فایل لاگ ثبت شد.', $isWebhook);
 }
 
-// ت: تحویل یکباره سفارش (جلوگیری از race condition وبهوک و کاربر)
 if (!claimPaymentPaid($order_id)) {
-    aban_output(true, $successTitle, 'این پرداخت قبلاً تایید شده است.', $isWebhook);
+    abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.', $isWebhook);
 }
 
-// تحویل سرویس / شارژ اکانت
 try {
     DirectPayment($order_id, "../images.jpg");
-} catch (Throwable $error) {
-    error_log("AbanGateway DirectPayment failed for {$order_id}: " . $error->getMessage());
-    aban_output(false, $failedTitle, 'سرویس تحویل نشد، با پشتیبانی در ارتباط باشید.', $isWebhook);
+    aban_log("DIRECT PAYMENT", "Success for order: {$order_id}");
+} catch (Throwable $e) {
+    aban_log("DIRECT PAYMENT ERROR", $e->getMessage());
+    abangateway_finish(false, $failedTitle, 'پرداخت تایید شد اما در ساخت اکانت خطایی رخ داد.', $isWebhook);
 }
 
-// پاداش و کش‌بک
-$cashback = intval(getPaySettingValue('chashbackabangateway', '0'));
+// کش‌بک
+$cashback = intval(getPaySettingValue('chashbackiranpay4', getPaySettingValue('chashbackabangateway', '0')));
 if ($cashback > 0) {
     $buyer = select("user", "*", "id", $payment['id_user'], "select");
     if ($buyer) {
-        $priceToman = intval($payment['price']);
-        $reward = intval($priceToman * $cashback / 100);
+        $reward = intval(intval($payment['price']) * $cashback / 100);
         if ($reward > 0) {
             update("user", "Balance", intval($buyer['Balance']) + $reward, "id", $payment['id_user']);
         }
     }
 }
 
-aban_output(true, $successTitle, 'پرداخت و شارژ حساب با موفقیت انجام شد.', $isWebhook);
+abangateway_finish(true, $successTitle, 'پرداخت شما با موفقیت تایید و اعمال شد.', $isWebhook);

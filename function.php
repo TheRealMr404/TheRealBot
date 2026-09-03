@@ -2415,6 +2415,13 @@ function abangateway($order_id, $price)
 {
     global $domainhosts;
 
+$logFn = function ($step, $data) {
+        $logFile = __DIR__ . '/payment/abangateway_debug.log';
+        $time = date('Y-m-d H:i:s');
+        $text = is_scalar($data) ? (string)$data : json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        @file_put_contents($logFile, "[{$time}] [CREATE_STEP: {$step}]\n{$text}\n\n", FILE_APPEND);
+    };
+
     $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
     $endpoint = abangatewayEndpoint();
     
