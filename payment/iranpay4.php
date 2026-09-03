@@ -1,6 +1,5 @@
 <?php
-@file_put_contents(__DIR__ . '/hit.txt', date('Y-m-d H:i:s') . ' | ' . ($_SERVER['REQUEST_METHOD'] ?? '') . ' | ' . ($_SERVER['REQUEST_URI'] ?? '') . PHP_EOL, FILE_APPEND);
-
+//AbanPay
 ini_set('display_errors', '0');
 ini_set('error_log', __DIR__ . '/error_log');
 
@@ -10,13 +9,20 @@ require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../keyboard.php';
-require_once __DIR__ . '/../jdf.php';
-require __DIR__ . '/../vendor/autoload.php';
 
-$ManagePanel = new ManagePanel();
-$textbotlang = languagechange();
+if (file_exists(__DIR__ . '/../jdf.php')) {
+    require_once __DIR__ . '/../jdf.php';
+}
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+}
 
-// تابع لاگ‌گیری دقیق در فایل abangateway_debug.log
+if (class_exists('ManagePanel')) {
+    $ManagePanel = new ManagePanel();
+}
+
+$textbotlang = function_exists('languagechange') ? @languagechange(__DIR__ . '/..', 'fa') : [];
+
 function aban_log($title, $data) {
     $file = __DIR__ . '/abangateway_debug.log';
     $time = date('Y-m-d H:i:s');
@@ -54,7 +60,6 @@ function abangateway_finish(bool $ok, string $title, string $detail, bool $isWeb
     exit;
 }
 
-// ثبت تمامی ورودی‌های ارسالی به فایل
 $rawBody = file_get_contents('php://input');
 aban_log("INCOMING REQUEST", [
     'GET' => $_GET,
@@ -71,7 +76,6 @@ $isWebhook = !empty($_SERVER['HTTP_X_SIGNATURE']);
 $order_id = trim((string) ($_GET['order_id'] ?? $_POST['order_id'] ?? ''));
 $invoice_id = trim((string) ($_GET['invoice_id'] ?? $_POST['invoice_id'] ?? $_GET['authority'] ?? $_POST['authority'] ?? ''));
 
-// اگر از طریق وب‌هوک JSON آمده باشد
 if ($rawBody !== '') {
     $jsonInput = json_decode($rawBody, true);
     if (is_array($jsonInput)) {
@@ -90,7 +94,6 @@ if ($order_id === '' && $invoice_id === '') {
     abangateway_finish(false, $failedTitle, 'شناسه سفارش یا فاکتور دریافت نشد.', $isWebhook);
 }
 
-// بررسی دیتابیس
 if ($order_id !== '') {
     $payment = select("Payment_report", "*", "id_order", $order_id, "select");
 } else {
@@ -121,7 +124,6 @@ if ($api_key === '' || $api_key === '0') {
 
 $targetInvoice = $invoice_id !== '' ? $invoice_id : ($payment['authority'] ?? '');
 
-// تعیین آدرس و متد وریفای بر اساس اینکه میرزاپرو است یا API رسمی
 $isMirza = str_contains($endpoint, 'mirzapro');
 
 if ($isMirza) {
@@ -184,7 +186,11 @@ if (!$verified) {
     abangateway_finish(false, $failedTitle, 'درگاه پرداخت را تایید نکرد. جزئیات در فایل لاگ ثبت شد.', $isWebhook);
 }
 
-if (!claimPaymentPaid($order_id)) {
+global $pdo;
+$stmtClaim = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = ? AND payment_Status <> 'paid'");
+$stmtClaim->execute([$order_id]);
+
+if ($stmtClaim->rowCount() === 0) {
     abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.', $isWebhook);
 }
 
@@ -196,7 +202,6 @@ try {
     abangateway_finish(false, $failedTitle, 'پرداخت تایید شد اما در ساخت اکانت خطایی رخ داد.', $isWebhook);
 }
 
-// کش‌بک
 $cashback = intval(getPaySettingValue('chashbackiranpay4', getPaySettingValue('chashbackabangateway', '0')));
 if ($cashback > 0) {
     $buyer = select("user", "*", "id", $payment['id_user'], "select");
