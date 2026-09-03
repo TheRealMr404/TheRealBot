@@ -8749,6 +8749,7 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
 } elseif ($text == "💎 مالی" && $adminrulecheck['rule'] == "administrator") {
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
     $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
+    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
     $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot');
     if ($arzireyali1 != "onSwapinoBot" && $arzireyali1 != "offSwapinoBot") {
         update("PaySetting", "ValuePay", "onSwapinoBot", "NamePay", "statusSwapWallet");
@@ -8802,6 +8803,10 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
     ][$payment_status_nowpayment];
+    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
+    $abangatewaystatus = ($abangateway == 'onabangateway')
+        ? ($textbotlang['Admin']['Status']['statuson'] ?? '🟢 فعال')
+        : ($textbotlang['Admin']['Status']['statusoff'] ?? '🔴 غیرفعال');
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
