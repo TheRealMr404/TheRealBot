@@ -2398,7 +2398,7 @@ function arz_nobitex() {
 
 function abangatewayEndpoint(): ?string
 {
-    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'));
+    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://api.abangateway.ir'));
     if ($endpoint === '' || $endpoint === '0') {
         return null;
     }
@@ -2422,30 +2422,58 @@ function abangateway($order_id, $price)
         return ['success' => false, 'message' => 'abangateway: key or endpoint is unset'];
     }
 
+    $callbackUrl = "https://{$domainhosts}/payment/iranpay4.php?order_id={$order_id}";
+
+    $payload = [
+        'amount_rial'  => intval($price) * 10, // تبدیل تومان به ریال
+        'order_id'     => (string) $order_id,
+        'callback_url' => $callbackUrl,
+        'return_url'   => $callbackUrl,
+    ];
+
     $curl = curl_init();
     curl_setopt_array($curl, [
-        CURLOPT_URL => $endpoint . '/create',
+        CURLOPT_URL            => $endpoint . '/api/v1/invoices',
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 25,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => [
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $api_key,
             'Content-Type: application/json',
             'Accept: application/json',
-            'Authorization: Bearer ' . $api_key,
         ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'amount' => intval($price),
-            'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
-        ], JSON_UNESCAPED_UNICODE),
+        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
     ]);
 
     $response = curl_exec($curl);
+    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    
     if ($response === false) {
+        $error = curl_error($curl);
         curl_close($curl);
-        return ['success' => false, 'message' => 'abangateway: gateway unreachable'];
+        return ['success' => false, 'message' => 'abangateway: gateway unreachable (' . $error . ')'];
     }
     curl_close($curl);
 
-    return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
+    $data = json_decode($response, true);
+    if (!is_array($data)) {
+        return ['success' => false, 'message' => 'abangateway: bad response'];
+    }
+
+    // آبان‌گیت‌وی در صورت موفقیت کد 200 یا 201 به همراه payment_url و invoice_id برمی‌گرداند
+    if (($httpCode === 200 || $httpCode === 201) && !empty($data['payment_url'])) {
+        // ذخیره شناسه فاکتور در ستون authority دیتابیس برای ردگیری
+        if (!empty($data['invoice_id'])) {
+            update("Payment_report", "authority", $data['invoice_id'], "id_order", $order_id);
+        }
+
+        return [
+            'success'     => true,
+            'url'         => $data['payment_url'],
+            'invoice_id'  => $data['invoice_id'] ?? '',
+        ];
+    }
+
+    $errCode = $data['error']['code'] ?? ('HTTP_' . $httpCode);
+    return ['success' => false, 'message' => 'abangateway: ' . $errCode];
 }

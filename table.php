@@ -1,2513 +1,1562 @@
 <?php
-require_once 'vendor/autoload.php';
-require 'config.php';
-ini_set('error_log', 'error_log');
-
-use Endroid\QrCode\Builder\Builder;
-use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel;
-use Endroid\QrCode\Writer\PngWriter;
-
-#-----------shell helper utilities------------#
-function assertSqlIdentifier($name, $allowFieldExpr = false)
-{
-    if ($name === null) {
-        return;
-    }
-    // Identifiers (table/column names) cannot be bound as parameters, so they
-    // are validated against a strict allow-list to prevent SQL injection.
-    $pattern = $allowFieldExpr ? '/^[\p{L}\p{N}_*,()\s.`]+$/u' : '/^[\p{L}\p{N}_.`]+$/u';
-    if (!preg_match($pattern, (string) $name)) {
-        error_log('Blocked unsafe SQL identifier: ' . $name);
-        throw new InvalidArgumentException('Invalid SQL identifier');
-    }
-}
-function isShellExecAvailable()
-{
-    static $isAvailable;
-
-    if ($isAvailable !== null) {
-        return $isAvailable;
-    }
-
-    if (!function_exists('shell_exec')) {
-        $isAvailable = false;
-        return $isAvailable;
-    }
-
-    $disabledFunctions = ini_get('disable_functions');
-    if (!empty($disabledFunctions) && stripos($disabledFunctions, 'shell_exec') !== false) {
-        $isAvailable = false;
-        return $isAvailable;
-    }
-
-    $isAvailable = true;
-    return $isAvailable;
-}
-
-function isExecAvailable()
-{
-    static $isAvailable;
-
-    if ($isAvailable !== null) {
-        return $isAvailable;
-    }
-
-    if (!function_exists('exec')) {
-        $isAvailable = false;
-        return $isAvailable;
-    }
-
-    $disabledFunctions = ini_get('disable_functions');
-    if (!empty($disabledFunctions) && preg_match('/(^|,)\s*exec\s*(,|$)/i', $disabledFunctions)) {
-        $isAvailable = false;
-        return $isAvailable;
-    }
-
-    $isAvailable = true;
-    return $isAvailable;
-}
-
-function getCrontabBinary()
-{
-    static $resolvedPath;
-
-    if ($resolvedPath !== null) {
-        return $resolvedPath ?: null;
-    }
-
-    $candidateDirectories = [
-        '/usr/local/bin',
-        '/usr/bin',
-        '/bin',
-        '/usr/sbin',
-        '/sbin',
-    ];
-
-    $environmentPath = getenv('PATH');
-    if ($environmentPath !== false && $environmentPath !== '') {
-        foreach (explode(PATH_SEPARATOR, $environmentPath) as $pathDirectory) {
-            $pathDirectory = trim($pathDirectory);
-            if ($pathDirectory !== '' && !in_array($pathDirectory, $candidateDirectories, true)) {
-                $candidateDirectories[] = $pathDirectory;
-            }
-        }
-    }
-
-    foreach ($candidateDirectories as $directory) {
-        $executablePath = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'crontab';
-        if (@is_file($executablePath) && @is_executable($executablePath)) {
-            $resolvedPath = $executablePath;
-            return $resolvedPath;
-        }
-    }
-
-    $knownPaths = ['/usr/bin/crontab', '/usr/sbin/crontab', '/bin/crontab'];
-    if (isShellExecAvailable()) {
-        $whichOutput = @shell_exec('command -v crontab 2>/dev/null');
-        if (is_string($whichOutput)) {
-            $whichOutput = trim($whichOutput);
-            if ($whichOutput !== '') {
-                $resolvedPath = $whichOutput;
-                return $resolvedPath;
-            }
-        }
-        foreach ($knownPaths as $knownPath) {
-            $probe = @shell_exec('test -x ' . escapeshellarg($knownPath) . ' && printf %s ' . escapeshellarg($knownPath));
-            if (is_string($probe) && trim($probe) === $knownPath) {
-                $resolvedPath = $knownPath;
-                return $resolvedPath;
-            }
-        }
-    }
-
-    $resolvedPath = '';
-    error_log('Unable to locate the crontab executable on this system.');
-
-    return null;
-}
-
-function runShellCommand($command)
-{
-    if (!isShellExecAvailable()) {
-        error_log('shell_exec is not available; unable to run command: ' . $command);
-        return null;
-    }
-
-    if (getenv('PATH') === false || trim((string) getenv('PATH')) === '') {
-        putenv('PATH=/usr/local/bin:/usr/bin:/bin');
-    }
-
-    return shell_exec($command);
-}
-
-function deleteDirectory($directory)
-{
-    if (!file_exists($directory)) {
-        return true;
-    }
-
-    if (!is_dir($directory)) {
-        return @unlink($directory);
-    }
-
-    $items = scandir($directory);
-    if ($items === false) {
-        return false;
-    }
-
-    foreach ($items as $item) {
-        if ($item === '.' || $item === '..') {
-            continue;
-        }
-
-        $path = $directory . DIRECTORY_SEPARATOR . $item;
-        if (is_dir($path)) {
-            if (!deleteDirectory($path)) {
-                return false;
-            }
-        } else {
-            if (!@unlink($path)) {
-                return false;
-            }
-        }
-    }
-
-    return @rmdir($directory);
-}
-
-function ensureTableUtf8mb4($table)
-{
-    global $pdo;
-
-    try {
-        $stmt = $pdo->prepare('SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
-        $stmt->execute([$table]);
-        $currentCollation = $stmt->fetchColumn();
-
-        if ($currentCollation === false) {
-            error_log("Failed to detect current collation for table {$table}");
-            return false;
-        }
-
-        if (stripos((string) $currentCollation, 'utf8mb4') === 0) {
-            return true;
-        }
-
-        $pdo->exec("ALTER TABLE `{$table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        return true;
-    } catch (PDOException $e) {
-        error_log('Failed to convert table to utf8mb4: ' . $e->getMessage());
-        return false;
-    }
-}
-
-function ensureCardNumberTableSupportsUnicode()
-{
-    global $pdo;
-
-    if (!isset($pdo) || !($pdo instanceof PDO)) {
-        return;
-    }
-
-    try {
-        $pdo->exec("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'");
-
-        $createQuery = "CREATE TABLE IF NOT EXISTS card_number (" .
-            "cardnumber varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY," .
-            "namecard varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL" .
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-        $pdo->exec($createQuery);
-
-        ensureTableUtf8mb4('card_number');
-
-        $columnInfo = $pdo->query("SHOW FULL COLUMNS FROM card_number WHERE Field IN ('cardnumber', 'namecard')");
-        if ($columnInfo instanceof PDOStatement) {
-            while ($column = $columnInfo->fetch(PDO::FETCH_ASSOC)) {
-                $collation = $column['Collation'] ?? '';
-                if (!is_string($collation) || stripos($collation, 'utf8mb4') === false) {
-                    $field = $column['Field'];
-                    $type = $field === 'cardnumber' ? 'varchar(500)' : 'varchar(1000)';
-                    $alter = sprintf(
-                        "ALTER TABLE card_number MODIFY %s %s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci%s",
-                        $field,
-                        $type,
-                        $field === 'cardnumber' ? ' PRIMARY KEY' : ' NOT NULL'
-                    );
-                    $pdo->exec($alter);
-                }
-            }
-        }
-    } catch (\Throwable $e) {
-        error_log('Unexpected error while ensuring card_number utf8mb4 compatibility: ' . $e->getMessage());
-    }
-}
-
-function normaliseUpdateValue($value)
-{
-    if (is_array($value) || is_object($value)) {
-        return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    return $value;
-}
-
-function copyDirectoryContents($source, $destination)
-{
-    if (!is_dir($source)) {
-        return false;
-    }
-
-    if (!is_dir($destination) && !mkdir($destination, 0777, true) && !is_dir($destination)) {
-        return false;
-    }
-
-    $items = scandir($source);
-    if ($items === false) {
-        return false;
-    }
-
-    foreach ($items as $item) {
-        if ($item === '.' || $item === '..') {
-            continue;
-        }
-
-        $sourcePath = $source . DIRECTORY_SEPARATOR . $item;
-        $destinationPath = $destination . DIRECTORY_SEPARATOR . $item;
-
-        if (is_dir($sourcePath)) {
-            if (!copyDirectoryContents($sourcePath, $destinationPath)) {
-                return false;
-            }
-        } else {
-            if (!@copy($sourcePath, $destinationPath)) {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-#-----------function------------#
-function step($step, $from_id)
-{
-    global $pdo;
-    $stmt = $pdo->prepare('UPDATE user SET step = ? WHERE id = ?');
-    $stmt->execute([$step, $from_id]);
-    clearSelectCache('user');
-}
-function determineColumnTypeFromValue($value)
-{
-    if (is_bool($value)) {
-        return 'TINYINT(1)';
-    }
-
-    if (is_int($value)) {
-        return 'INT(11)';
-    }
-
-    if (is_float($value)) {
-        return 'DOUBLE';
-    }
-
-    if ($value === null) {
-        return 'VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-    }
-
-    if (is_string($value)) {
-        if (function_exists('mb_strlen')) {
-            $length = mb_strlen($value, 'UTF-8');
-        } else {
-            $length = strlen($value);
-        }
-
-        if ($length <= 191) {
-            return 'VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-        }
-
-        if ($length <= 500) {
-            return 'VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-        }
-
-        return 'TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-    }
-
-    return 'TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
-}
-function ensureColumnExistsForUpdate($tableName, $fieldName, $valueSample = null)
-{
-    global $pdo;
-
-    static $knownColumns = [];
-    $columnKey = $tableName . '.' . $fieldName;
-    if (isset($knownColumns[$columnKey])) {
-        return;
-    }
-
-    try {
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
-        $stmt->execute([$tableName, $fieldName]);
-        if ((int) $stmt->fetchColumn() > 0) {
-            $knownColumns[$columnKey] = true;
-            return;
-        }
-
-        $datatype = determineColumnTypeFromValue($valueSample);
-
-        $defaultValue = null;
-        if (is_bool($valueSample)) {
-            $defaultValue = $valueSample ? '1' : '0';
-        } elseif (is_scalar($valueSample) && $valueSample !== null) {
-            $defaultValue = (string) $valueSample;
-        }
-
-        addFieldToTable($tableName, $fieldName, $defaultValue, $datatype);
-        $knownColumns[$columnKey] = true;
-    } catch (PDOException $e) {
-        error_log('Failed to ensure column exists: ' . $e->getMessage());
-    }
-}
-function update($table, $field, $newValue, $whereField = null, $whereValue = null)
-{
-    global $pdo, $user;
-
-    assertSqlIdentifier($table);
-    assertSqlIdentifier($field, true);
-    assertSqlIdentifier($whereField);
-
-    $valueToStore = normaliseUpdateValue($newValue);
-
-    ensureColumnExistsForUpdate($table, $field, $valueToStore);
-
-    $executeUpdate = function ($value) use ($pdo, $table, $field, $whereField, $whereValue) {
-        if ($whereField !== null) {
-            $stmt = $pdo->prepare("UPDATE $table SET $field = ? WHERE $whereField = ?");
-            $stmt->execute([$value, $whereValue]);
-        } else {
-            $stmt = $pdo->prepare("UPDATE $table SET $field = ?");
-            $stmt->execute([$value]);
-        }
-    };
-
-    try {
-        $executeUpdate($valueToStore);
-    } catch (PDOException $e) {
-        if (strpos($e->getMessage(), 'Incorrect string value') !== false) {
-            $tableConverted = ensureTableUtf8mb4($table);
-            if ($tableConverted) {
-                try {
-                    $executeUpdate($valueToStore);
-                } catch (PDOException $retryException) {
-                    error_log('Retry after charset conversion failed: ' . $retryException->getMessage());
-                    throw $retryException;
-                }
-            } else {
-                $fallbackValue = is_string($valueToStore) ? @iconv('UTF-8', 'UTF-8//IGNORE', $valueToStore) : $valueToStore;
-                if ($fallbackValue === false) {
-                    $fallbackValue = '';
-                }
-                $executeUpdate($fallbackValue);
-            }
-        } else {
-            throw $e;
-        }
-    }
-
-    $date = date("Y-m-d H:i:s");
-    if (!isset($user['step'])) {
-        $user['step'] = '';
-    }
-    $sensitiveFields = ['password', 'token', 'password_panel', 'secret_code', 'datelogin'];
-    $logValue = in_array(strtolower((string) $field), $sensitiveFields, true)
-        ? '[redacted]'
-        : (is_scalar($valueToStore) ? $valueToStore : json_encode($valueToStore, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    $logss = "{$table}_{$field}_{$logValue}_{$whereField}_{$whereValue}_{$user['step']}_$date";
-    if ($field != "message_count" && $field != "last_message_time") {
-        $logDir = __DIR__ . '/storage';
-        if (is_dir($logDir) || @mkdir($logDir, 0775, true)) {
-            @file_put_contents($logDir . '/log.txt', "\n" . $logss, FILE_APPEND);
-        }
-    }
-
-    clearSelectCache($table);
-}
-function &getSelectCacheStore()
-{
-    static $store = [
-    'results' => [],
-    'tableIndex' => [],
-    ];
-
-    return $store;
-}
-
-function clearSelectCache($table = null)
-{
-    $store = &getSelectCacheStore();
-
-    if ($table === null) {
-        $store['results'] = [];
-        $store['tableIndex'] = [];
-        return;
-    }
-
-    if (!isset($store['tableIndex'][$table])) {
-        return;
-    }
-
-    foreach (array_keys($store['tableIndex'][$table]) as $cacheKey) {
-        unset($store['results'][$cacheKey]);
-    }
-
-    unset($store['tableIndex'][$table]);
-}
-
-function select($table, $field, $whereField = null, $whereValue = null, $type = "select", $options = [])
-{
-    global $pdo;
-
-    assertSqlIdentifier($table);
-    assertSqlIdentifier($field, true);
-    assertSqlIdentifier($whereField);
-
-    $useCache = true;
-    if (is_array($options) && array_key_exists('cache', $options)) {
-        $useCache = (bool) $options['cache'];
-    }
-
-    $cacheKey = null;
-    if ($useCache) {
-        $cacheKey = hash('sha256', json_encode([
-            $table,
-            $field,
-            $whereField,
-            $whereValue,
-            $type,
-        ], JSON_UNESCAPED_UNICODE));
-
-        $store = &getSelectCacheStore();
-        if (isset($store['results'][$cacheKey])) {
-            return $store['results'][$cacheKey];
-        }
-    }
-
-    if ($type == "count") {
-        $query = "SELECT COUNT(*) FROM $table";
-    } else {
-        $query = "SELECT $field FROM $table";
-    }
-
-    if ($whereField !== null) {
-        $query .= " WHERE $whereField = :whereValue";
-    }
-
-    if ($type != "count" && $type != "fetchAll" && $type != "FETCH_COLUMN") {
-        $query .= " LIMIT 1";
-    }
-
-    $result = null;
-    $queryFailed = false;
-    try {
-        $stmt = $pdo->prepare($query);
-        if ($whereField !== null) {
-            $stmt->bindParam(':whereValue', $whereValue, PDO::PARAM_STR);
-        }
-
-        $stmt->execute();
-        if ($type == "count") {
-            $result = (int) $stmt->fetchColumn();
-        } elseif ($type == "FETCH_COLUMN") {
-            $results = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            if ($table === 'admin' && $field === 'id_admin') {
-                global $adminnumber;
-                if (!is_array($results)) {
-                    $results = [];
-                }
-
-                $results = array_values(array_unique(array_filter($results, function ($value) {
-                    return $value !== null && $value !== '';
-                })));
-
-                if (empty($results) && isset($adminnumber) && $adminnumber !== '') {
-                    $results[] = (string) $adminnumber;
-                }
-            }
-            $result = $results;
-        } elseif ($type == "fetchAll") {
-            $result = $stmt->fetchAll();
-        } else {
-            $fetched = $stmt->fetch(PDO::FETCH_ASSOC);
-            $result = $fetched === false ? null : $fetched;
-        }
-    } catch (PDOException $e) {
-        $queryFailed = true;
-        error_log("Query failed: " . $e->getMessage());
-    }
-
-    if (!$queryFailed && $useCache && $cacheKey !== null) {
-        $store = &getSelectCacheStore();
-        $store['results'][$cacheKey] = $result;
-        if (!isset($store['tableIndex'][$table])) {
-            $store['tableIndex'][$table] = [];
-        }
-        $store['tableIndex'][$table][$cacheKey] = true;
-    }
-
-    return $result;
-}
-
-function rowExists($table, $field, $value)
-{
-    global $pdo;
-
-    assertSqlIdentifier($table);
-    assertSqlIdentifier($field);
-
-    try {
-        $stmt = $pdo->prepare("SELECT 1 FROM $table WHERE $field = ? LIMIT 1");
-        $stmt->execute([$value]);
-        return $stmt->fetchColumn() !== false;
-    } catch (PDOException $e) {
-        error_log("Query failed: " . $e->getMessage());
-        return false;
-    }
-}
-function getPaySettingValue($name, $default = null)
-{
-    $rows = select("PaySetting", "*", null, null, "fetchAll");
-    if (is_array($rows)) {
-        foreach ($rows as $row) {
-            if (isset($row['NamePay']) && strcasecmp(trim((string) $row['NamePay']), trim((string) $name)) === 0) {
-                return array_key_exists('ValuePay', $row) ? $row['ValuePay'] : $default;
-            }
-        }
-    }
-
-    return $default;
-}
-function generateUUID()
-{
-    $data = openssl_random_pseudo_bytes(16);
-    $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
-    $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
-
-    $uuid = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
-
-    return $uuid;
-}
-function rate_arze()
-{
-    $ch = curl_init('https://demo.mirzabot.com/b.php');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    $response = curl_exec($ch);
-    if ($response === false) {
-        error_log('rate_arze failed: ' . curl_error($ch));
-        return null;
-    }
-    $decoded = json_decode($response, true);
-    if (!is_array($decoded) || !isset($decoded['result']) || !is_array($decoded['result'])) {
-        error_log('rate_arze: unexpected response');
-        return null;
-    }
-    return $decoded['result'];
-}
-function updatePaymentMessageId($response, $orderId)
-{
-    if (!is_array($response)) {
-        error_log("Failed to send payment message for order {$orderId}: unexpected response");
-        return false;
-    }
-
-    if (empty($response['ok'])) {
-        error_log("Failed to send payment message for order {$orderId}: " . json_encode($response));
-        return false;
-    }
-
-    if (!isset($response['result']['message_id'])) {
-        error_log("Missing message_id for order {$orderId}: " . json_encode($response));
-        return false;
-    }
-
-    update("Payment_report", "message_id", intval($response['result']['message_id']), "id_order", $orderId);
-    return true;
-}
-function nowPayments($payment, $price_amount, $order_id, $order_description)
-{
-    global $domainhosts;
-    $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.nowpayments.io/v1/' . $payment,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT_MS => 7000,
-        CURLOPT_ENCODING => '',
-        CURLOPT_SSL_VERIFYPEER => 1,
-        CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => array(
-            'x-api-key:' . $apinowpayments,
-            'Content-Type: application/json'
-        ),
-    ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-        'price_amount' => $price_amount,
-        'price_currency' => 'usd',
-        'order_id' => $order_id,
-        'order_description' => $order_description,
-        'ipn_callback_url' => "https://" . $domainhosts . "/payment/nowpayment.php"
-    ]));
-
-    $response = curl_exec($curl);
-    return json_decode($response, true);
-}
-function StatusPayment($paymentid)
-{
-    $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.nowpayments.io/v1/payment/' . $paymentid,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'GET',
-        CURLOPT_HTTPHEADER => array(
-            'x-api-key:' . $apinowpayments
-        ),
-    ));
-    $response = curl_exec($curl);
-    $response = json_decode($response, true);
-    return $response;
-}
-function channel(array $id_channel)
-{
-    global $from_id;
-    $channel_link = array();
-    foreach ($id_channel as $channel) {
-        if (isTelegramChatIdEmpty($channel)) {
-            continue;
-        }
-        $response = telegram('getChatMember', [
-            'chat_id' => $channel,
-            'user_id' => $from_id
-        ]);
-        if ($response['ok']) {
-            if (!in_array($response['result']['status'], ['member', 'creator', 'administrator'])) {
-                $channel_link[] = $channel;
-            }
-        }
-    }
-    if (count($channel_link) == 0) {
-        return [];
-    } else {
-        return $channel_link;
-    }
-}
-function isValidDate($date)
-{
-    return (strtotime($date) != false);
-}
-function invoiceBelongsToUser($invoice, $userId)
-{
-    return is_array($invoice) && isset($invoice['id_user']) && (string) $invoice['id_user'] === (string) $userId;
-}
-function cubepayFeeValue()
-{
-    $raw = select("PaySetting", "ValuePay", "NamePay", "feeternado", "select")['ValuePay'] ?? '0';
-
-    return (float) str_replace([',', '،'], '', (string) $raw);
-}
-function cubepayApplyFee($base, $fee)
-{
-    $base = intval($base);
-    if ($fee <= 0) {
-        return $base;
-    }
-
-    return $fee <= 100
-        ? (int) ceil($base * (1 + $fee / 100))
-        : $base + (int) round($fee);
-}
-function cubepayPayableAmount($price)
-{
-    $status = select("PaySetting", "ValuePay", "NamePay", "feestatusternado", "select")['ValuePay'] ?? 'offfeeternado';
-    if ($status !== 'onfeeternado') {
-        return intval($price);
-    }
-
-    return cubepayApplyFee($price, cubepayFeeValue());
-}
-function abangatewayEndpoint(): ?string
-{
-    $endpoint = trim((string) getPaySettingValue('endpointiranpay4', ''));
-    if ($endpoint === '' || $endpoint === '0') {
-        return null;
-    }
-
-    $parts = parse_url($endpoint);
-    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
-        return null;
-    }
-
-    return rtrim($endpoint, '/');
-}
-
-function createPayiranpay4($price, $order_id)
-{
-    global $domainhosts;
-
-    $api_key = trim((string) getPaySettingValue('apiiranpay4', ''));
-    $endpoint = abangatewayEndpoint();
-    if ($api_key === '' || $api_key === '0' || $endpoint === null) {
-        return ['success' => false, 'message' => 'iranpay4: key or endpoint is unset'];
-    }
-
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => $endpoint . '/create',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 25,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $api_key,
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'amount' => intval($price),
-            'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
-        ], JSON_UNESCAPED_UNICODE),
-    ]);
-
-    $response = curl_exec($curl);
-    if ($response === false) {
-        curl_close($curl);
-        return ['success' => false, 'message' => 'iranpay4: gateway unreachable'];
-    }
-    curl_close($curl);
-
-    return json_decode($response, true) ?: ['success' => false, 'message' => 'iranpay4: bad response'];
-}
-
-function trnado($order_id, $price)
-{
-    global $domainhosts;
-    $token_cubepay = select("PaySetting", "*", "NamePay", "apiternado", "select")['ValuePay'];
-    $amount_toman = cubepayPayableAmount($price);
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $token_cubepay
-        ),
-    ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-        'price_amount' => $amount_toman,
-        'order_id' => $order_id,
-        'callback_url' => "https://$domainhosts/payment/iranpay2.php",
-    ], JSON_UNESCAPED_UNICODE));
-
-    $response = curl_exec($curl);
-    curl_close($curl);
-
-    $decoded = json_decode($response, true);
-    if (is_array($decoded) && empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
-        $decoded['payment_link'] = $decoded['pay_page_url'];
-    }
-
-    return $decoded;
-}
-function formatBytes($bytes, $precision = 2): string
-{
-    global $textbotlang;
-    $base = log($bytes, 1024);
-    $power = $bytes > 0 ? floor($base) : 0;
-    $suffixes = [
-        $textbotlang['common']['units']['byte'],
-        $textbotlang['common']['units']['kilobyte'],
-        $textbotlang['common']['units']['megabyte'],
-        $textbotlang['common']['units']['gigabyteAlt'],
-        $textbotlang['common']['units']['terabyte'],
-    ];
-    return round(pow(1024, $base - $power), $precision) . ' ' . $suffixes[$power];
-}
-function generateUsername($from_id, $Metode, $username, $randomString, $text, $namecustome, $usernamecustom)
-{
-    $setting = select("setting", "*", null, null, "select");
-    $user = select("user", "*", "id", $from_id, "select");
-    if ($user == false) {
-        $user = array('number_username' => '');
-    }
-    $randomString = trim((string) $randomString);
-    if ($randomString === '')
-        $randomString = bin2hex(random_bytes(4));
-    $fallback = $from_id . "_" . $randomString;
-    switch (usernameMethodKey($Metode)) {
-        case 'usernameSequential':
-            if ($username == "NOT_USERNAME" && preg_match('/^\w{3,32}$/', (string) $namecustome))
-                $username = $namecustome;
-            $generated = $username . "_" . $user['number_username'];
-            break;
-        case 'customUsername':
-            $generated = $text;
-            break;
-        case 'customUsernameRandom':
-            $generated = $text . "_" . rand(1000000, 9999999);
-            break;
-        case 'customTextRandom':
-            $generated = $namecustome . "_" . $randomString;
-            break;
-        case 'customTextSequential':
-            $generated = $namecustome . "_" . $setting['numbercount'];
-            break;
-        case 'numericIdSequential':
-            $generated = $from_id . "_" . $user['number_username'];
-            break;
-        case 'agentCustomTextSequential':
-            if ($usernamecustom == "none")
-                $generated = $namecustome . "_" . $setting['numbercount'];
-            else
-                $generated = $usernamecustom . "_" . $user['number_username'];
-            break;
-        case 'numericIdRandom':
-        default:
-            $generated = $fallback;
-    }
-    $generated = trim((string) $generated, " _");
-    if (strlen($generated) < 3)
-        $generated = $fallback;
-    return $generated;
-}
-function outputlink($text)
-{
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $text);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, ($GLOBALS['request_exec_timeout'] ?? null) ?: 10000);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
-    curl_setopt($ch, CURLOPT_USERAGENT, $userAgent);
-    $response = curl_exec($ch);
-    if ($response === false) {
-        return null;
-    } else {
-        return $response;
-    }
-}
-
-function claimPaymentPaid($order_id)
-{
-    global $pdo;
-    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status <> 'paid'");
-    $stmt->bindValue(':id_order', $order_id);
-    $stmt->execute();
-    clearSelectCache('Payment_report');
-    return $stmt->rowCount() >= 1;
-}
-
-function DirectPayment($order_id, $image = 'images.jpg')
-{
-    global $pdo, $ManagePanel, $textbotlang, $keyboardextendfnished, $keyboard, $Confirm_pay, $from_id, $message_id;
-    $buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
-    $admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
-    $otherservice = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
-    $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
-    $errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'];
-    $porsantreport = select("topicid", "idreport", "report", "porsantreport", "select")['idreport'];
-    $setting = select("setting", "*");
-    $Payment_report = select("Payment_report", "*", "id_order", $order_id, "select");
-    $format_price_cart = number_format($Payment_report['price']);
-    $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
-    $steppay = explode("|", $Payment_report['id_invoice']);
-    $stmtReset = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '0', Processing_value_tow = '0', Processing_value_four = '0' WHERE id = ?");
-    $stmtReset->execute([$Balance_id['id']]);
-    clearSelectCache('user');
-    if ($steppay[0] == "getconfigafterpay") {
-        $get_invoice = select("invoice", "*", "username", $steppay[1], "select");
-        if ($get_invoice['Status'] == "active") {
-            return;
-        }
-        $stmt = $pdo->prepare("SELECT * FROM product WHERE name_product = :name_product AND (Location = :Service_location  or Location = '/all')");
-        $stmt->bindParam(':name_product', $get_invoice['name_product'], PDO::PARAM_STR);
-        $stmt->bindParam(':Service_location', $get_invoice['Service_location'], PDO::PARAM_STR);
-        $stmt->execute();
-        $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnVolume'] || $get_invoice['name_product'] == $textbotlang['users']['customSellVolume']['btnService']) {
-            $info_product['data_limit_reset'] = "no_reset";
-            $info_product['Volume_constraint'] = $get_invoice['Volume'];
-            $info_product['name_product'] = $textbotlang['users']['customSellVolume']['title'];
-            $info_product['code_product'] = "customvolume";
-            $info_product['Service_time'] = $get_invoice['Service_time'];
-            $info_product['price_product'] = $get_invoice['price_product'];
-        }
-        $username_ac = $get_invoice['username'];
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $get_invoice['Service_location'], "select");
-        $date = strtotime("+" . $get_invoice['Service_time'] . "days");
-        if (intval($get_invoice['Service_time']) == 0) {
-            $timestamp = 0;
-        } else {
-            $timestamp = strtotime(date("Y-m-d H:i:s", $date));
-        }
-        $datac = array(
-            'expire' => $timestamp,
-            'data_limit' => $get_invoice['Volume'] * pow(1024, 3),
-            'from_id' => $Balance_id['id'],
-            'username' => $Balance_id['username'],
-            'type' => 'buy'
-        );
-        $invoiceStatusBefore = $get_invoice['Status'] ?? null;
-        $invoiceClaimed = false;
-        if (!empty($get_invoice['id_invoice'])) {
-            $claimInvoice = $pdo->prepare("UPDATE invoice SET Status = 'active' WHERE id_invoice = ? AND Status <> 'active'");
-            $claimInvoice->execute([$get_invoice['id_invoice']]);
-            clearSelectCache('invoice');
-            if ($claimInvoice->rowCount() === 0) {
-                return;
-            }
-            $invoiceClaimed = true;
-        }
-        $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
-        if (!is_array($dataoutput) || empty($dataoutput['username'])) {
-            if ($invoiceClaimed) {
-                update("invoice", "Status", $invoiceStatusBefore, "id_invoice", $get_invoice['id_invoice']);
-            }
-            $dataoutput['msg'] = json_encode($dataoutput['msg'] ?? $dataoutput ?? 'unknown error');
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            update("user", "Balance", $balance, "id", $Balance_id['id']);
-            sendmessage($Balance_id['id'], $textbotlang['users']['sell']['errorConfig'], $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], sprintf($textbotlang['users']['Balance']['refundCreateFailed'], $balance), $keyboard, 'HTML');
-            $texterros = sprintf($textbotlang['Admin']['reportgroup']['errorConfigCreate'], $dataoutput['msg'], $Balance_id['id'], $Balance_id['username'], $marzban_list_get['name_panel']);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $texterros,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-        $Shoppinginfo = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['keyboard']['viewTutorial'], 'callback_data' => "helpbtn"],
-                ]
-            ]
-        ]);
-        $output_config_link = "";
-        $config = "";
-        if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
-            foreach ($dataoutput['configs'] as $link) {
-                $config .= "\n" . $link;
-            }
-        }
-        $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? $dataoutput['subscription_url'] : "";
-        $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "Manualsale" ? $textbotlang['textbot']['manual'] : $textbotlang['textbot']['afterPay'];
-        $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "WGDashboard" ? $textbotlang['textbot']['wgDashboard'] : $textbotlang['textbot']['afterPay'];
-        $textbotlang['textbot']['afterPay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $textbotlang['textbot']['afterPayIbsng'] : $textbotlang['textbot']['afterPay'];
-        if (intval($get_invoice['Service_time']) == 0)
-            $get_invoice['Service_time'] = $textbotlang['users']['status']['unlimited'];
-        $textcreatuser = str_replace('{username}', $dataoutput['username'], $textbotlang['textbot']['afterPay']);
-        $textcreatuser = str_replace('{name_service}', $get_invoice['name_product'], $textcreatuser);
-        $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
-        $textcreatuser = str_replace('{day}', $get_invoice['Service_time'], $textcreatuser);
-        $textcreatuser = str_replace('{volume}', $get_invoice['Volume'], $textcreatuser);
-        $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
-        $textcreatuser = str_replace('{links}', $config, $textcreatuser);
-        $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
-        if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
-            $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
-            update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
-        }
-        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
-        $partsdic = explode("_", $Balance_id['Processing_value_four']);
-        if ($partsdic[0] == "dis") {
-            $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
-            $value = intval($SellDiscountlimit['usedDiscount']) + 1;
-            update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
-            $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
-            $stmt->bindParam(':id_user', $Balance_id['id']);
-            $stmt->bindParam(':code', $partsdic[1]);
-            $stmt->execute();
-            $text_report = sprintf($textbotlang['Admin']['reportgroup']['discountCodeUsed'], $Balance_id['username'], $Balance_id['id'], $partsdic[1]);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $otherreport,
-                    'text' => $text_report,
-                ]);
-            }
-        }
-        $affiliatescommission = select("affiliates", "*", null, null, "select");
-        $marzbanporsant_one_buy = select("affiliates", "*", null, null, "select");
-        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != :name_product  AND id_user = :id_user AND Status != 'Unpaid'");
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':name_product', $textbotlang['common']['labels']['testServiceName']);
-        $stmt->execute();
-        $countinvoice = $stmt->rowCount();
-        if ($affiliatescommission['status_commission'] == "oncommission" && ($Balance_id['affiliates'] != null && intval($Balance_id['affiliates']) != 0)) {
-            if ($marzbanporsant_one_buy['porsant_one_buy'] == "on_buy_porsant") {
-                if ($countinvoice <= 1) {
-                    $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                    $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                    if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                        sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                        $scorenew = $user_Balance['score'] + 2;
-                        update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                    }
-                    $Balance_prim = $user_Balance['Balance'] + $result;
-                    $dateacc = date('Y/m/d H:i:s');
-                    update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                    $result = number_format($result);
-                    $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn'], $result);
-                    $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                    if (strlen($setting['Channel_Report']) > 0) {
-                        telegram('sendmessage', [
-                            'chat_id' => $setting['Channel_Report'],
-                            'message_thread_id' => $porsantreport,
-                            'text' => $textreportport,
-                            'parse_mode' => "HTML"
-                        ]);
-                    }
-                    sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
-                }
-            } else {
-
-                $result = ($Payment_report['price'] * $setting['affiliatespercentage']) / 100;
-                $user_Balance = select("user", "*", "id", $Balance_id['affiliates'], "select");
-                if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['affiliates'], $admin_ids)) {
-                    sendmessage($Balance_id['affiliates'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-                    $scorenew = $user_Balance['score'] + 2;
-                    update("user", "score", $scorenew, "id", $Balance_id['affiliates']);
-                }
-                $Balance_prim = $user_Balance['Balance'] + $result;
-                $dateacc = date('Y/m/d H:i:s');
-                update("user", "Balance", $Balance_prim, "id", $Balance_id['affiliates']);
-                $result = number_format($result);
-                $textadd = sprintf($textbotlang['users']['affiliates']['commissionPaidFn2'], $result);
-                $textreportport = sprintf($textbotlang['Admin']['reportgroup']['commissionPaidFn2'], $result, $Balance_id['affiliates'], $Balance_id['id'], $dateacc);
-                if (strlen($setting['Channel_Report']) > 0) {
-                    telegram('sendmessage', [
-                        'chat_id' => $setting['Channel_Report'],
-                        'message_thread_id' => $porsantreport,
-                        'text' => $textreportport,
-                        'parse_mode' => "HTML"
-                    ]);
-                }
-                sendmessage($Balance_id['affiliates'], $textadd, null, 'HTML');
-            }
-        }
-        if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customTextSequential', 'usernameSequential', 'numericIdSequential', 'agentCustomTextSequential'], true)) {
-            $value = intval($Balance_id['number_username']) + 1;
-            update("user", "number_username", $value, "id", $Balance_id['id']);
-            if (in_array(usernameMethodKey($marzban_list_get['MethodUsername']), ['customTextSequential', 'agentCustomTextSequential'], true)) {
-                $value = intval($setting['numbercount']) + 1;
-                update("setting", "numbercount", $value);
-            }
-        }
-        $Balance_prims = $Balance_id['Balance'] - $get_invoice['price_product'];
-        if ($Balance_prims <= 0)
-            $Balance_prims = 0;
-        update("user", "Balance", $Balance_prims, "id", $Balance_id['id']);
-        $balanceformatsell = select("user", "Balance", "id", $get_invoice['id_user'], "select")['Balance'];
-        $balanceformatsell = number_format($balanceformatsell, 0);
-        $balancebefore = number_format($Balance_id['Balance'], 0);
-        $timejalali = jdate('Y/m/d H:i:s');
-        $textonebuy = "";
-        if ($countinvoice == 1) {
-            $textonebuy = $textbotlang['common']['labels']['firstPurchaseAlt'];
-        }
-        $Response = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['Admin']['manageUser']['manageUserBtn'], 'callback_data' => 'manageuser_' . $Balance_id['id']],
-                ],
-            ]
-        ]);
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['accountCreatedAfterPay'], $textonebuy, $Balance_id['id'], $Balance_id['username'], $username_ac, $get_invoice['Service_location'], $get_invoice['Service_time'], $get_invoice['name_product'], $get_invoice['Volume'], $balancebefore, $balanceformatsell, $get_invoice['id_invoice'], $Balance_id['agent'], $Balance_id['number'], $get_invoice['price_product'], $Payment_report['price'], $timejalali);
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id' => $setting['Channel_Report'],
-                'message_thread_id' => $buyreport,
-                'text' => $text_report,
-                'parse_mode' => "HTML",
-                'reply_markup' => $Response
-            ]);
-        }
-        if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['affiliates']['pointsEarned1Alt'], null, 'html');
-            $scorenew = $Balance_id['score'] + 1;
-            update("user", "score", $scorenew, "id", $Balance_id['id']);
-        }
-        update("invoice", "Status", "active", "username", $get_invoice['username']);
-        if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
-            update("invoice", "Status", "active", "id_invoice", $get_invoice['id_invoice']);
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedService'], $username_ac, $get_invoice['Service_location'], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart, $Payment_report['dec_not_confirmed']);
-            if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
-                Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
-            }
-        }
-    } elseif ($steppay[0] == "getextenduser") {
-        $balanceformatsell = number_format(select("user", "Balance", "id", $Balance_id['id'], "select")['Balance'], 0);
-        $partsdic = explode("%", $steppay[1]);
-        $usernamepanel = $partsdic[0];
-        $sql = "SELECT * FROM service_other WHERE username = :username  AND value  LIKE CONCAT('%', :value, '%') AND id_user = :id_user ";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $usernamepanel, PDO::PARAM_STR);
-        $stmt->bindParam(':value', $partsdic[1], PDO::PARAM_STR);
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->execute();
-        $data_order = $stmt->fetch(PDO::FETCH_ASSOC);
-        $service_other = $data_order;
-        if ($service_other == false) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['extend']['genericError'], $keyboard, 'HTML');
-            return;
-        }
-        $service_other = json_decode($service_other['value'], true);
-        $codeproduct = $service_other['code_product'];
-        $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-        if ($codeproduct == "custom_volume") {
-            $prodcut['code_product'] = "custom_volume";
-            $prodcut['name_product'] = $nameloc['name_product'];
-            $prodcut['price_product'] = $data_order['price'];
-            $prodcut['Service_time'] = $service_other['Service_time'];
-            $prodcut['Volume_constraint'] = $service_other['volumebuy'];
-        } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :mp2 OR Location = '/all') AND agent= :mp3 AND code_product = :mp4");
-            $stmt->execute([':mp2' => $nameloc['Service_location'], ':mp3' => $Balance_id['agent'], ':mp4' => $codeproduct]);
-            $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
-        }
-        if ($nameloc['name_product'] == $textbotlang['common']['labels']['testServiceFn']) {
-            update("invoice", "name_product", $prodcut['name_product'], "id_invoice", $nameloc['id_invoice']);
-            update("invoice", "price_product", $prodcut['price_product'], "id_invoice", $nameloc['id_invoice']);
-        }
-        $dateacc = date('Y/m/d H:i:s');
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-        $Balance_Low_user = 0;
-        update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
-        $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
-        if ($extend['status'] == false) {
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            update("user", "Balance", $balance, "id", $Balance_id['id']);
-            sendmessage($Balance_id['id'], $textbotlang['users']['sell']['errorConfig'], $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], sprintf($textbotlang['users']['Balance']['refundRenewFailed'], $balance), $keyboard, 'HTML');
-            $extend['msg'] = json_encode($extend['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorRenewServiceFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extend['msg']);
-            sendmessage($nameloc['id_user'], $textbotlang['users']['extend']['errorSupport'], null, 'HTML');
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $textreports,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-
-        update("service_other", "output", json_encode($extend), "id", $data_order['id']);
-        update("service_other", "status", "paid", "id", $data_order['id']);
-        $partsdic = explode("_", $Balance_id['Processing_value_four']);
-        if ($partsdic[0] == "dis") {
-            $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
-            $value = intval($SellDiscountlimit['usedDiscount']) + 1;
-            update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
-            $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
-            $stmt->bindParam(':id_user', $Balance_id['id']);
-            $stmt->bindParam(':code', $partsdic[1]);
-            $stmt->execute();
-            $text_report = sprintf($textbotlang['Admin']['reportgroup']['discountCodeUsedFn'], $Balance_id['username'], $Balance_id['id'], $partsdic[1]);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $otherreport,
-                    'text' => $text_report,
-                ]);
-            }
-        }
-        $keyboardextendfnished = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['users']['status']['backlist'], 'callback_data' => "backorder"],
-                ],
-                [
-                    ['text' => $textbotlang['users']['status']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
-                ]
-            ]
-        ]);
-        if ($Balance_id['agent'] == "f") {
-            $valurcashbackextend = select("shopSetting", "*", "Namevalue", "chashbackextend", "select")['value'];
-        } else {
-            $valurcashbackextend = json_decode(select("shopSetting", "*", "Namevalue", "chashbackextend_agent", "select")['value'], true)[$Balance_id['agent']];
-        }
-        if (intval($valurcashbackextend) != 0) {
-            $result = ($prodcut['price_product'] * $valurcashbackextend) / 100;
-            $pricelastextend = $result;
-            update("user", "Balance", $pricelastextend, "id", $Balance_id['id']);
-            sendmessage($Balance_id['id'], sprintf($textbotlang['users']['extend']['giftChargedFn'], $result), null, 'HTML');
-        }
-        $priceproductformat = number_format($prodcut['price_product']);
-        $textextend = sprintf($textbotlang['users']['extend']['successFn'], $usernamepanel, $prodcut['name_product'], $priceproductformat);
-        sendmessage($Balance_id['id'], $textextend, $keyboardextendfnished, 'HTML');
-        if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['affiliates']['pointsEarned2Alt'], null, 'html');
-            $scorenew = $Balance_id['score'] + 2;
-            update("user", "score", $scorenew, "id", $Balance_id['id']);
-        }
-        $timejalali = jdate('Y/m/d H:i:s');
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['renewedFn'], $Balance_id['id'], $Balance_id['username'], $usernamepanel, $nameloc['Service_location'], $prodcut['name_product'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $priceproductformat, $balanceformatsell, $timejalali);
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id' => $setting['Channel_Report'],
-                'message_thread_id' => $otherservice,
-                'text' => $text_report,
-                'parse_mode' => "HTML"
-            ]);
-        }
-        update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-        if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
-
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedRenew'], $usernamepanel, $prodcut['name_product'], $nameloc['Service_location'], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart, $Payment_report['dec_not_confirmed']);
-            if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
-                Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
-            }
-        }
-    } elseif ($steppay[0] == "getextravolumeuser") {
-        $steppay = explode("%", $steppay[1]);
-        $volume = $steppay[1];
-        $nameloc = select("invoice", "*", "username", $steppay[0], "select");
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-        $Balance_Low_user = 0;
-        update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
-        $data_for_database = json_encode(array(
-            'volume_value' => $volume,
-            'old_volume' => $DataUserOut['data_limit'],
-            'expire_old' => $DataUserOut['expire']
-        ));
-        $dateacc = date('Y/m/d H:i:s');
-        $type = "extra_user";
-        $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $volume);
-        if ($extra_volume['status'] == false) {
-            $extra_volume['msg'] = json_encode($extra_volume['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraVolumeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extra_volume['msg']);
-            sendmessage($nameloc['id_user'], $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $textreports,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-        $stmt = $pdo->prepare("INSERT IGNORE INTO service_other (id_user, username,value,type,time,price,output) VALUES (:id_user,:username,:value,:type,:time,:price,:output)");
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':username', $steppay[0]);
-        $stmt->bindParam(':value', $data_for_database);
-        $stmt->bindParam(':type', $type);
-        $stmt->bindParam(':time', $dateacc);
-        $stmt->bindParam(':price', $Payment_report['price']);
-        $extra_volume_output = json_encode($extra_volume);
-        $stmt->bindParam(':output', $extra_volume_output);
-        $stmt->execute();
-        $keyboardextrafnished = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['users']['status']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
-                ]
-            ]
-        ]);
-        $volumesformat = number_format($Payment_report['price'], 0);
-        if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['affiliates']['pointsEarned1Alt'], null, 'html');
-            $scorenew = $Balance_id['score'] + 1;
-            update("user", "score", $scorenew, "id", $Balance_id['id']);
-        }
-        $textvolume = sprintf($textbotlang['users']['extraVolume']['successFn'], $steppay[0], $volume, $volumesformat);
-        sendmessage($Balance_id['id'], $textvolume, $keyboardextrafnished, 'HTML');
-        $volumes = $volume;
-        if ($Payment_report['Payment_Method'] == "cart to cart") {
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraVolume'], $volumes, $steppay[0], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
-            if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
-                Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
-            }
-        }
-        update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraVolumeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $steppay[0], $Balance_id['Balance']);
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id' => $setting['Channel_Report'],
-                'message_thread_id' => $otherservice,
-                'text' => $text_report,
-                'parse_mode' => "HTML"
-            ]);
-        }
-    } elseif ($steppay[0] == "getextratimeuser") {
-        $steppay = explode("%", $steppay[1]);
-        $tmieextra = $steppay[1];
-        $nameloc = select("invoice", "*", "username", $steppay[0], "select");
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-        $Balance_Low_user = 0;
-        update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
-        $data_for_database = json_encode(array(
-            'day' => $tmieextra,
-            'old_volume' => $DataUserOut['data_limit'],
-            'expire_old' => $DataUserOut['expire']
-        ));
-        $dateacc = date('Y/m/d H:i:s');
-        $type = "extra_time_user";
-        $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $tmieextra);
-        if ($extra_time['status'] == false) {
-            $extra_time['msg'] = json_encode($extra_time['msg']);
-            $textreports = sprintf($textbotlang['Admin']['reportgroup']['errorExtraTimeFn'], $marzban_list_get['name_panel'], $nameloc['username'], $extra_time['msg']);
-            sendmessage($from_id, $textbotlang['users']['extraVolume']['serviceError'], null, 'HTML');
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $textreports,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-        $stmt = $pdo->prepare("INSERT IGNORE INTO service_other (id_user, username,value,type,time,price,output) VALUES (:id_user,:username,:value,:type,:time,:price,:output)");
-        $stmt->bindParam(':id_user', $Balance_id['id']);
-        $stmt->bindParam(':username', $steppay[0]);
-        $stmt->bindParam(':value', $data_for_database);
-        $stmt->bindParam(':type', $type);
-        $stmt->bindParam(':time', $dateacc);
-        $stmt->bindParam(':price', $Payment_report['price']);
-        $extra_time_output = json_encode($extra_time);
-        $stmt->bindParam(':output', $extra_time_output);
-        $stmt->execute();
-        $keyboardextrafnished = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['users']['status']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
-                ]
-            ]
-        ]);
-        $volumesformat = number_format($Payment_report['price']);
-        if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], $textbotlang['users']['affiliates']['pointsEarned1Alt'], null, 'html');
-            $scorenew = $Balance_id['score'] + 1;
-            update("user", "score", $scorenew, "id", $Balance_id['id']);
-        }
-        $textextratime = sprintf($textbotlang['users']['extraTime']['successFn'], $steppay[0], $tmieextra, $volumesformat);
-        sendmessage($Balance_id['id'], $textextratime, $keyboardextrafnished, 'HTML');
-        $volumes = $tmieextra;
-        if ($Payment_report['Payment_Method'] == "cart to cart") {
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['paymentConfirmedExtraTime'], $volumes, $steppay[0], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $Balance_id['Balance'], $format_price_cart);
-            if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
-                Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
-            }
-        }
-        update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-        $text_report = sprintf($textbotlang['Admin']['reportgroup']['extraTimeFn'], $Balance_id['id'], $volumes, $Payment_report['price'], $steppay[0]);
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id' => $setting['Channel_Report'],
-                'message_thread_id' => $otherservice,
-                'text' => $text_report,
-            ]);
-        }
-    } else {
-        $Balance_confrim = intval($Balance_id['Balance']) + intval($Payment_report['price']);
-        update("user", "Balance", $Balance_confrim, "id", $Payment_report['id_user']);
-        update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
-        $Payment_report['price'] = number_format($Payment_report['price'], 0);
-        $format_price_cart = $Payment_report['price'];
-        if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
-            $textconfrom = sprintf($textbotlang['Admin']['reportgroup']['newPaymentBalanceFn'], $Balance_id['id'], $Payment_report['id_order'], $Balance_id['username'], $format_price_cart, $Balance_id['Balance'], $Payment_report['dec_not_confirmed']);
-            if (!isTelegramChatIdEmpty($from_id) && intval($message_id) != 0) {
-                Editmessagetext($from_id, $message_id, $textconfrom, $Confirm_pay);
-            }
-        }
-        sendmessage($Payment_report['id_user'], sprintf($textbotlang['users']['Balance']['chargedThanks'], $Payment_report['price'], $Payment_report['id_order']), null, 'HTML');
-    }
-}
-function plisio($order_id, $price, $from_id)
-{
-    $apinowpayments = select("PaySetting", "ValuePay", "NamePay", "apinowpayment", "select")['ValuePay'];
-    $api_key = $apinowpayments;
-
-    $url = 'https://api.plisio.net/api/v1/invoices/new';
-    $url .= '?source_currency=USD';
-    $url .= '&source_amount=' . urlencode($price);
-    $url .= '&order_number=' . urlencode($order_id);
-    $url .= '&email=customer@plisio.net';
-    $url .= '&order_name=' . urlencode('TopUp - ' . $from_id);
-    $url .= '&language=fa';
-    $url .= '&api_key=' . urlencode($api_key);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = json_decode(curl_exec($ch), true);
-    return $response['data'];
-}
-function checkConnection($address, $port)
-{
-    $socket = @stream_socket_client("tcp://$address:$port", $errno, $errstr, 5);
-    if ($socket) {
-        fclose($socket);
-        return true;
-    } else {
-        return false;
-    }
-}
-function savedata($type, $namefiled, $valuefiled)
-{
-    global $from_id;
-    if ($type == "clear") {
-        $datauser = [];
-        $datauser[$namefiled] = $valuefiled;
-        $data = json_encode($datauser);
-        update("user", "Processing_value", $data, "id", $from_id);
-    } elseif ($type == "save") {
-        $userdata = select("user", "*", "id", $from_id, "select");
-        // Processing_value must be a JSON object string. It can also be null, "", or a
-        // plain scalar left over from older flows — those decode to null/int/string.
-        $dataperevieos = json_decode((string) ($userdata['Processing_value'] ?? ''), true);
-        if (!is_array($dataperevieos)) {
-            $dataperevieos = [];
-        }
-        $dataperevieos[$namefiled] = $valuefiled;
-        update("user", "Processing_value", json_encode($dataperevieos), "id", $from_id);
-    }
-}
-function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype = "VARCHAR(500)")
-{
-    global $pdo;
-
-    assertSqlIdentifier($tableName);
-    assertSqlIdentifier($fieldName);
-    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM information_schema.tables WHERE table_name = :tableName");
+require_once 'function.php';
+require_once 'config.php';
+require_once 'botapi.php';
+global $connect;
+//-----------------------------------------------------------------
+try {
+
+    $tableName = 'user';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
     $stmt->bindParam(':tableName', $tableName);
     $stmt->execute();
     $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($tableExists['count'] == 0)
-        return;
-    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?");
-    $stmt->execute([$pdo->query("SELECT DATABASE()")->fetchColumn(), $tableName, $fieldName]);
-    $filedExists = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($filedExists['count'] != 0)
-        return;
-    $query = "ALTER TABLE $tableName ADD $fieldName $datatype";
-    $statement = $pdo->prepare($query);
-    $statement->execute();
-    if ($defaultValue != null) {
-        $stmt = $pdo->prepare("UPDATE $tableName SET $fieldName= ?");
-        $stmt->bindParam(1, $defaultValue);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+            id VARCHAR(500) PRIMARY KEY,
+            limit_usertest INT(100) NOT NULL,
+            roll_Status BOOL NOT NULL,
+            username VARCHAR(500) NOT NULL,
+            Processing_value TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            Processing_value_one TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            Processing_value_tow TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            Processing_value_four TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            step VARCHAR(500) NOT NULL,
+            description_blocking TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+            number VARCHAR(300) NOT NULL,
+            Balance INT(255) NOT NULL,
+            User_Status VARCHAR(500) NOT NULL,
+            pagenumber INT(10) NOT NULL,
+            message_count VARCHAR(100) NOT NULL,
+            last_message_time VARCHAR(100) NOT NULL,
+            agent VARCHAR(100) NOT NULL,
+            affiliatescount VARCHAR(100) NOT NULL,
+            affiliates VARCHAR(100) NOT NULL,
+            namecustom VARCHAR(300) NOT NULL,
+            number_username VARCHAR(300) NOT NULL,
+            register VARCHAR(100) NOT NULL,
+            verify VARCHAR(100) NOT NULL,
+            cardpayment VARCHAR(100) NOT NULL,
+            codeInvitation VARCHAR(100) NULL,
+            pricediscount VARCHAR(100) NULL   DEFAULT '0',
+            hide_mini_app_instruction VARCHAR(20) NULL   DEFAULT '0',
+            maxbuyagent VARCHAR(100) NULL   DEFAULT '0',
+            joinchannel VARCHAR(100) NULL   DEFAULT '0',
+            checkstatus VARCHAR(50) NULL   DEFAULT '0',
+            bottype TEXT NULL ,
+            score INT(255) NULL DEFAULT '0',
+            limitchangeloc VARCHAR(50) NULL   DEFAULT '0',
+            status_cron VARCHAR(20)  NULL DEFAULT '1',
+            expire VARCHAR(100) NULL ,
+            token VARCHAR(100) NULL 
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         $stmt->execute();
-    }
-}
-function outtypepanel($typepanel, $message)
-{
-    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $option_mirza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optionibsng, $optionrebecca;
-    if ($typepanel == "marzban") {
-        sendmessage($from_id, $message, $optionMarzban, 'HTML');
-    } elseif ($typepanel == "x-ui_single") {
-        sendmessage($from_id, $message, $optionX_ui_single, 'HTML');
-    } elseif ($typepanel == "hiddify") {
-        sendmessage($from_id, $message, $optionhiddfy, 'HTML');
-    } elseif ($typepanel == "alireza_single") {
-        sendmessage($from_id, $message, $optionalireza_single, 'HTML');
-    } elseif ($typepanel == "marzneshin") {
-        sendmessage($from_id, $message, $optionmarzneshin, 'HTML');
-    } elseif ($typepanel == "WGDashboard") {
-        sendmessage($from_id, $message, $optionwg, 'HTML');
-    } elseif ($typepanel == "s_ui") {
-        sendmessage($from_id, $message, $options_ui, 'HTML');
-    } elseif ($typepanel == "ibsng") {
-        sendmessage($from_id, $message, $optionibsng, 'HTML');
-    } elseif ($typepanel == "mikrotik") {
-        sendmessage($from_id, $message, $option_mikrotik, 'HTML');
-    } elseif ($typepanel == "mirza_agent") {
-        sendmessage($from_id, $message, $option_mirza, 'HTML');
-    } elseif ($typepanel == "rebecca") {
-        sendmessage($from_id, $message, $optionrebecca, 'HTML');
-    }
-}
-
-function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
-{
-    if (!file_exists($backgroundPath)) {
-        error_log("addBackgroundImage: File not found at $backgroundPath");
-        file_put_contents($urlimage, $qrCodeResult->getString());
-        return;
-    }
-
-    $qrString = $qrCodeResult->getString();
-    $qrCodeImage = imagecreatefromstring($qrString);
-    if (!$qrCodeImage) {
-        error_log("addBackgroundImage: Failed to create QR Code resource");
-        return;
-    }
-
-    $backgroundImage = null;
-
-    try {
-        $backgroundImage = imagecreatefromjpeg($backgroundPath);
-    } catch (Throwable $t) {
-        error_log("addBackgroundImage::EXCEPTION loading image: " . $t->getMessage());
-    }
-
-    if (!$backgroundImage) {
-        $lastError = error_get_last();
-        error_log("addBackgroundImage::System Error: " . $lastError['message']);
-
-        imagepng($qrCodeImage, $urlimage);
-        imagedestroy($qrCodeImage);
-        return;
-    }
-
-    $qrCodeWidth = imagesx($qrCodeImage);
-    $qrCodeHeight = imagesy($qrCodeImage);
-    $backgroundWidth = imagesx($backgroundImage);
-    $backgroundHeight = imagesy($backgroundImage);
-
-    $x = ($backgroundWidth - $qrCodeWidth) / 2;
-    $y = ($backgroundHeight - $qrCodeHeight) / 2;
-
-    imagecopy($backgroundImage, $qrCodeImage, $x, $y, 0, 0, $qrCodeWidth, $qrCodeHeight);
-
-    if (!@imagepng($backgroundImage, $urlimage)) {
-        error_log("addBackgroundImage: Failed to write image to $urlimage");
-        @file_put_contents($urlimage, $qrString);
-    }
-
-    imagedestroy($qrCodeImage);
-    imagedestroy($backgroundImage);
-}
-
-function checktelegramip()
-{
-    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
-    if (!is_string($clientIp) || $clientIp === '') {
-        return false;
-    }
-
-    $clientIp = trim($clientIp);
-    if (!filter_var($clientIp, FILTER_VALIDATE_IP)) {
-        return false;
-    }
-
-    $telegramIpRanges = [
-        ['lower' => '149.154.160.0', 'upper' => '149.154.175.255'],
-        ['lower' => '91.108.4.0', 'upper' => '91.108.7.255'],
-        ['lower' => '2001:67c:4e8::', 'upper' => '2001:67c:4e8:ffff:ffff:ffff:ffff:ffff']
-    ];
-
-    foreach ($telegramIpRanges as $range) {
-        if (isClientIpInRange($clientIp, $range['lower'], $range['upper'])) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function isClientIpInRange($clientIp, $lowerBound, $upperBound)
-{
-    $clientPacked = inet_pton($clientIp);
-    $lowerPacked = inet_pton($lowerBound);
-    $upperPacked = inet_pton($upperBound);
-
-    if ($clientPacked === false || $lowerPacked === false || $upperPacked === false) {
-        return false;
-    }
-
-    $length = strlen($clientPacked);
-    if ($length !== strlen($lowerPacked) || $length !== strlen($upperPacked)) {
-        return false;
-    }
-
-    return strcmp($clientPacked, $lowerPacked) >= 0 && strcmp($clientPacked, $upperPacked) <= 0;
-}
-function addCronIfNotExists($cronCommand)
-{
-    $commands = is_array($cronCommand) ? $cronCommand : [$cronCommand];
-    $commands = array_values(array_filter(array_map('trim', $commands), static function ($command) {
-        return $command !== '';
-    }));
-
-    if (empty($commands)) {
-        return true;
-    }
-
-    $logContext = implode('; ', $commands);
-
-    if (!isShellExecAvailable()) {
-        error_log('shell_exec is not available; unable to register cron job(s): ' . $logContext);
-        return false;
-    }
-
-    $crontabBinary = getCrontabBinary();
-    if ($crontabBinary === null) {
-        error_log('crontab executable not found; unable to register cron job(s): ' . $logContext);
-        return false;
-    }
-
-    $existingCronJobs = runShellCommand(sprintf('%s -l 2>/dev/null', escapeshellarg($crontabBinary)));
-    $existingCronJobs = trim((string) $existingCronJobs);
-    $cronLines = $existingCronJobs === '' ? [] : preg_split('/\r?\n/', $existingCronJobs);
-    $cronLines = array_values(array_filter(array_map('trim', $cronLines), static function ($line) {
-        return $line !== ''
-            && strpos($line, '#') !== 0
-            && stripos($line, 'no crontab') === false;
-    }));
-
-    $newLineAdded = false;
-    foreach ($commands as $command) {
-        if (!in_array($command, $cronLines, true)) {
-            $cronLines[] = $command;
-            $newLineAdded = true;
-        }
-    }
-
-    if (!$newLineAdded) {
-        return true;
-    }
-
-    $cronLines = array_values(array_unique($cronLines));
-    $cronContent = implode(PHP_EOL, $cronLines) . PHP_EOL;
-
-    $temporaryFile = tempnam(sys_get_temp_dir(), 'cron');
-    if ($temporaryFile === false) {
-        error_log('Unable to create temporary file for cron job registration.');
-        return false;
-    }
-
-    if (file_put_contents($temporaryFile, $cronContent) === false) {
-        error_log('Unable to write cron configuration to temporary file: ' . $temporaryFile);
-        unlink($temporaryFile);
-        return false;
-    }
-
-    $applyMarker = 'MIRZA_CRON_OK';
-    $applyOutput = runShellCommand(sprintf(
-        '%s %s >/dev/null 2>&1 && echo %s',
-        escapeshellarg($crontabBinary),
-        escapeshellarg($temporaryFile),
-        $applyMarker
-    ));
-    unlink($temporaryFile);
-
-    if (strpos((string) $applyOutput, $applyMarker) === false) {
-        error_log('crontab install failed; unable to register cron job(s): ' . $logContext);
-        return false;
-    }
-
-    return true;
-}
-
-function activecron()
-{
-    global $domainhosts;
-
-    $cronCommands = [
-        "*/15 * * * * curl https://$domainhosts/cronbot/statusday.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/croncard.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/NoticationsService.php",
-        "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
-        "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/iranpay1.php",
-        "0 */5 * * * curl https://$domainhosts/cronbot/backupbot.php",
-        "*/2 * * * * curl https://$domainhosts/cronbot/gift.php",
-        "*/30 * * * * curl https://$domainhosts/cronbot/expireagent.php",
-        "*/15 * * * * curl https://$domainhosts/cronbot/on_hold.php",
-        "*/2 * * * * curl https://$domainhosts/cronbot/configtest.php",
-        "*/15 * * * * curl https://$domainhosts/cronbot/uptime_node.php",
-        "*/15 * * * * curl https://$domainhosts/cronbot/uptime_panel.php",
-    ];
-
-    addCronIfNotExists($cronCommands);
-}
-function createInvoice($amount)
-{
-    $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
-    $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
-
-    $curl = curl_init();
-
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://pay.melorinabeauty.com/api/factor/create',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => array('amount' => $amount, 'address' => $walletaddress, 'base' => 'trx'),
-        CURLOPT_HTTPHEADER => array(
-            'Authorization: Token ' . $PaySetting
-        ),
-    ));
-
-    $response = curl_exec($curl);
-    return json_decode($response, true);
-}
-function verifpay($id)
-{
-    $PaySetting = select("PaySetting", "*", "NamePay", "apiiranpay", "select")['ValuePay'];
-    $curl = curl_init();
-
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://pay.melorinabeauty.ir/api/factor/status?id=' . $id,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'GET',
-        CURLOPT_HTTPHEADER => array(
-            'Authorization: Token ' . $PaySetting
-        ),
-    ));
-
-    $response = curl_exec($curl);
-
-
-    return $response;
-}
-function createInvoiceiranpay1($amount, $id_invoice)
-{
-    global $domainhosts;
-    $PaySetting = select("PaySetting", "*", "NamePay", "marchent_floypay", "select")['ValuePay'];
-    $curl = curl_init();
-    $amount = intval($amount);
-    $data = [
-        "ApiKey" => $PaySetting,
-        "Hash_id" => $id_invoice,
-        "Amount" => $amount . "0",
-        "CallbackURL" => "https://$domainhosts/payment/iranpay1.php"
-    ];
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => "https://tetra98.com/api/create_order",
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => json_encode($data),
-        CURLOPT_HTTPHEADER => array(
-            'accept: application/json',
-            'Content-Type: application/json'
-        ),
-    ));
-
-    $response = curl_exec($curl);
-    return json_decode($response, true);
-}
-function sanitizeUserName($userName)
-{
-    $forbiddenCharacters = [
-        "'",
-        "\"",
-        "<",
-        ">",
-        "--",
-        "#",
-        ";",
-        "\\",
-        "%",
-        "(",
-        ")"
-    ];
-
-    foreach ($forbiddenCharacters as $char) {
-        $userName = str_replace($char, "", $userName);
-    }
-
-    return $userName;
-}
-function panelErrorText($rawError)
-{
-    global $textbotlang, $request_exec_timeout;
-    if (is_array($rawError) || is_object($rawError)) {
-        $raw = json_encode($rawError, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     } else {
-        $raw = trim((string) $rawError);
+        addFieldToTable($tableName, 'token', null, "VARCHAR(100)");
+        addFieldToTable($tableName, 'status_cron', "1", "VARCHAR(20)");
+        addFieldToTable($tableName, 'expire', NULL, "VARCHAR(100)");
+        addFieldToTable($tableName, 'limitchangeloc', '0', "VARCHAR(50)");
+        addFieldToTable($tableName, 'bottype', '0', "TEXT");
+        addFieldToTable($tableName, 'score', '0', "INT(255)");
+        addFieldToTable($tableName, 'checkstatus', '0', "VARCHAR(50)");
+        addFieldToTable($tableName, 'joinchannel', '0', "VARCHAR(100)");
+        addFieldToTable($tableName, 'maxbuyagent', '0');
+        addFieldToTable($tableName, 'agent', 'f');
+        addFieldToTable($tableName, 'verify', '1');
+        addFieldToTable($tableName, 'register', 'none');
+        addFieldToTable($tableName, 'namecustom', 'none');
+        addFieldToTable($tableName, 'number_username', '100');
+        addFieldToTable($tableName, 'cardpayment', '1');
+        addFieldToTable($tableName, 'affiliatescount', '0');
+        addFieldToTable($tableName, 'affiliates', '0');
+        addFieldToTable($tableName, 'message_count', '0');
+        addFieldToTable($tableName, 'last_message_time', '0');
+        addFieldToTable($tableName, 'Processing_value_four', '');
+        addFieldToTable($tableName, 'username', 'none');
+        addFieldToTable($tableName, 'Processing_value', 'none');
+        addFieldToTable($tableName, 'number', 'none');
+        addFieldToTable($tableName, 'pagenumber', '');
+        addFieldToTable($tableName, 'codeInvitation', null);
+        addFieldToTable($tableName, 'pricediscount', "0");
+        addFieldToTable($tableName, 'hide_mini_app_instruction', '0', "VARCHAR(20)");
     }
-    if ($raw === '') {
-        $raw = 'unknown error';
-    }
-    error_log('Panel connection error: ' . $raw);
-    $messages = $textbotlang['Admin']['managepanel']['panelConnection'] ?? [];
-    if (empty($messages)) {
-        return $raw;
-    }
-    $needle = strtolower($raw);
-    if (str_contains($needle, 'timed out') || str_contains($needle, 'timeout') || str_contains($needle, 'operation too slow')) {
-        $seconds = 0;
-        if (preg_match('/after (\d+) milliseconds/', $needle, $matched)) {
-            $seconds = (int) round(intval($matched[1]) / 1000);
-        }
-        if ($seconds < 1) {
-            $seconds = (int) round(intval($request_exec_timeout ?: 10000) / 1000);
-        }
-        $text = sprintf($messages['timeout'], $seconds);
-    } elseif (str_contains($needle, 'could not resolve') || str_contains($needle, 'name or service not known') || str_contains($needle, 'name lookup')) {
-        $text = $messages['dns'];
-    } elseif (str_contains($needle, 'connection refused') || str_contains($needle, 'failed to connect') || str_contains($needle, "couldn't connect") || str_contains($needle, 'connection reset')) {
-        $text = $messages['refused'];
-    } elseif (str_contains($needle, 'ssl') || str_contains($needle, 'certificate')) {
-        $text = $messages['ssl'];
+} catch (PDOException $e) {
+    file_put_contents('error_log user', $e->getMessage());
+}
+
+//-----------------------------------------------------------------
+try {
+
+    $tableName = 'help';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name_os varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        Media_os varchar(5000) NOT NULL,
+        type_Media_os varchar(500) NOT NULL,
+        category TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        Description_os TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $stmt->execute();
     } else {
-        $text = $messages['generic'];
+        addFieldToTable("help", "category", null, "TEXT");
     }
-    if (!empty($messages['detail'])) {
-        $text .= sprintf($messages['detail'], htmlspecialchars($raw, ENT_NOQUOTES, 'UTF-8'));
-    }
-    return $text;
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
 }
-function panelProtocolsConfigured($rawProxies)
-{
-    $decoded = json_decode((string) $rawProxies, true);
-    return is_array($decoded) && count($decoded) > 0;
+//-----------------------------------------------------------------
+try {
+
+    $tableName = 'setting';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $DATAAWARD = json_encode(array(
+        'one' => "0",
+        "tow" => "0",
+        "theree" => "0"
+    ));
+    $limitlist = json_encode(array(
+        'free' => 100,
+        'all' => 100,
+    ));
+    $status_cron = json_encode(array(
+        'day' => true,
+        'volume' => true,
+        'remove' => false,
+        'remove_volume' => false,
+        'test' => false,
+        'on_hold' => false,
+        'uptime_node' => false,
+        'uptime_panel' => false,
+    ));
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+        Bot_Status varchar(200)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        roll_Status varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        get_number varchar(200)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        iran_number varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        NotUser varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        Channel_Report varchar(600)  NULL,
+        limit_usertest_all varchar(600)  NULL,
+        affiliatesstatus varchar(600)  NULL,
+        affiliatespercentage varchar(600)  NULL,
+        removedayc varchar(600)  NULL,
+        showcard varchar(200)  NULL,
+        numbercount varchar(600)  NULL,
+        statusnewuser varchar(600)  NULL,
+        statusagentrequest varchar(600)  NULL,
+        statuscategory varchar(200)  NULL,
+        statusterffh varchar(200)  NULL,
+        volumewarn varchar(200)  NULL,
+        inlinebtnmain varchar(200)  NULL,
+        verifystart varchar(200)  NULL,
+        id_support varchar(200)  NULL,
+        statusnamecustom varchar(100)  NULL,
+        statuscategorygenral varchar(100)  NULL,
+        statussupportpv varchar(100)  NULL,
+        agentreqprice varchar(100)  NULL,
+        bulkbuy varchar(100)  NULL,
+        on_hold_day varchar(100)  NULL,
+        cronvolumere varchar(100)  NULL,
+        verifybucodeuser varchar(100)  NULL,
+        scorestatus varchar(100)  NULL,
+        Lottery_prize TEXT  NULL,
+        wheelـluck varchar(45)  NULL,
+        wheelـluck_price varchar(45)  NULL,
+        btn_status_extned varchar(45)  NULL,
+        daywarn varchar(45)  NULL,
+        categoryhelp varchar(45)  NULL,
+        linkappstatus varchar(45)  NULL,
+        iplogin varchar(45)  NULL,
+        wheelagent varchar(45)  NULL,
+        Lotteryagent varchar(45)  NULL,
+        languageen varchar(45)  NULL,
+        languageru varchar(45)  NULL,
+        statusfirstwheel varchar(45)  NULL,
+        statuslimitchangeloc varchar(45)  NULL,
+        Debtsettlement varchar(45)  NULL,
+        Dice varchar(45) NULL,
+        keyboardmain TEXT NOT NULL,
+        statusnoteforf varchar(45) NOT NULL,
+        statuscopycart varchar(45) NOT NULL,
+        timeauto_not_verify varchar(20) NOT NULL,
+        status_keyboard_config varchar(20)  NULL,
+        cron_status TEXT NOT NULL,
+        limitnumber varchar(200)  NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $stmt->execute();
+        $stmt = $pdo->prepare("INSERT INTO setting (Bot_Status,roll_Status,get_number,limit_usertest_all,iran_number,NotUser,affiliatesstatus,affiliatespercentage,removedayc,showcard,statuscategory,numbercount,statusnewuser,statusagentrequest,volumewarn,inlinebtnmain,verifystart,statussupportpv,statusnamecustom,statuscategorygenral,agentreqprice,cronvolumere,bulkbuy,on_hold_day,verifybucodeuser,scorestatus,Lottery_prize,wheelـluck,wheelـluck_price,iplogin,daywarn,categoryhelp,linkappstatus,languageen,languageru,wheelagent,Lotteryagent,statusfirstwheel,statuslimitchangeloc,limitnumber,Debtsettlement,Dice,keyboardmain,statusnoteforf,statuscopycart,timeauto_not_verify,status_keyboard_config,cron_status) VALUES ('botstatuson','rolleon','offAuthenticationphone','1','offAuthenticationiran','offnotuser','offaffiliates','0','0','1','offcategory','0','onnewuser','onrequestagent','2','offinline','offverify','offpvsupport','offnamecustom','offcategorys','0','5','onbulk','4','offverify','0','$DATAAWARD','0','0','0','2','0','0','0','0','1','1','0','0','$limitlist','1','0','$keyboardmain','1','0','4','1','$status_cron')");
+        $stmt->execute();
+    } else {
+        addFieldToTable("setting", "cron_status", $status_cron, "TEXT");
+        addFieldToTable("setting", "status_keyboard_config", "1", "varchar(20)");
+        addFieldToTable("setting", "statusnoteforf", "1", "varchar(20)");
+        addFieldToTable("setting", "timeauto_not_verify", "4", "varchar(20)");
+        addFieldToTable("setting", "statuscopycart", "0", "varchar(20)");
+        addFieldToTable("setting", "keyboardmain", $keyboardmain, "TEXT");
+        addFieldToTable("setting", "Dice", '0', "varchar(45)");
+        addFieldToTable("setting", "Debtsettlement", '1', "varchar(45)");
+        addFieldToTable("setting", "limitnumber", $limitlist, "varchar(200)");
+        addFieldToTable("setting", "statuslimitchangeloc", "0", "varchar(45)");
+        addFieldToTable("setting", "statusfirstwheel", "0", "varchar(45)");
+        addFieldToTable("setting", "Lotteryagent", "1", "varchar(45)");
+        addFieldToTable("setting", "wheelagent", "1", "varchar(45)");
+        addFieldToTable("setting", "languageru", "0", "varchar(45)");
+        addFieldToTable("setting", "languageen", "0", "varchar(45)");
+        addFieldToTable("setting", "linkappstatus", "0", "varchar(45)");
+        addFieldToTable("setting", "categoryhelp", "0", "varchar(45)");
+        addFieldToTable("setting", "daywarn", "2", "varchar(45)");
+        addFieldToTable("setting", "btn_status_extned", "0", "varchar(45)");
+        addFieldToTable("setting", "iplogin", "0", "varchar(45)");
+        addFieldToTable("setting", "wheelـluck_price", "0", "varchar(45)");
+        addFieldToTable("setting", "wheelـluck", "0", "varchar(45)");
+        addFieldToTable("setting", "Lottery_prize", $DATAAWARD, "TEXT");
+        addFieldToTable("setting", "scorestatus", "0", "VARCHAR(100)");
+        addFieldToTable("setting", "verifybucodeuser", "offverify", "VARCHAR(100)");
+        addFieldToTable("setting", "on_hold_day", "4", "VARCHAR(100)");
+        addFieldToTable("setting", "bulkbuy", "onbulk", "VARCHAR(100)");
+        addFieldToTable("setting", "statuscategorygenral", "offcategorys", "VARCHAR(100)");
+        addFieldToTable("setting", "cronvolumere", "5", "VARCHAR(100)");
+        addFieldToTable("setting", "agentreqprice", "0", "VARCHAR(100)");
+        addFieldToTable("setting", "statusnamecustom", "offnamecustom", "VARCHAR(100)");
+        addFieldToTable("setting", "id_support", "0", "VARCHAR(100)");
+        addFieldToTable("setting", "statussupportpv", "offpvsupport", "VARCHAR(100)");
+        addFieldToTable("setting", "affiliatespercentage", "0", "VARCHAR(600)");
+        addFieldToTable("setting", "inlinebtnmain", "offinline", "VARCHAR(200)");
+        addFieldToTable("setting", "volumewarn", "2", "VARCHAR(200)");
+        addFieldToTable("setting", "statusagentrequest", "onrequestagent", "VARCHAR(600)");
+        addFieldToTable("setting", "statusnewuser", "onnewuser", "VARCHAR(600)");
+        addFieldToTable("setting", "numbercount", "0", "VARCHAR(600)");
+        addFieldToTable("setting", "statuscategory", "offcategory", "VARCHAR(600)");
+        addFieldToTable("setting", "showcard", "1", "VARCHAR(200)");
+        addFieldToTable("setting", "removedayc", "1", "VARCHAR(200)");
+        addFieldToTable("setting", "affiliatesstatus", "offaffiliates", "VARCHAR(600)");
+        addFieldToTable("setting", "NotUser", "offnotuser", "VARCHAR(200)");
+        addFieldToTable("setting", "iran_number", "offAuthenticationiran", "VARCHAR(200)");
+        addFieldToTable("setting", "get_number", "onAuthenticationphone", "VARCHAR(200)");
+        addFieldToTable("setting", "limit_usertest_all", "1", "VARCHAR(200)");
+        addFieldToTable("setting", "Channel_Report", "0", "VARCHAR(200)");
+        addFieldToTable("setting", "Bot_Status", "botstatuson", "VARCHAR(200)");
+        addFieldToTable("setting", "roll_Status", "rolleon", "VARCHAR(200)");
+        addFieldToTable("setting", "verifystart", "offverify", "VARCHAR(200)");
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
 }
 
-function panelProtocolsMissingError($panelName = '')
-{
-    global $textbotlang;
-    $panelName = (string) $panelName;
-    $message = $textbotlang['Admin']['managepanel']['protocolsNotConfigured'] ?? null;
-    if ($message === null) {
-        $message = 'Protocols and inbounds are not configured for this location. Open panel management and run the protocol/inbound setup before selling.';
+//-----------------------------------------------------------------
+try {
+    $tableName = 'admin';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+        id_admin varchar(500) PRIMARY KEY NOT NULL,
+        username varchar(1000) NOT NULL,
+        password varchar(1000) NOT NULL,
+        rule varchar(500) NOT NULL)");
+        $stmt->execute();
+        $randomString = bin2hex(random_bytes(5));
+        $stmt = $pdo->prepare("INSERT INTO admin (id_admin,rule,username,password) VALUES ('$adminnumber','administrator','admin','$randomString')");
+        $stmt->execute();
+    } else {
+        addFieldToTable("admin", "rule", "administrator", "VARCHAR(200)");
+        addFieldToTable("admin", "username", null, "VARCHAR(200)");
+        addFieldToTable("admin", "password", null, "VARCHAR(200)");
     }
-    error_log('Panel protocols not configured' . ($panelName !== '' ? " [$panelName]" : ''));
-    return array('error' => $message);
+} catch (Exception $e) {
+    file_put_contents('error_log admin', $e->getMessage());
 }
-function absoluteSubscriptionUrl($subUrl, $panelUrl)
-{
-    $subUrl = trim((string) $subUrl);
-    if ($subUrl === '') {
-        return '';
+//-----------------------------------------------------------------
+try {
+    $tableName = 'channels';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+            remark varchar(200) NOT NULL,
+            linkjoin varchar(200) NOT NULL,
+            link varchar(200) NOT NULL)");
+        $stmt->execute();
+    } else {
+        addFieldToTable("channels", "remark", null, "VARCHAR(200)");
+        addFieldToTable("channels", "linkjoin", null, "VARCHAR(200)");
     }
-    if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.\-]*://#', $subUrl)) {
-        return $subUrl;
-    }
-    if ($subUrl[0] !== '/') {
-        $firstSegment = explode('/', $subUrl)[0];
-        if (preg_match('/[.:]/', $firstSegment)) {
-            return $subUrl;
-        }
-    }
-    return rtrim((string) $panelUrl, '/') . '/' . ltrim($subUrl, '/');
+} catch (Exception $e) {
+    file_put_contents('error_log channels', $e->getMessage());
 }
-function normalizePanelUrl($url)
-{
-    $url = trim((string) $url);
-    if ($url === '') {
-        return $url;
-    }
-    $trimmed = rtrim($url, "/");
-    return $trimmed === '' ? $url : $trimmed;
-}
-function publickey()
-{
-    $privateKey = sodium_crypto_box_keypair();
-    $privateKeyEncoded = base64_encode(sodium_crypto_box_secretkey($privateKey));
-    $publicKey = sodium_crypto_box_publickey($privateKey);
-    $publicKeyEncoded = base64_encode($publicKey);
-    $presharedKey = base64_encode(random_bytes(32));
-    return [
-        'private_key' => $privateKeyEncoded,
-        'public_key' => $publicKeyEncoded,
-        'preshared_key' => $presharedKey
-    ];
-}
-function stripCustomEmojiTags($value)
-{
-    if (!is_string($value) || stripos($value, '<tg-emoji') === false) {
-        return $value;
-    }
-    $stripped = preg_replace('#<tg-emoji\b[^>]*>(.*?)</tg-emoji>#isu', '$1', $value);
-    return is_string($stripped) ? $stripped : $value;
-}
-function splitCustomEmojiLabel($value)
-{
-    $text = is_string($value) ? $value : '';
-    $icon = '';
-    if ($text === '' || stripos($text, '<tg-emoji') === false) {
-        return ['text' => $text, 'icon' => $icon];
-    }
-    if (preg_match('#^\s*<tg-emoji\b[^>]*\bemoji-id\s*=\s*"(\d+)"[^>]*>.*?</tg-emoji>\s*#isu', $text, $leading)) {
-        $icon = $leading[1];
-        $text = substr($text, strlen($leading[0]));
-    }
-    $text = stripCustomEmojiTags($text);
-    if (trim($text) === '') {
-        return ['text' => stripCustomEmojiTags($value), 'icon' => ''];
-    }
-    return ['text' => $text, 'icon' => $icon];
-}
-function customEmojiLabelText($value)
-{
-    $label = splitCustomEmojiLabel($value);
-    return $label['text'];
-}
-function customEmojiLabels($labels = null)
-{
-    static $map = [];
-    if (is_array($labels)) {
-        $map = $labels;
-    }
-    return $map;
-}
-function restoreCustomEmojiLabel($value)
-{
-    if (!is_string($value) || $value === '' || stripos($value, '<tg-emoji') !== false) {
-        return $value;
-    }
-    $map = customEmojiLabels();
-    return $map[$value] ?? $value;
-}
-function applyKeyboardLabels($rows, array $labels)
-{
-    if (!is_array($rows)) {
-        return [];
-    }
-    foreach ($rows as $rowKey => $row) {
-        if (!is_array($row)) {
-            unset($rows[$rowKey]);
-            continue;
-        }
-        foreach ($row as $btnKey => $button) {
-            if (is_array($button) && isset($button['text']) && is_string($button['text']) && isset($labels[$button['text']])) {
-                $rows[$rowKey][$btnKey]['text'] = $labels[$button['text']];
-            }
-        }
-    }
-    return array_values($rows);
-}
-function languagechange($path_dir = null, string $lang = 'fa')
-{
-    global $from_id;
-    $user_lang = select("user", "*", "id", $from_id);
-    $lang = $user_lang ? $user_lang['lang'] : $lang;
-    $allowed = ['fa', 'en', 'ar', 'ru', 'zh'];
-    if (!in_array($lang, $allowed, true))
-        $lang = 'fa';
-    $base_dir = $path_dir ?: __DIR__;
-    $texts = require $base_dir . '/lang/' . $lang . '.php';
-    if (is_array($texts))
-        bottext_apply_overrides($texts, $lang);
-    return $texts;
-}
-function bottext_apply_overrides(array &$base, $lang)
-{
-    customEmojiLabels([]);
-    $row = select("setting", "*", null, null, "select");
-    $raw = is_array($row) ? ($row['text_edit'] ?? null) : null;
-    if (!is_string($raw) || $raw === '')
-        return;
-    $map = json_decode($raw, true);
-    if (!is_array($map))
-        return;
-    $langMap = $map[$lang] ?? null;
-    if (!is_array($langMap))
-        return;
-    $emojiLabels = [];
-    foreach ($langMap as $group => $pairs) {
-        if (!is_array($pairs))
-            continue;
-        if (!isset($base[$group]) || !is_array($base[$group]))
-            $base[$group] = [];
-        foreach ($pairs as $k => $v) {
-            if (!is_string($v))
-                continue;
-            $base[$group][$k] = $v;
-            $plain = customEmojiLabelText($v);
-            if ($plain !== $v && $plain !== '')
-                $emojiLabels[$plain] = $v;
-        }
-    }
-    customEmojiLabels($emojiLabels);
-}
-function extendMethodKeys()
-{
-    return ['resetVolumeTime', 'addTimeVolumeNextMonth', 'resetTimeAddVolume', 'resetVolumeAddTime', 'addTimeConvertVolume'];
-}
-function extendMethodLabels()
-{
-    static $labels = null;
-    if ($labels !== null)
-        return $labels;
-    $labels = [];
-    foreach (['fa', 'en', 'ru', 'zh'] as $lang) {
-        $file = __DIR__ . '/lang/' . $lang . '.php';
-        if (!file_exists($file))
-            continue;
-        $texts = require $file;
-        if (!is_array($texts))
-            continue;
-        bottext_apply_overrides($texts, $lang);
-        foreach (extendMethodKeys() as $key) {
-            $label = $texts['keyboard'][$key] ?? null;
-            if (is_string($label) && trim($label) !== '')
-                $labels[trim($label)] = $key;
-        }
-    }
-    return $labels;
-}
-function extendMethodKey($value, $default = 'resetVolumeTime')
-{
-    $value = is_string($value) ? trim($value) : '';
-    if ($value === '')
-        return $default;
-    if (in_array($value, extendMethodKeys(), true))
-        return $value;
-    $labels = extendMethodLabels();
-    return $labels[$value] ?? $default;
-}
-function usernameMethodKeys()
-{
-    return ['usernameSequential', 'numericIdRandom', 'customUsername', 'customUsernameRandom', 'customTextRandom', 'customTextSequential', 'numericIdSequential', 'agentCustomTextSequential'];
-}
-function usernameMethodLabels()
-{
-    static $labels = null;
-    if ($labels !== null)
-        return $labels;
-    $labels = [];
-    $aliases = [
-        'customUsername' => ['users.customusername'],
-        'agentCustomTextSequential' => ['keyboard.usernameMethodAgentCustom'],
-    ];
-    foreach (['fa', 'en', 'ru', 'zh'] as $lang) {
-        $file = __DIR__ . '/lang/' . $lang . '.php';
-        if (!file_exists($file))
-            continue;
-        $texts = require $file;
-        if (!is_array($texts))
-            continue;
-        bottext_apply_overrides($texts, $lang);
-        foreach (usernameMethodKeys() as $key) {
-            $candidates = [
-                $texts['keyboard'][$key] ?? null,
-                $texts['common']['labels'][$key] ?? null,
-            ];
-            foreach ($aliases[$key] ?? [] as $alias) {
-                [$group, $name] = explode('.', $alias, 2);
-                $candidates[] = $texts[$group][$name] ?? null;
-            }
-            foreach ($candidates as $label) {
-                if (is_string($label) && trim($label) !== '')
-                    $labels[trim($label)] = $key;
-            }
-        }
-    }
-    return $labels;
-}
-function usernameMethodKey($value, $default = 'numericIdRandom')
-{
-    $value = is_string($value) ? trim($value) : '';
-    if ($value === '')
-        return $default;
-    if (in_array($value, usernameMethodKeys(), true))
-        return $value;
-    $labels = usernameMethodLabels();
-    return $labels[$value] ?? $default;
-}
-function generateAuthStr($length = 10)
-{
-    $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    $max = strlen($characters) - 1;
-    $result = '';
-    for ($i = 0; $i < $length; $i++) {
-        $result .= $characters[random_int(0, $max)];
-    }
-    return $result;
-}
-function createqrcode($contents)
-{
-    $contents = (string) $contents;
-    if ($contents === '') {
-        return null;
-    }
-    if (!mb_check_encoding($contents, 'UTF-8')) {
-        $contents = mb_convert_encoding($contents, 'UTF-8', 'UTF-8');
-        if ($contents === false || $contents === '') {
-            return null;
-        }
-    }
-    $builder = new Builder(
-        writer: new PngWriter(),
-        writerOptions: [],
-        data: $contents,
-        encoding: new Encoding('UTF-8'),
-        errorCorrectionLevel: ErrorCorrectionLevel::High,
-        size: 500,
-        margin: 10,
-    );
+//--------------------------------------------------------------
+try {
 
-    try {
-        return $builder->build();
-    } catch (\Throwable $e) {
-        error_log('createqrcode failed: ' . $e->getMessage());
-        return null;
-    }
-}
-function qrTempPath($filename)
-{
-    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mirzabot_qr';
-    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-        $dir = sys_get_temp_dir();
-    }
-    return rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($filename, DIRECTORY_SEPARATOR);
-}
-function sanitize_recursive(array $data): array
-{
-    $sanitized_data = [];
-    foreach ($data as $key => $value) {
-        $sanitized_key = htmlspecialchars($key, ENT_QUOTES, 'UTF-8');
-        if (is_array($value)) {
-            $sanitized_data[$sanitized_key] = sanitize_recursive($value);
-        } elseif (is_string($value)) {
-            $sanitized_data[$sanitized_key] = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-        } elseif (is_int($value)) {
-            $sanitized_data[$sanitized_key] = filter_var($value, FILTER_SANITIZE_NUMBER_INT);
-        } elseif (is_float($value)) {
-            $sanitized_data[$sanitized_key] = filter_var($value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-        } elseif (is_bool($value) || is_null($value)) {
-            $sanitized_data[$sanitized_key] = $value;
-        } else {
-            $sanitized_data[$sanitized_key] = $value;
-        }
-    }
-    return $sanitized_data;
-}
+    $result = $connect->query("SHOW TABLES LIKE 'marzban_panel'");
+    $table_exists = ($result->num_rows > 0);
 
-function check_active_btn($keyboard, $text_var)
-{
-    $trace_keyboard = json_decode($keyboard, true)['keyboard'];
-    $status = false;
-    foreach ($trace_keyboard as $key => $callback_set) {
-        foreach ($callback_set as $keyboard_key => $keyboard) {
-            if ($keyboard['text'] == $text_var) {
-                $status = true;
-                break;
-            }
-        }
-    }
-    return $status;
-}
-function deleteFolder($folderPath)
-{
-    if (!is_dir($folderPath))
-        return false;
-
-    $files = array_diff(scandir($folderPath), ['.', '..']);
-
-    foreach ($files as $file) {
-        $filePath = $folderPath . DIRECTORY_SEPARATOR . $file;
-        if (is_dir($filePath)) {
-            deleteFolder($filePath);
-        } else {
-            unlink($filePath);
-        }
-    }
-
-    return rmdir($folderPath);
-}
-function isBase64($string)
-{
-    if (base64_encode(base64_decode($string, true)) === $string) {
-        return true;
-    }
-    return false;
-}
-function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
-{
-    global $setting, $from_id, $textbotlang;
-    if (!check_active_btn($setting['keyboardmain'], "text_help"))
-        $reply_markup = null;
-    $user_id = $user_id == null ? $from_id : $user_id;
-    if (isTelegramChatIdEmpty($user_id)) {
-        return;
-    }
-    $STATUS_SEND_MESSAGE_PHOTO = $panel_info['config'] == "onconfig" && (is_array($config) ? count($config) : 0) != 1 ? false : true;
-    $out_put_qrcode = "";
-    if ($panel_info['sublink'] == "onsublink" && $panel_info['config']) {
-        $out_put_qrcode = $sub_link;
-    } elseif ($panel_info['sublink'] == "onsublink") {
-        $out_put_qrcode = $sub_link;
-    } elseif ($panel_info['config'] == "onconfig") {
-        $out_put_qrcode = $config[0];
-    }
-    if ($STATUS_SEND_MESSAGE_PHOTO) {
-        if ($panel_info['type'] == "WGDashboard") {
-            $urlimage = qrTempPath("{$panel_info['inboundid']}_{$invoice_id}.conf");
-            if (@file_put_contents($urlimage, $sub_link) === false) {
-                sendmessage($user_id, $caption, $reply_markup, 'HTML');
-            } else {
-                telegram('senddocument', [
-                    'chat_id' => $user_id,
-                    'document' => new CURLFile($urlimage),
-                    'reply_markup' => $reply_markup,
-                    'caption' => $caption,
-                    'parse_mode' => "HTML",
-                ]);
-                @unlink($urlimage);
-            }
-        } else {
-            $urlimage = qrTempPath("$user_id$invoice_id.png");
-            $qrCode = createqrcode($out_put_qrcode);
-            $photoSent = false;
-            if ($qrCode !== null && @file_put_contents($urlimage, $qrCode->getString()) !== false) {
-                addBackgroundImage($urlimage, $qrCode, $image);
-                $response = telegram('sendphoto', [
-                    'chat_id' => $user_id,
-                    'photo' => new CURLFile($urlimage),
-                    'reply_markup' => $reply_markup,
-                    'caption' => $caption,
-                    'parse_mode' => "HTML",
-                ]);
-                $photoSent = is_array($response) && !empty($response['ok']);
-                @unlink($urlimage);
-            }
-            if (!$photoSent) {
-                sendmessage($user_id, $caption, $reply_markup, 'HTML');
-            }
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE marzban_panel (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        code_panel varchar(200) NULL,
+        name_panel varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        status varchar(500) NULL,
+        url_panel varchar(2000) NULL,
+        username_panel varchar(200) NULL,
+        password_panel varchar(200) NULL,
+        agent varchar(200) NULL,
+        sublink varchar(500) NULL,
+        config varchar(500) NULL,
+        MethodUsername varchar(700) NULL,
+        TestAccount varchar(100) NULL,
+        limit_panel varchar(100) NULL,
+        namecustom varchar(100) NULL,
+        Methodextend varchar(100) NULL,
+        conecton varchar(100) NULL,
+        linksubx varchar(1000) NULL,
+        inboundid varchar(100) NULL,
+        type varchar(100) NULL,
+        inboundstatus varchar(100) NULL,
+        inbound_deactive varchar(100) NULL,
+        time_usertest varchar(100) NULL,
+        val_usertest varchar(100)  NULL,
+        secret_code varchar(200) NULL,
+        priceChangeloc varchar(200) NULL,
+        priceextravolume varchar(500) NULL,
+        pricecustomvolume varchar(500) NULL,
+        pricecustomtime varchar(500) NULL,
+        priceextratime varchar(500) NULL,
+        mainvolume varchar(500) NULL,
+        maxvolume varchar(500) NULL,
+        maintime varchar(500) NULL,
+        maxtime varchar(500) NULL,
+        status_extend varchar(100) NULL,
+        datelogin TEXT NULL,
+        proxies TEXT NULL,
+        inbounds TEXT NULL,
+        subvip varchar(60) NULL,
+        changeloc varchar(60) NULL,
+        on_hold_test varchar(60) NOT NULL,
+        version_panel varchar(60) NOT NULL,
+        customvolume TEXT NULL,
+        hide_user TEXT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table marzban_panel" . mysqli_error($connect);
         }
     } else {
-        sendmessage($user_id, $caption, $reply_markup, 'HTML');
-    }
-    if ($panel_info['config'] == "onconfig" && $setting['status_keyboard_config'] == "1") {
-        if (is_array($config)) {
-            sendmessage($user_id, $textbotlang['users']['status']['getConfigHint'], keyboard_config($config, $invoice_id, false), 'HTML');
+        $VALUE = json_encode(array(
+            'f' => '0',
+            'n' => '0',
+            'n2' => '0'
+        ));
+        $valueprice = json_encode(array(
+            'f' => "4000",
+            'n' => "4000",
+            'n2' => "4000"
+        ));
+        $valuemain = json_encode(array(
+            'f' => "1",
+            'n' => "1",
+            'n2' => "1"
+        ));
+        $valuemax = json_encode(array(
+            'f' => "1000",
+            'n' => "1000",
+            'n2' => "1000"
+        ));
+        $valuemax_time = json_encode(array(
+            'f' => "365",
+            'n' => "365",
+            'n2' => "365"
+        ));
+        addFieldToTable("marzban_panel", "on_hold_test", "1", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "proxies", null, "TEXT");
+        addFieldToTable("marzban_panel", "inbounds", null, "TEXT");
+        addFieldToTable("marzban_panel", "customvolume", $VALUE, "TEXT");
+        addFieldToTable("marzban_panel", "subvip", "offsubvip", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "changeloc", "offchangeloc", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "hide_user", null, "TEXT");
+        addFieldToTable("marzban_panel", "status_extend", "on_extend", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "code_panel", null, "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "priceextravolume", $valueprice, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "pricecustomvolume", $valueprice, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "pricecustomtime", $valueprice, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "priceextratime", $valueprice, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "priceChangeloc", "0", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "mainvolume", $valuemain, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "maxvolume", $valuemax, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "maintime", $valuemain, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "maxtime", $valuemax_time, "VARCHAR(500)");
+        addFieldToTable("marzban_panel", "MethodUsername", "آیدی عددی + حروف و عدد رندوم", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "datelogin", null, "TEXT");
+        addFieldToTable("marzban_panel", "val_usertest", "100", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "time_usertest", "1", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "secret_code", null, "VARCHAR(200)");
+        addFieldToTable("marzban_panel", "inboundstatus", "offinbounddisable", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "inbound_deactive", "0", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "agent", "all", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "inboundid", "1", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "linksubx", null, "VARCHAR(200)");
+        addFieldToTable("marzban_panel", "conecton", "offconecton", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "type", "marzban", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "Methodextend", "ریست حجم و زمان", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "namecustom", "vpn", "VARCHAR(100)");
+        addFieldToTable("marzban_panel", "limit_panel", "unlimted", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "TestAccount", "ONTestAccount", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "status", "active", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
+        $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
+        $max_row = $max_stmt->fetch_assoc();
+        $next_num = $max_row['max_num'] ? (int) $max_row['max_num'] + 1 : 15;
+        $stmt = $connect->query("SELECT id FROM marzban_panel WHERE code_panel IS NULL OR code_panel = ''");
+        while ($row = $stmt->fetch_assoc()) {
+            $code = '7e' . $next_num;
+            $connect->query("UPDATE marzban_panel SET code_panel = '$code' WHERE id = " . $row['id']);
+            $next_num++;
         }
     }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
 }
-function isValidInvitationCode($setting, $fromId, $verfy_status)
-{
-    global $textbotlang;
 
-    if ($setting['verifybucodeuser'] == "onverify" && $verfy_status != 1) {
-        sendmessage($fromId, $textbotlang['users']['account']['verified'], null, 'html');
-        update("user", "verify", "1", "id", $fromId);
-        update("user", "cardpayment", "1", "id", $fromId);
+//-----------------------------------------------------------------
+try {
+
+    $result = $connect->query("SHOW TABLES LIKE 'product'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE product (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        code_product varchar(200)  NULL,
+        name_product varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        price_product varchar(2000) NULL,
+        Volume_constraint varchar(2000) NULL,
+        Location varchar(200) NULL,
+        Service_time varchar(200) NULL,
+        agent varchar(100) NULL,
+        note TEXT NULL,
+        data_limit_reset varchar(200) NULL,
+        one_buy_status varchar(20) NOT NULL,
+        inbounds TEXT NULL,
+        proxies TEXT NULL,
+        category varchar(400) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        hide_panel TEXT  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table product" . mysqli_error($connect);
+        }
+    } else {
+        addFieldToTable("product", "one_buy_status", "0", "VARCHAR(20)");
+        addFieldToTable("product", "Location", null, "VARCHAR(200)");
+        addFieldToTable("product", "inbounds", null, "TEXT");
+        addFieldToTable("product", "proxies", null, "TEXT");
+        addFieldToTable("product", "category", null, "varchar(200)");
+        addFieldToTable("product", "note", '', "TEXT");
+        addFieldToTable("product", "hide_panel", '{}', "TEXT");
+        addFieldToTable("product", "data_limit_reset", "no_reset", "varchar(100)");
+        addFieldToTable("product", "agent", "f", "varchar(50)");
+        addFieldToTable("product", "code_product", null, "varchar(50)");
     }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
 }
-function createPayZarinpal($price, $order_id)
-{
-    global $domainhosts;
-    $marchent_zarinpal = select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal", "select")['ValuePay'];
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://payment.zarinpal.com/pg/v4/payment/request.json',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'Accept: application/json'
-        ),
-    ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-        "merchant_id" => $marchent_zarinpal,
-        "currency" => "IRT",
-        "amount" => $price,
-        "callback_url" => "https://$domainhosts/payment/zarinpal.php",
-        "description" => $order_id,
-        "metadata" => array(
-            "order_id" => $order_id
-        )
-    ]));
-    $response = curl_exec($curl);
-    curl_close($curl);
-    return json_decode($response, true);
-}
-function createPayaqayepardakht($price, $order_id)
-{
-    global $domainhosts;
-    $merchant_aqayepardakht = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht", "select")['ValuePay'];
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://panel.aqayepardakht.ir/api/v2/create',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'Accept: application/json'
-        ),
-    ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-        'pin' => $merchant_aqayepardakht,
-        'amount' => $price,
-        'callback' => $domainhosts . "/payment/aqayepardakht.php",
-        'invoice_id' => $order_id,
-    ]));
-    $response = curl_exec($curl);
-    curl_close($curl);
-    return json_decode($response, true);
-}
-function parseConfigs($input)
-{
-    $lines = explode("\n", $input);
-    $configs = [];
+//-----------------------------------------------------------------
+try {
 
-    $currentName = null;
-    $currentData = [];
+    $result = $connect->query("SHOW TABLES LIKE 'invoice'");
+    $table_exists = ($result->num_rows > 0);
 
-    foreach ($lines as $line) {
-        $line = trim($line);
-
-        if (strpos($line, '#') === 0) {
-            if ($currentName && $currentData) {
-                $configs[] = [
-                    'name' => $currentName,
-                    'config' => implode("\n", $currentData)
-                ];
-            }
-            $currentName = trim(substr($line, 1));
-            $currentData = [];
-        } else {
-            if ($line !== '') {
-                $currentData[] = $line;
-            }
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE invoice (
+        id_invoice varchar(200) PRIMARY KEY,
+        id_user varchar(200) NULL,
+        username varchar(300) NULL,
+        Service_location varchar(300) NULL,
+        time_sell VARCHAR(200) NULL,
+        name_product varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        price_product varchar(200) NULL,
+        Volume varchar(200) NULL,
+        Service_time varchar(200) NULL,
+        uuid TEXT NULL,
+        note varchar(500) NULL,
+        user_info TEXT NULL,
+        bottype varchar(200) NULL,
+        refral varchar(100) NULL,
+        time_cron varchar(100) NULL,
+        notifctions TEXT NOT NULL,
+        Status varchar(200) NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table invoice" . mysqli_error($connect);
+        }
+    } else {
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'note'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD note VARCHAR(700)");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'notifctions'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $data = json_encode(array(
+                'volume' => false,
+                'time' => false,
+            ));
+            $result = $connect->query("ALTER TABLE invoice ADD notifctions TEXT NOT NULL");
+            $connect->query("UPDATE invoice SET notifctions = '$data'");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'time_cron'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD time_cron VARCHAR(100)");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'refral'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD refral VARCHAR(100)");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'bottype'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD bottype VARCHAR(200)");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'user_info'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD user_info TEXT");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'time_sell'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD time_sell VARCHAR(200)");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'uuid'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD uuid TEXT");
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM invoice LIKE 'Status'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $result = $connect->query("ALTER TABLE invoice ADD Status VARCHAR(100)");
         }
     }
-    if ($currentName && $currentData) {
-        $configs[] = [
-            'name' => $currentName,
-            'config' => implode("\n", $currentData)
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+
+    $result = $connect->query("SHOW TABLES LIKE 'Payment_report'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE Payment_report (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_user varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+        id_order varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+        time varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        at_updated varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        price varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        dec_not_confirmed TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        Payment_Method varchar(400) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        payment_Status varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        bottype varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        message_id INT NULL,
+        id_invoice varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table Payment_report" . mysqli_error($connect);
+        }
+    } else {
+        ensureTableUtf8mb4('Payment_report');
+        addFieldToTable("Payment_report", "message_id", null, "INT");
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'Payment_Method'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD Payment_Method VARCHAR(200)");
+            echo "The Payment_Method field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'bottype'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD bottype VARCHAR(300)");
+            echo "The bottype field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'at_updated'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD at_updated VARCHAR(200)");
+            echo "The at_updated field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'id_invoice'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD id_invoice VARCHAR(400)");
+            $connect->query("UPDATE Payment_report SET id_invoice = 'none'");
+            echo "The id_invoice field was added ✅";
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+
+    $result = $connect->query("SHOW TABLES LIKE 'Discount'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE Discount (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        code varchar(2000) NULL,
+        price varchar(200) NULL,
+        limituse varchar(200) NULL,
+        limitused varchar(200) NULL)
+        ");
+        if (!$result) {
+            echo "table Discount" . mysqli_error($connect);
+        }
+    } else {
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Discount LIKE 'limituse'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Discount ADD limituse VARCHAR(200)");
+            echo "The limituse field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Discount LIKE 'limitused'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Discount ADD limitused VARCHAR(200)");
+            echo "The limitused field was added ✅";
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+
+    $result = $connect->query("SHOW TABLES LIKE 'Giftcodeconsumed'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE  Giftcodeconsumed (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        code varchar(2000) NULL,
+        id_user varchar(200) NULL)");
+        if (!$result) {
+            echo "table Giftcodeconsumed" . mysqli_error($connect);
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'textbot'");
+    $table_exists = ($result->num_rows > 0);
+    $text_roll = "
+♨️ قوانین استفاده از خدمات ما
+
+1- به اطلاعیه هایی که داخل کانال گذاشته می شود حتما توجه کنید.
+2- در صورتی که اطلاعیه ای در مورد قطعی در کانال گذاشته نشده به اکانت پشتیبانی پیام دهید
+3- سرویس ها را از طریق پیامک ارسال نکنید برای ارسال پیامک می توانید از طریق ایمیل ارسال کنید.
+    ";
+    $text_dec_fq = " 
+ 💡 سوالات متداول ⁉️
+
+1️⃣ فیلترشکن شما آیپی ثابته؟ میتونم برای صرافی های ارز دیجیتال استفاده کنم؟
+
+✅ به دلیل وضعیت نت و محدودیت های کشور سرویس ما مناسب ترید نیست و فقط لوکیشن‌ ثابته.
+
+2️⃣ اگه قبل از منقضی شدن اکانت، تمدیدش کنم روزهای باقی مانده می سوزد؟
+
+✅ خیر، روزهای باقیمونده اکانت موقع تمدید حساب میشن و اگه مثلا 5 روز قبل از منقضی شدن اکانت 1 ماهه خودتون اون رو تمدید کنید 5 روز باقیمونده + 30 روز تمدید میشه.
+
+3️⃣ اگه به یک اکانت بیشتر از حد مجاز متصل شیم چه اتفاقی میافته؟
+
+✅ در این صورت حجم سرویس شما زود تمام خواهد شد.
+
+4️⃣ فیلترشکن شما از چه نوعیه؟
+
+✅ فیلترشکن های ما v2ray است و پروتکل‌های مختلفی رو ساپورت میکنیم تا حتی تو دورانی که اینترنت اختلال داره بدون مشکل و افت سرعت بتونید از سرویستون استفاده کنید.
+
+5️⃣ فیلترشکن از کدوم کشور است؟
+
+✅ سرور فیلترشکن ما از کشور  آلمان است
+
+6️⃣ چطور باید از این فیلترشکن استفاده کنم؟
+
+✅ برای آموزش استفاده از برنامه، روی دکمه «📚 آموزش» بزنید.
+
+7️⃣ فیلترشکن وصل نمیشه، چیکار کنم؟
+
+✅ به همراه یک عکس از پیغام خطایی که میگیرید به پشتیبانی مراجعه کنید.
+
+8️⃣ فیلترشکن شما تضمینی هست که همیشه مواقع متصل بشه؟
+
+✅ به دلیل قابل پیش‌بینی نبودن وضعیت نت کشور، امکان دادن تضمین نیست فقط می‌تونیم تضمین کنیم که تمام تلاشمون رو برای ارائه سرویس هر چه بهتر انجام بدیم.
+
+9️⃣ امکان بازگشت وجه دارید؟
+
+✅ امکان بازگشت وجه در صورت حل نشدن مشکل از سمت ما وجود دارد.
+
+💡 در صورتی که جواب سوالتون رو نگرفتید میتونید به «پشتیبانی» مراجعه کنید.";
+    $text_channel = "   
+        ⚠️ کاربر گرامی؛ شما عضو چنل ما نیستید
+از طریق دکمه زیر وارد کانال شده و عضو شوید
+پس از عضویت دکمه بررسی عضویت را کلیک کنید";
+    $text_invoice = "📇 پیش فاکتور شما:
+👤 نام کاربری:  {username}
+🔐 نام سرویس: {name_product}
+📆 مدت اعتبار: {Service_time} روز
+💶 قیمت:  {price} تومان
+👥 حجم اکانت: {Volume} گیگ
+🗒 یادداشت محصول : {note}
+💵 موجودی کیف پول شما : {userBalance}
+          
+💰 سفارش شما آماده پرداخت است";
+    $textafterpay = "✅ سرویس با موفقیت ایجاد شد
+
+👤 نام کاربری سرویس : {username}
+🌿 نام سرویس:  {name_service}
+‏🇺🇳 لوکیشن: {location}
+⏳ مدت زمان: {day}  روز
+🗜 حجم سرویس:  {volume} گیگابایت
+
+لینک اتصال:
+{config}
+{links}
+🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+    $text_wgdashboard = "✅ سرویس با موفقیت ایجاد شد
+
+👤 نام کاربری سرویس : {username}
+🌿 نام سرویس:  {name_service}
+‏🇺🇳 لوکیشن: {location}
+⏳ مدت زمان: {day}  روز
+🗜 حجم سرویس:  {volume} گیگابایت
+
+🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+    $textafterpayibsng = "✅ سرویس با موفقیت ایجاد شد
+
+👤 نام کاربری سرویس : {username}
+🔑 رمز عبور سرویس :  <code>{password}</code>
+🌿 نام سرویس:  {name_service}
+‏🇺🇳 لوکیشن: {location}
+⏳ مدت زمان: {day}  روز
+🗜 حجم سرویس:  {volume} گیگابایت
+
+🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+    $textmanual = "✅ سرویس با موفقیت ایجاد شد
+
+👤 نام کاربری سرویس : {username}
+🌿 نام سرویس:  {name_service}
+‏🇺🇳 لوکیشن: {location}
+
+ اطلاعات سرویس :
+{config}
+🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+    $textaftertext = "✅ سرویس با موفقیت ایجاد شد
+
+👤 نام کاربری سرویس : {username}
+🌿 نام سرویس:  {name_service}
+‏🇺🇳 لوکیشن: {location}
+⏳ مدت زمان: {day}  ساعت
+🗜 حجم سرویس:  {volume} مگابایت
+
+لینک اتصال:
+{config}
+🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+    $textconfigtest = "با سلام خدمت شما کاربر گرامی 
+سرویس تست شما با نام کاربری {username} به پایان رسیده است
+امیدواریم تجربه‌ی خوبی از آسودگی و سرعت سرویستون داشته باشین. در صورتی که از سرویس‌ تست خودتون راضی بودین، میتونید سرویس اختصاصی خودتون رو تهیه کنید و از داشتن اینترنت آزاد با نهایت کیفیت لذت ببرید😉🔥
+🛍 برای تهیه سرویس با کیفیت می توانید از دکمه زیر استفاده نمایید";
+    $textcart = "برای افزایش موجودی، مبلغ <code>{price}</code>  تومان  را به شماره‌ی حساب زیر واریز کنید 👇🏻
+        
+        ==================== 
+        <code>{card_number}</code>
+        {name_card}
+        ====================
+
+❌ این تراکنش به مدت یک ساعت اعتبار دارد پس از آن امکان پرداخت این تراکنش امکان ندارد.        
+‼مبلغ باید همان مبلغی که در بالا ذکر شده واریز نمایید.
+‼️امکان برداشت وجه از کیف پول نیست.
+‼️مسئولیت واریز اشتباهی با شماست.
+🔝بعد از پرداخت  دکمه پرداخت کردم را زده سپس تصویر رسید را ارسال نمایید
+💵بعد از تایید پرداختتون توسط ادمین کیف پول شما شارژ خواهد شد و در صورتی که سفارشی داشته باشین انجام خواهد شد";
+    $textcartauto = "برای تایید فوری لطفا دقیقاً مبلغ زیر واریز شود. در غیر این صورت تایید پرداخت شما ممکن است با تاخیر مواجه شود.⚠️
+            برای افزایش موجودی، مبلغ <code>{price}</code>  ریال  را به شماره‌ی حساب زیر واریز کنید 👇🏻
+
+        ==================== 
+        <code>{card_number}</code>
+        {name_card}
+        ====================
+        
+💰دقیقا مبلغی را که در بالا ذکر شده واریز نمایید تا بصورت آنی تایید شود.
+‼️امکان برداشت وجه از کیف پول نیست.
+🔝لزومی به ارسال رسید نیست، اما در صورتی که بعد از گذشت مدتی واریز شما تایید نشد، عکس رسید خود را ارسال کنید.";
+    $insertQueries = [
+        ['text_start', 'سلام خوش آمدید'],
+        ['text_usertest', 'اکانت تست'],
+        ['text_Purchased_services', 'سرویس های من'],
+        ['text_support', 'پشتیبانی'],
+        ['text_help', 'آموزش'],
+        ['text_bot_off', 'ربات خاموش است، لطفا دقایقی دیگر مراجعه کنید'],
+        ['text_roll', $text_roll],
+        ['text_fq', 'سوالات متداول'],
+        ['text_dec_fq', $text_dec_fq],
+        ['text_sell', 'خرید اشتراک'],
+        ['text_Add_Balance', 'افزایش موجودی'],
+        ['text_channel', $text_channel],
+        ['text_Discount', 'کد هدیه'],
+        ['text_Tariff_list', 'تعرفه اشتراک ها'],
+        ['text_dec_Tariff_list', 'تنظیم نشده است'],
+        ['text_Account_op', 'حساب کاربری'],
+        ['text_affiliates', 'زیر مجموعه گیری'],
+        ['text_pishinvoice', $text_invoice],
+        ['accountwallet', 'کیف پول + شارژ'],
+        ['carttocart', 'کارت به کارت'],
+        ['textnowpayment', 'پرداخت ارزی 1'],
+        ['textnowpaymenttron', 'واریز رمزارز ترون'],
+        ['textsnowpayment', 'پرداخت با ارز دیجیتال'],
+        ['iranpay1', 'درگاه  پرداخت ریالی'],
+        ['iranpay2', 'درگاه  پرداخت ریالی دوم'],
+        ['iranpay3', 'درگاه  پرداخت ریالی سوم'],
+        ['aqayepardakht', 'درگاه آقای پرداخت'],
+        ['mowpayment', 'پرداخت با ارز دیجیتال'],
+        ['zarinpal', 'زرین پال'],
+        ['abangateway', 'درگاه پرداخت آبان‌پی'],
+        ['textafterpay', $textafterpay],
+        ['textafterpayibsng', $textafterpayibsng],
+        ['textaftertext', $textaftertext],
+        ['textmanual', $textmanual],
+        ['textselectlocation', 'موقعیت سرویس را انتخاب نمایید.'],
+        ['crontest', $textconfigtest],
+        ['textpaymentnotverify', 'درگاه ریالی'],
+        ['textrequestagent', 'درخواست نمایندگی'],
+        ['textpanelagent', 'پنل نمایندگی'],
+        ['text_wheel_luck', 'گردونه شانس'],
+        ['text_cart', $textcart],
+        ['text_cart_auto', $textcartauto],
+        ['text_star_telegram', "Star Telegram"],
+        ['text_request_agent_dec', 'توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
+        ['text_extend', 'تمدید سرویس'],
+        ['text_wgdashboard', $text_wgdashboard]
+    ];
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE textbot (
+        id_text varchar(600) PRIMARY KEY NOT NULL,
+        text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table textbot" . mysqli_error($connect);
+        }
+
+        foreach ($insertQueries as $query) {
+            $connect->query("INSERT INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
+        }
+    } else {
+        foreach ($insertQueries as $query) {
+            $connect->query("INSERT IGNORE INTO textbot (id_text, text) VALUES ('$query[0]', '$query[1]')");
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'offline_crypto'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE offline_crypto (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20) NOT NULL UNIQUE,
+            name VARCHAR(100) NOT NULL,
+            wallet VARCHAR(255) DEFAULT '',
+            network VARCHAR(50) DEFAULT 'Mainnet',
+            status ENUM('on', 'off') DEFAULT 'on',
+            emoji_id VARCHAR(50) DEFAULT '5836907383292436018',
+            style VARCHAR(50) DEFAULT 'primary'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $default_cryptos = [
+            ['ton', 'تون کوین (TON)', '', 'TON', 'on', '5836907383292436018', 'primary'],
+            ['trx', 'ترون (TRX)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['btc', 'بیت‌کوین (BTC)', '', 'BTC / Lightning', 'on', '5836907383292436018', 'primary'],
+            ['eth', 'اتریوم (ETH)', '', 'ERC20 / Arbitrum', 'on', '5836907383292436018', 'primary'],
+            ['bnb', 'بایننس کوین (BNB)', '', 'BEP20 (BSC)', 'on', '5836907383292436018', 'primary']
         ];
-    }
 
-    return $configs;
-}
-
-function mirzaRemoveInstallerPath($path)
-{
-    if (is_link($path) || is_file($path)) {
-        return @unlink($path);
-    }
-    if (!is_dir($path)) {
-        return true;
-    }
-
-    $entries = @scandir($path);
-    if ($entries === false) {
-        return false;
-    }
-
-    $removed = true;
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
-            continue;
+        foreach ($default_cryptos as $cr) {
+            $stmt = $connect->prepare("INSERT INTO offline_crypto (symbol, name, wallet, network, status, emoji_id, style) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("sssssss", $cr[0], $cr[1], $cr[2], $cr[3], $cr[4], $cr[5], $cr[6]);
+            $stmt->execute();
         }
-        $removed = mirzaRemoveInstallerPath($path . '/' . $entry) && $removed;
     }
-
-    return @rmdir($path) && $removed;
+} catch (Exception $e) {
+    file_put_contents('error_log offline_crypto', $e->getMessage());
 }
-
-function mirzaInstallerNoticeTexts()
-{
-    global $textbotlang;
-    $lang = is_array($textbotlang) && !empty($textbotlang) ? $textbotlang : null;
-    if ($lang === null) {
-        $lang = @include __DIR__ . '/lang/fa.php';
-    }
-    $notice = is_array($lang) ? ($lang['Admin']['installerNotice'] ?? null) : null;
-    return [
-        'user' => $notice['user'] ?? 'The bot is temporarily unavailable. Please try again later.',
-        'admin' => $notice['admin'] ?? 'The install folder still exists on the server and the bot could not remove it. Delete it manually to bring the bot back.',
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");
+    $table_exists = ($result->num_rows > 0);
+    $main = 20000;
+    $max = 1000000;
+    $settings = [
+        ['Cartstatus', 'oncard'],
+        ['CartDirect', '@cart'],
+        ['cardnumber', '603700000000'],
+        ['namecard', 'تنظیم نشده'],
+        ['Cartstatuspv', 'offcardpv'],
+        ['apinowpayment', '0'],
+        ['nowpaymentstatus', 'offnowpayment'],
+        ['digistatus', 'offdigi'],
+        ['statusSwapWallet', 'offnSolutions'],
+        ['statusaqayepardakht', 'offaqayepardakht'],
+        ['merchant_id_aqayepardakht', '0'],
+        ['minbalance', '20000'],
+        ['maxbalance', '1000000'],
+        ['marchent_tronseller', '0'],
+        ['walletaddress', '0'],
+        ['statuscardautoconfirm', 'offautoconfirm'],
+        ['urlpaymenttron', 'https://tronseller.storeddownloader.fun/api/GetOrderToken'],
+        ['statustarnado', 'offternado'],
+        ['apiternado', '0'],
+        ['chashbackcart', '0'],
+        ['chashbackstar', '0'],
+        ['chashbackperfect', '0'],
+        ['chashbackaqaypardokht', '0'],
+        ['chashbackiranpay1', '0'],
+        ['chashbackiranpay2', '0'],
+        ['chashbackplisio', '0'],
+        ['chashbackzarinpal', '0'],
+        ['checkpaycartfirst', 'offpayverify'],
+        ['zarinpalstatus', 'offzarinpal'],
+        ['merchant_zarinpal', '0'],
+        ['minbalancecart', $main],
+        ['maxbalancecart', $max],
+        ['minbalancestar', $main],
+        ['maxbalancestar', $max],
+        ['minbalanceplisio', $main],
+        ['maxbalanceplisio', $max],
+        ['minbalancedigitaltron', $main],
+        ['maxbalancedigitaltron', $max],
+        ['minbalanceiranpay1', $main],
+        ['maxbalanceiranpay1', $max],
+        ['minbalanceiranpay2', $main],
+        ['maxbalanceiranpay2', $max],
+        ['minbalanceaqayepardakht', $main],
+        ['maxbalanceaqayepardakht', $max],
+        ['minbalancepaynotverify', $main],
+        ['maxbalancepaynotverify', $max],
+        ['minbalanceperfect', $main],
+        ['maxbalanceperfect', $max],
+        ['minbalancezarinpal', $main],
+        ['maxbalancezarinpal', $max],
+        ['minbalanceiranpay', $main],
+        ['maxbalanceiranpay', $max],
+        ['minbalancenowpayment', $main],
+        ['maxbalancenowpayment', $max],
+        ['statusiranpay3', 'oniranpay3'],
+        ['apiiranpay', '0'],
+        ['chashbackiranpay3', '0'],
+        ['helpcart', '2'],
+        ['helpaqayepardakht', '2'],
+        ['helpstar', '2'],
+        ['helpplisio', '2'],
+        ['helpiranpay1', '2'],
+        ['helpiranpay2', '2'],
+        ['helpiranpay3', '2'],
+        ['helpperfectmony', '2'],
+        ['helpzarinpal', '2'],
+        ['helpnowpayment', '2'],
+        ['helpofflinearze', '2'],
+        ['autoconfirmcart', 'offauto'],
+        ['cashbacknowpayment', '0'],
+        ['statusstar', '0'],
+        ['statusnowpayment', '0'],
+        ['Exception_auto_cart', '{}'],
+        ['marchent_floypay', '0'],
+        ['statusabangateway', 'offabangateway'],
+        ['api_abangateway', '0'],
+        ['chashbackabangateway', '0'],
+        ['minbalanceabangateway', $main],
+        ['maxbalanceabangateway', $max],
+        ['helpabangateway', '2'],
+        ['endpointabangateway', '0'],
     ];
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE PaySetting (
+        NamePay varchar(500) PRIMARY KEY NOT NULL,
+        ValuePay TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table PaySetting" . mysqli_error($connect);
+        }
+
+        foreach ($settings as $setting) {
+            $connect->query("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}')");
+        }
+    } else {
+        foreach ($settings as $setting) {
+            $connect->query("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}') ON DUPLICATE KEY UPDATE NamePay = NamePay");
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//----------------------- [ Discount ] --------------------- //
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'DiscountSell'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE DiscountSell (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        codeDiscount varchar(1000)  NOT NULL,
+        price varchar(200)  NOT NULL,
+        limitDiscount varchar(500)  NOT NULL,
+        agent varchar(500)  NOT NULL,
+        usefirst varchar(100)  NOT NULL,
+        useuser varchar(100)  NOT NULL,
+        code_product varchar(100)  NOT NULL,
+        code_panel varchar(100)  NOT NULL,
+        time varchar(100)  NOT NULL,
+        type varchar(100)  NOT NULL,
+        usedDiscount varchar(500) NOT NULL)");
+        if (!$result) {
+            echo "table DiscountSell" . mysqli_error($connect);
+        }
+    } else {
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'agent'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD agent VARCHAR(100)");
+            echo "The agent discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'type'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD type VARCHAR(100)");
+            echo "The agent type field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'time'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD time VARCHAR(100)");
+            echo "The agent time field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'code_panel'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD code_panel VARCHAR(100)");
+            echo "The code_panel discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'code_product'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD code_product VARCHAR(100)");
+            echo "The code_product discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'useuser'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD useuser VARCHAR(100)");
+            echo "The useuser discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM DiscountSell LIKE 'usefirst'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE DiscountSell ADD usefirst VARCHAR(100)");
+            echo "The usefirst discount field was added ✅";
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'affiliates'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE affiliates (
+        description TEXT  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        status_commission varchar(200)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        Discount varchar(200)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        price_Discount varchar(200)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL,
+        porsant_one_buy varchar(100),
+        id_media varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table affiliates" . mysqli_error($connect);
+        }
+        $connect->query("INSERT INTO affiliates (description,id_media,status_commission,Discount,porsant_one_buy) VALUES ('none','none','oncommission','onDiscountaffiliates','off_buy_porsant')");
+    } else {
+        $Check_filde = $connect->query("SHOW COLUMNS FROM affiliates LIKE 'porsant_one_buy'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE affiliates ADD porsant_one_buy VARCHAR(100)");
+            $connect->query("UPDATE affiliates SET porsant_one_buy = 'off_buy_porsant'");
+            echo "The Discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM affiliates LIKE 'Discount'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE affiliates ADD Discount VARCHAR(100)");
+            $connect->query("UPDATE affiliates SET Discount = 'onDiscountaffiliates'");
+            echo "The Discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM affiliates LIKE 'price_Discount'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE affiliates ADD price_Discount VARCHAR(100)");
+            echo "The price_Discount field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM affiliates LIKE 'status_commission'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE affiliates ADD status_commission VARCHAR(100)");
+            $connect->query("UPDATE affiliates SET status_commission = 'oncommission'");
+            echo "The commission field was added ✅";
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'shopSetting'");
+    $table_exists = ($result->num_rows > 0);
+    $agent_cashback = json_encode(array(
+        'n' => 0,
+        'n2' => 0
+    ));
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE shopSetting (
+        Namevalue varchar(500) PRIMARY KEY NOT NULL,
+        value TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table shopSetting" . mysqli_error($connect);
+        }
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customvolmef','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customvolmen','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customvolmen2','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statusextra','offextra')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customtimepricef','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customtimepricen','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('customtimepricen2','4000')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statusdirectpabuy','ondirectbuy')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('minbalancebuybulk','0')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statustimeextra','ontimeextraa')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statusdisorder','offdisorder')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statuschangeservice','onstatus')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('statusshowprice','offshowprice')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('configshow','onconfig')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('backserviecstatus','on')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('chashbackextend','0')");
+        $connect->query("INSERT INTO shopSetting (Namevalue,value) VALUES ('chashbackextend_agent','$agent_cashback')");
+    } else {
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customvolmef','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customvolmen','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customvolmen2','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statusextra','offextra')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statusdirectpabuy','ondirectbuy')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('minbalancebuybulk','0')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statustimeextra','ontimeextraa')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customtimepricef','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customtimepricen','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('customtimepricen2','4000')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statusdisorder','offdisorder')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statuschangeservice','onstatus')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('statusshowprice','offshowprice')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('configshow','onconfig')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('backserviecstatus','on')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('chashbackextend','0')");
+        $connect->query("INSERT IGNORE INTO shopSetting (Namevalue,value) VALUES ('chashbackextend_agent','$agent_cashback')");
+
+
+
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+//----------------------- [ remove requests ] --------------------- //
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'cancel_service'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE cancel_service (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_user varchar(500)  NOT NULL,
+        username varchar(1000)  NOT NULL,
+        description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL,
+        status varchar(1000)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table cancel_service" . mysqli_error($connect);
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'service_other'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE service_other (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_user varchar(500)  NOT NULL,
+        username varchar(1000)  NOT NULL,
+        value varchar(1000)  NOT NULL,
+        time varchar(200)  NOT NULL,
+        price varchar(200)  NOT NULL,
+        type varchar(1000)  NOT NULL,
+        status varchar(200)  NOT NULL,
+        output TEXT  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table service_other" . mysqli_error($connect);
+        }
+    } else {
+        $Check_filde = $connect->query("SHOW COLUMNS FROM service_other LIKE 'price'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE service_other ADD price VARCHAR(200)");
+            echo "The price field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM service_other LIKE 'status'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE service_other ADD status VARCHAR(200)");
+            echo "The status field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM service_other LIKE 'output'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE service_other ADD output TEXT");
+            echo "The output field was added ✅";
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'card_number'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE card_number (
+        cardnumber varchar(500) PRIMARY KEY,
+        namecard  varchar(1000)  NOT NULL)
+        CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table x_ui" . mysqli_error($connect);
+        }
+    }
+    $columnInfo = $connect->query("SHOW FULL COLUMNS FROM card_number LIKE 'namecard'");
+    if ($columnInfo) {
+        $column = $columnInfo->fetch_assoc();
+        $currentCollation = $column['Collation'] ?? '';
+        if (empty($currentCollation) || stripos($currentCollation, 'utf8mb4') === false) {
+            $connect->query("ALTER TABLE card_number CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $connect->query("ALTER TABLE card_number MODIFY cardnumber varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY");
+            $connect->query("ALTER TABLE card_number MODIFY namecard varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
+        }
+        $columnInfo->free();
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log card_number', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'Requestagent'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE Requestagent (
+        id varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+        username  varchar(500)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        time  varchar(500)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        Description  varchar(500)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        status  varchar(500)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        type  varchar(500)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table Requestagent" . mysqli_error($connect);
+        }
+    } else {
+        ensureTableUtf8mb4('Requestagent');
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log Requestagent', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'topicid'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE topicid (
+        report varchar(500) PRIMARY KEY NOT NULL,
+        idreport TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table Requestagent" . mysqli_error($connect);
+        }
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','buyreport')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','otherservice')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','paymentreport')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','otherreport')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','reporttest')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','errorreport')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','porsantreport')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','reportnight')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','reportcron')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','backupfile')");
+    } else {
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','buyreport')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','otherservice')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','paymentreport')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','otherreport')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','reporttest')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','errorreport')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','porsantreport')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','reportnight')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','reportcron')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','backupfile')");
+
+
+
+
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log topicid', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'manualsell'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE manualsell (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        codepanel  varchar(100)  NOT NULL,
+        codeproduct  varchar(100)  NOT NULL,
+        namerecord  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL,
+        username  varchar(500)  NULL,
+        contentrecord  TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL,
+        status  varchar(200)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table manualsell" . mysqli_error($connect);
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log manualsell', $e->getMessage());
+}
+//-----------------------------------------------------------------
+try {
+
+    $tableName = 'departman';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            idsupport VARCHAR(200) NOT NULL,
+            name_departman VARCHAR(600) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $stmt->execute();
+        $connect->query("INSERT INTO departman (idsupport,name_departman) VALUES ('$adminnumber','☎️ بخش عمومی')");
+    }
+} catch (PDOException $e) {
+    file_put_contents('error_log departman', $e->getMessage());
+}
+try {
+
+    $tableName = 'support_message';
+    $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = :tableName");
+    $stmt->bindParam(':tableName', $tableName);
+    $stmt->execute();
+    $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tableExists) {
+        $stmt = $pdo->prepare("CREATE TABLE $tableName (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            Tracking VARCHAR(100) NOT NULL,
+            idsupport VARCHAR(100) NOT NULL,
+            iduser VARCHAR(100) NOT NULL,
+            name_departman VARCHAR(600) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            text TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            result TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            time VARCHAR(200) NOT NULL,
+            status ENUM('Answered','Pending','Unseen','Customerresponse','close') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $stmt->execute();
+    } else {
+        addFieldToTable("support_message", "result", "0", "TEXT");
+    }
+} catch (PDOException $e) {
+    file_put_contents('error_log suppeor_message', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'wheel_list'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE wheel_list (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_user  varchar(200)  NOT NULL,
+        time  varchar(200)  NOT NULL,
+        first_name  varchar(200)  NOT NULL,
+        wheel_code  varchar(200)  NOT NULL,
+        price  varchar(200)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table wheel_list" . mysqli_error($connect);
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log botsaz', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'botsaz'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE botsaz (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_user  varchar(200)  NOT NULL,
+        bot_token  varchar(200)  NOT NULL,
+        admin_ids  TEXT  NOT NULL,
+        username  varchar(200)  NOT NULL,
+        setting  TEXT  NULL,
+        hide_panel  JSON  NOT NULL,
+        time  varchar(200)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table botsaz" . mysqli_error($connect);
+        }
+    } else {
+        addFieldToTable("botsaz", "hide_panel", "{}", "JSON");
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log botsaz', $e->getMessage());
 }
 
-function mirzaShouldAlertInstallerAdmin($cooldown = 3600)
-{
-    $cacheDir = __DIR__ . '/storage/cache';
-    if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !is_dir($cacheDir)) {
-        return true;
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'app'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE app (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name  varchar(200)   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        link  varchar(200)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table app" . mysqli_error($connect);
+        }
     }
-    $marker = $cacheDir . '/installer_notice';
-    $last = @file_get_contents($marker);
-    if ($last !== false && (time() - intval($last)) < $cooldown) {
-        return false;
-    }
-    @file_put_contents($marker, (string) time());
-    return true;
+} catch (Exception $e) {
+    file_put_contents('error_log app', $e->getMessage());
 }
 
-function mirzaNotifyInstallerBlocked()
-{
-    global $from_id, $adminnumber;
-    if (!function_exists('sendmessage')) {
-        return;
+
+
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'logs_api'");
+    $table_exists = ($result->num_rows > 0);
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE logs_api (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        header JSON  NULL,
+        data JSON  NULL,
+        ip  varchar(200)  NOT NULL,
+        time  varchar(200)  NOT NULL,
+        actions  varchar(200)  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table logs_api" . mysqli_error($connect);
+        }
     }
-    $texts = mirzaInstallerNoticeTexts();
-    $adminId = isset($adminnumber) ? trim((string) $adminnumber) : '';
-    $userId = isset($from_id) ? trim((string) $from_id) : '';
-    $userIsAdmin = $adminId !== '' && $userId === $adminId;
-    if ($userId !== '' && !isTelegramChatIdEmpty($userId)) {
-        sendmessage($userId, $userIsAdmin ? $texts['admin'] : $texts['user'], null, 'HTML');
+} catch (Exception $e) {
+    file_put_contents('error_log logs_api', $e->getMessage());
+}
+//----------------------- [ Category ] --------------------- //
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'category'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE category (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        remark varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin  NOT NULL)
+        ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_bin");
+        if (!$result) {
+            echo "table category" . mysqli_error($connect);
+        }
     }
-    if (!$userIsAdmin && $adminId !== '' && mirzaShouldAlertInstallerAdmin()) {
-        sendmessage($adminId, $texts['admin'], null, 'HTML');
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
+}
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'reagent_report'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE reagent_report (
+        id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNIQUE  NOT NULL,
+        get_gift BOOL   NOT NULL,
+        time varchar(50)  NOT NULL,
+        reagent varchar(30)  NOT NULL
+        )ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_bin");
+        if (!$result) {
+            echo "table affiliates" . mysqli_error($connect);
+        }
     }
+} catch (Exception $e) {
+    file_put_contents('error_log', $e->getMessage());
 }
 
-function mirzaStopForInstaller($message)
-{
-    error_log($message);
-    mirzaNotifyInstallerBlocked();
-    if (!headers_sent()) {
-        http_response_code(200);
-        header('Content-Type: text/plain; charset=utf-8');
-        header('Cache-Control: no-store');
+
+
+$balancemain = json_decode(select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select")['ValuePay'], true);
+if (!isset($balancemain['f'])) {
+    $value = json_encode(array(
+        "f" => "1000000",
+        "n" => "1000000",
+        "n2" => "1000000",
+    ));
+    $valuemain = json_encode(array(
+        "f" => "20000",
+        "n" => "20000",
+        "n2" => "20000",
+    ));
+    update("PaySetting", "ValuePay", $value, "NamePay", "maxbalance");
+    update("PaySetting", "ValuePay", $valuemain, "NamePay", "minbalance");
+}
+$connect->query("ALTER TABLE `invoice` CHANGE `Volume` `Volume` VARCHAR(200)");
+$connect->query("ALTER TABLE `invoice` CHANGE `price_product` `price_product` VARCHAR(200)");
+$connect->query("ALTER TABLE `invoice` CHANGE `name_product` `name_product` VARCHAR(200)");
+$connect->query("ALTER TABLE `invoice` CHANGE `username` `username` VARCHAR(200)");
+$connect->query("ALTER TABLE `invoice` CHANGE `Service_location` `Service_location` VARCHAR(200)");
+$connect->query("ALTER TABLE `invoice` CHANGE `time_sell` `time_sell` VARCHAR(200)");
+$connect->query("ALTER TABLE marzban_panel MODIFY name_panel VARCHAR(255) COLLATE utf8mb4_bin");
+$connect->query("ALTER TABLE product MODIFY name_product VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin");
+$connect->query("ALTER TABLE help MODIFY name_os VARCHAR(500) COLLATE utf8mb4_bin");
+
+//----------------------- [ Tunnel Orders ] --------------------- //
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'tunnel_orders'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE tunnel_orders (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(100) NOT NULL,
+            name_panel VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            inbound_id INT(11) NOT NULL,
+            listen_port INT(11) NOT NULL,
+            target_ip VARCHAR(255) NOT NULL,
+            target_port INT(11) NOT NULL,
+            total_gb INT(11) NOT NULL,
+            expire_time VARCHAR(100) NOT NULL,
+            status VARCHAR(50) DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if (!$result) {
+            echo "table tunnel_orders: " . mysqli_error($connect);
+        }
     }
-    echo $message;
-    exit;
+} catch (Exception $e) {
+    file_put_contents('error_log tunnel_orders', $e->getMessage());
 }
 
-function mirzaEnsureInstallerRemoved()
-{
-    $installerDirectory = __DIR__ . '/install';
-    if (!is_dir($installerDirectory)) {
-        return;
-    }
 
-    if (!mirzaRemoveInstallerPath($installerDirectory)) {
-        mirzaStopForInstaller('Mirza install folder still exists and could not be removed automatically; delete it manually to enable the bot.');
-    }
-}
+telegram('setwebhook', [
+    'url' => "https://$domainhosts/index.php"
+]);
