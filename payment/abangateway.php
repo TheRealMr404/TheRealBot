@@ -1,16 +1,4 @@
 <?php
-/**
- * Where a buyer lands after paying through AbanGateway, and where the gateway
- * pushes a confirmation when the bank SMS settles.
- *
- * Both paths arrive here and both are treated the same: nothing in the request
- * is believed. The order id is a handle for looking the invoice up, not proof
- * of anything, so the file turns round and asks the gateway — and then checks
- * the answer against what this bot billed before crediting.
- *
- * Card-to-card often settles minutes after the buyer has closed the tab, which
- * is why the push exists at all; a pull-only design loses those payments.
- */
 
 ini_set('error_log', 'error_log');
 require_once __DIR__ . '/../config.php';
@@ -25,20 +13,10 @@ require __DIR__ . '/../vendor/autoload.php';
 $ManagePanel = new ManagePanel();
 $textbotlang = languagechange();
 
-// Explicit, not $_REQUEST: the buyer returns with a query string and the
-// gateway pushes with one too, so there is no reason to also accept cookies as
-// a source of an order id.
 $order_id = trim((string) ($_GET['order_id'] ?? $_POST['order_id'] ?? ''));
 $authority = trim((string) ($_GET['authority'] ?? $_POST['authority'] ?? ''));
 
-/**
- * Draw the result the buyer sees, or answer the gateway, and stop.
- *
- * Both callers get the same verdict; only the wrapping differs. The message is
- * taken from the bot's own language files so a shop running in English does not
- * hand its buyer a Persian page.
- */
-function iranpay4_finish(bool $ok, string $title, string $detail): never
+function abangateway_finish(bool $ok, string $title, string $detail): never
 {
     if (!headers_sent()) {
         header('Content-Type: text/html; charset=utf-8');
@@ -58,25 +36,22 @@ $failedTitle = $textbotlang['paymentGateway']['statusFailed'] ?? 'پرداخت �
 $successTitle = $textbotlang['paymentGateway']['statusSuccess'] ?? 'پرداخت موفق';
 
 if ($order_id === '') {
-    iranpay4_finish(false, $failedTitle, 'شناسه سفارش ارسال نشد.');
+    abangateway_finish(false, $failedTitle, 'شناسه سفارش ارسال نشد.');
 }
 
 $payment = select("Payment_report", "*", "id_order", $order_id, "select");
 if (!$payment) {
-    iranpay4_finish(false, $failedTitle, 'این سفارش پیدا نشد.');
+    abangateway_finish(false, $failedTitle, 'این سفارش پیدا نشد.');
 }
 
-// Already settled by whichever path got here first. Saying so is not an error:
-// a buyer who reloads the page, and a push that races the buyer's return, both
-// land here and both should see the payment they made.
 if ($payment['payment_Status'] === 'paid') {
-    iranpay4_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
+    abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
 }
 
-$api_key = trim((string) getPaySettingValue('apiiranpay4', ''));
+$api_key = trim((string) getPaySettingValue('api_abangateway', ''));
 $endpoint = abangatewayEndpoint();
 if ($api_key === '' || $api_key === '0' || $endpoint === null) {
-    iranpay4_finish(false, $failedTitle, 'درگاه پیکربندی نشده است.');
+    abangateway_finish(false, $failedTitle, 'درگاه پیکربندی نشده است.');
 }
 
 $price = intval($payment['price']);
@@ -92,9 +67,6 @@ curl_setopt_array($curl, [
         'Accept: application/json',
         'Authorization: Bearer ' . $api_key,
     ],
-    // The amount travels with the question, the way zarinpal.php sends it, so
-    // the gateway has to agree with this bot's figure rather than merely
-    // reporting one of its own.
     CURLOPT_POSTFIELDS => json_encode([
         'order_id' => $order_id,
         'authority' => $authority,
@@ -107,12 +79,6 @@ curl_close($curl);
 
 $response = is_string($result) ? json_decode($result, true) : null;
 
-// Three things have to line up before anything is credited, and none of them
-// is "the gateway said yes":
-//   the call succeeded, the order id came back equal to the one asked about,
-//   and the amount is at least what this bot billed.
-// Without the last two, a gateway that answered `{"success":true}` to every
-// question would settle every invoice in the table.
 $answeredForThisOrder = is_array($response)
     && isset($response['order_id'], $response['amount'])
     && (string) $response['order_id'] === (string) $order_id
@@ -123,27 +89,21 @@ $accepted = $httpCode === 200
     && $answeredForThisOrder;
 
 if (!$accepted) {
-    iranpay4_finish(false, $failedTitle, 'پرداخت تایید نشد.');
+    abangateway_finish(false, $failedTitle, 'پرداخت تایید نشد.');
 }
 
-// One credit per order, whatever the path. `claimPaymentPaid()` is the only
-// thing standing between a returning buyer and a pushed confirmation arriving
-// together, and it is checked before delivery rather than after.
 if (!claimPaymentPaid($order_id)) {
-    iranpay4_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
+    abangateway_finish(true, $successTitle, 'این پرداخت قبلاً تایید شده است.');
 }
 
 try {
     DirectPayment($order_id, "../images.jpg");
 } catch (Throwable $error) {
-    error_log("iranpay4: DirectPayment failed for {$order_id}: " . $error->getMessage());
-    iranpay4_finish(false, $failedTitle, 'پرداخت تایید شد ولی تحویل سرویس خطا داد. با پشتیبانی تماس بگیرید.');
+    error_log("abangateway: DirectPayment failed for {$order_id}: " . $error->getMessage());
+    abangateway_finish(false, $failedTitle, 'پرداخت تایید شد ولی تحویل سرویس خطا داد. با پشتیبانی تماس بگیرید.');
 }
 
-// Cashback, on the same terms as every other gateway here. Left out of the
-// first version of this file, which quietly made this the one gateway where a
-// shop's cashback setting did nothing.
-$cashback = intval(getPaySettingValue('chashbackiranpay4', '0'));
+$cashback = intval(getPaySettingValue('chashbackabangateway', '0'));
 if ($cashback > 0) {
     $buyer = select("user", "*", "id", $payment['id_user'], "select");
     if ($buyer) {
@@ -154,4 +114,4 @@ if ($cashback > 0) {
     }
 }
 
-iranpay4_finish(true, $successTitle, 'پرداخت شما با موفقیت انجام شد.');
+abangateway_finish(true, $successTitle, 'پرداخت شما با موفقیت انجام شد.');

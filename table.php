@@ -982,6 +982,7 @@ try {
         ['minbalanceabangateway', $main],
         ['maxbalanceabangateway', $max],
         ['helpabangateway', '2'],
+        ['endpointabangateway', '0'],
     ];
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (

@@ -4264,6 +4264,34 @@ $text_expie_agent
         'callback_query_id' => $callback_query_id
     ]);
     sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه آبان‌پی خوش آمدید:", $AbanGatewayManage, 'HTML');
+} elseif ($datain == "editpayment-endpointabangateway") {
+    step('set_endpointabangateway', $from_id);
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id,
+        'text' => "لطفاً آدرس جدید درگاه (Endpoint) را ارسال کنید:",
+        'show_alert' => false
+    ]);
+    editmessage($from_id, $message_id, "🌐 لطفاً آدرس جدید درگاه آبان‌پی را ارسال کنید (مثال: https://abanpay.com/api):", json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 بازگشت", 'callback_data' => "abangatewaysetting"]]
+        ]
+    ]));
+}
+
+elseif ($step == "set_endpointabangateway") {
+    $new_endpoint = trim($message);
+    if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
+        sendmessage($from_id, "❌ آدرس وارد شده معتبر نیست. لطفاً یک URL معتبر بفرستید:", null, 'HTML');
+        return;
+    }
+
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('endpointabangateway', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $new_endpoint, $new_endpoint);
+    $stmt->execute();
+    $stmt->close();
+
+    step('home', $from_id);
+    sendmessage($from_id, "✅ آدرس درگاه با موفقیت به روز شد.", $keyboard, 'HTML');
 } elseif ($datain == "aqayepardakhtsetting" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $aqayepardakht, 'HTML');
 } elseif ($datain == "zarinpalsetting" && $adminrulecheck['rule'] == "administrator") {
@@ -12921,3 +12949,4 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "✅ راهنمای درگاه با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
     step("home", $from_id);
 }
+

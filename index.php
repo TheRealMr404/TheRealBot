@@ -7109,7 +7109,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND time LIKE :today");
         $stmt->execute([':today' => '%' . $dateacc . '%']);
         $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (intval($sumpayment['price']) > 50000000) { // سقف روزانه قابل تنظیم است
+        if (intval($sumpayment['price']) > 50000000) { 
             sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
             return;
         }
