@@ -1007,20 +1007,30 @@ $paycount
 }
 //_____________________[ message ]____________________________//
 elseif ($datain == "systemsms") {
-    if (is_file('cronbot/users.json') || is_file('cronbot/send_process.lock')) {
-        $userslist = is_file('cronbot/users.json') ? json_decode(file_get_contents('cronbot/users.json'), true) : [];
-        if ((is_array($userslist) && count($userslist) != 0) || is_file('cronbot/send_process.lock')) {
-            sendmessage($from_id, "❌ سیستم ارسال پیام درحال انجام عملیات است. پس از پایان و اطلاع‌رسانی می‌توانید پیام جدید ارسال نمایید.", $keyboardadmin, 'HTML');
+    if (is_file('cronbot/users.json')) {
+        $userslist = json_decode(file_get_contents('cronbot/users.json'), true);
+        if (is_array($userslist) and count($userslist) != 0) {
+            sendmessage($from_id, "❌ سیستم ارسال پیام درحال انجام عملیات است پس از پایان و اطلاع رسانی  می توانید پیام جدید را ارسال نمایید.", $keyboardadmin, 'HTML');
             return;
         }
     }
     $listbtn = json_encode([
         'inline_keyboard' => [
-            [['text' => "ارسال همگانی", 'callback_data' => 'typeservice-sendmessage']],
-            [['text' => "فوروارد همگانی", 'callback_data' => 'typeservice-forwardmessage']],
-            [['text' => "تعداد روزی که استفاده نکردند", 'callback_data' => 'typeservice-xdaynotmessage']],
-            [['text' => "لغو پیام های پین شده", 'callback_data' => 'typeservice-unpinmessage']],
-            [['text' => "بازگشت به منوی اصلی", 'callback_data' => 'backlistuser']],
+            [
+                ['text' => "ارسال همگانی", 'callback_data' => 'typeservice-sendmessage'],
+            ],
+            [
+                ['text' => "فوروارد همگانی", 'callback_data' => 'typeservice-forwardmessage'],
+            ],
+            [
+                ['text' => "تعداد روزی که استفاده نکردند", 'callback_data' => 'typeservice-xdaynotmessage'],
+            ],
+            [
+                ['text' => "لغو پیام های پین شده", 'callback_data' => 'typeservice-unpinmessage'],
+            ],
+            [
+                ['text' => "بازگشت به منوی اصلی", 'callback_data' => 'backlistuser'],
+            ],
         ]
     ]);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['selectoption'], $listbtn);
@@ -1032,10 +1042,13 @@ elseif ($datain == "systemsms") {
         $typesend = [
             "unpinmessage" => "لغو پیام پین شده"
         ][$type];
-        $textconfirm = "📌 شما در حال انجام عملیات مربوط به ارسال پیام هستید با بررسی اطلاعات زیر و تایید دکمه زیر عملیات ارسال شروع خواهد شد.\n⚙️ نوع عملیات : $typesend";
+        $textconfirm = "📌 شما در حال انجام عملیات مربوط به ارسال پیام هستید با بررسی اطلاعات زیر و تایید دکمه زیر عملیات ارسال شروع خواهد شد.
+⚙️ نوع عملیات : $typesend";
         $startaction = json_encode([
             'inline_keyboard' => [
-                [['text' => "تایید و شروع عملیات", 'callback_data' => 'startaction']],
+                [
+                    ['text' => "تایید و شروع عملیات", 'callback_data' => 'startaction'],
+                ],
             ]
         ]);
         sendmessage($from_id, $textconfirm, $startaction, 'HTML');
@@ -1045,10 +1058,18 @@ elseif ($datain == "systemsms") {
     }
     $listbtn = json_encode([
         'inline_keyboard' => [
-            [['text' => "همه کاربران", 'callback_data' => 'typeusermessage-all']],
-            [['text' => "مشتریانی که خرید داشتند", 'callback_data' => 'typeusermessage-customer']],
-            [['text' => "کاربرانی که خرید نداشتند", 'callback_data' => 'typeusermessage-nonecustomer']],
-            [['text' => "بازگشت به منوی قبل", 'callback_data' => 'systemsms']],
+            [
+                ['text' => "همه کاربران", 'callback_data' => 'typeusermessage-all'],
+            ],
+            [
+                ['text' => "مشتریانی که خرید داشتند", 'callback_data' => 'typeusermessage-customer'],
+            ],
+            [
+                ['text' => "کاربرانی که خرید نداشتند", 'callback_data' => 'typeusermessage-nonecustomer'],
+            ],
+            [
+                ['text' => "بازگشت به منوی قبل", 'callback_data' => 'systemsms'],
+            ],
         ]
     ]);
     Editmessagetext($from_id, $message_id, "📌 سرویس برای کدام گروه کاربری اعمال شود؟", $listbtn);
@@ -1062,11 +1083,21 @@ elseif ($datain == "systemsms") {
     savedata("save", "typeusermessage", $dataget[1]);
     $listbtn = json_encode([
         'inline_keyboard' => [
-            [['text' => "همه کاربران", 'callback_data' => 'typeagent-all']],
-            [['text' => "کاربران گروه f", 'callback_data' => 'typeagent-f']],
-            [['text' => "کاربران گروه n", 'callback_data' => 'typeagent-n']],
-            [['text' => "کاربران گروه n2", 'callback_data' => 'typeagent-n2']],
-            [['text' => "بازگشت به منوی قبل", 'callback_data' => 'typeservice-' . $userdata['typeservice']]],
+            [
+                ['text' => "همه کاربران", 'callback_data' => 'typeagent-all'],
+            ],
+            [
+                ['text' => "کاربران گروه f", 'callback_data' => 'typeagent-f'],
+            ],
+            [
+                ['text' => "کاربران گروه n", 'callback_data' => 'typeagent-n'],
+            ],
+            [
+                ['text' => "کاربران گروه n2", 'callback_data' => 'typeagent-n2'],
+            ],
+            [
+                ['text' => "بازگشت به منوی قبل", 'callback_data' => 'typeservice-' . $userdata['typeservice']],
+            ],
         ]
     ]);
     Editmessagetext($from_id, $message_id, "📌 سرویس برای چه دسته از کاربران اعمال شود؟", $listbtn);
@@ -1090,11 +1121,11 @@ elseif ($datain == "systemsms") {
                 ['text' => $result['name_panel'], 'callback_data' => "locationmessage_{$result['code_panel']}"]
             ];
         }
-        $list_panel['inline_keyboard'][] = [['text' => "بازگشت به منوی قبل", 'callback_data' => 'typeusermessage-' . $userdata['typeusermessage']]];
+        $list_panel['inline_keyboard'][] = [['text' => "بازگشت به منوی قبل", 'callback_data' => 'typeusermessage-' . $userdata['typeusermessage']],];
         Editmessagetext($from_id, $message_id, "📌 پیام برای کدام کاربران موجود در پنل های زیر ارسال شود.", json_encode($list_panel));
         return;
     }
-    if ($userdata['typeservice'] == "xdaynotmessage" || $userdata['typeservice'] == "sendmessage" || $userdata['typeservice'] == "forwardmessage") {
+    if ($userdata['typeservice'] == "xdaynotmessage" or $userdata['typeservice'] == "sendmessage" or $userdata['typeservice'] == "forwardmessage") {
         $listbtn = json_encode([
             'inline_keyboard' => [
                 [
@@ -1111,7 +1142,8 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
+تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1125,7 +1157,7 @@ elseif ($datain == "systemsms") {
         return;
     }
     savedata("save", "selectpanel", $typeoanel);
-    if ($userdata['typeservice'] == "xdaynotmessage" || $userdata['typeservice'] == "sendmessage" || $userdata['typeservice'] == "forwardmessage") {
+    if ($userdata['typeservice'] == "xdaynotmessage" or $userdata['typeservice'] == "sendmessage" or $userdata['typeservice'] == "forwardmessage") {
         $listbtn = json_encode([
             'inline_keyboard' => [
                 [
@@ -1142,7 +1174,8 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
+تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1183,7 +1216,7 @@ elseif ($datain == "systemsms") {
         sendmessage($from_id, "📌 متن پیام خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
-    Editmessagetext($from_id, $message_id, "📌 اگر می خواهید زیر پیام دکمه ای نمایش داده شود از لیست زیر گزینه ای را انتخاب کنید در غیر اینصورت دکمه ارسال بدون دکمه را بزنید", $listbtn);
+    Editmessagetext($from_id, $message_id, "📌 اگر می خواهید زیر پیام دکمه ای نمایش داده شود از لیست زیر گزینه ای را انتخاب کنید در غیر اینصورت دکمه  ارسال بدون دکمه را بزنید", $listbtn);
 } elseif (preg_match('/^btntypemessage-(\w+)/', $datain, $dataget)) {
     deletemessage($from_id, $message_id);
     $type = $dataget[1];
@@ -1196,7 +1229,8 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
+تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1222,36 +1256,39 @@ elseif ($datain == "systemsms") {
         sendmessage($from_id, "❌ خطایی رخ داده لطفا مراحل ارسال پیام از اول انجام دهید", $keyboardadmin, 'HTML');
         return;
     }
-
-    $raw_msg = $update['message'] ?? $message ?? [];
-    $formatted_text = function_exists('convertCustomEmojiToHTML') ? convertCustomEmojiToHTML($raw_msg) : $text;
-
     if ($userdata['typeservice'] == "forwardmessage") {
         savedata("save", "message", $message_id);
-    } elseif ($userdata['typeservice'] == "xdaynotmessage" || $userdata['typeservice'] == "sendmessage") {
-        if (!empty($text)) {
-            savedata("save", "message", $formatted_text);
+    } elseif ($userdata['typeservice'] == "xdaynotmessage") {
+        if ($text) {
+            savedata("save", "message", $text);
         } else {
-            sendmessage($from_id, "📌 در این بخش فقط امکان ارسال متن وجود دارد.", $backadmin, 'HTML');
+            sendmessage($from_id, "📌  در بخش کاربرانی که به تعداد روز تعیین شده استفاده نکردند فقط امکان ارسال متن وجود دارد.", $backadmin, 'HTML');
+            return;
+        }
+    } elseif ($userdata['typeservice'] == "sendmessage") {
+        if ($text) {
+            savedata("save", "message", $text);
+        } else {
+            sendmessage($from_id, "📌  در بخش ارسال همگانی فقط امکان ارسال متن وجود دارد.", $backadmin, 'HTML');
             return;
         }
     }
-
     $typesend = [
         "xdaynotmessage" => "کاربرانی که به تعداد روز تعیین شده استفاده نکردند",
-        "sendmessage"    => "ارسال همگانی",
+        "sendmessage" => "ارسال همگانی",
         "forwardmessage" => "فوروارد همگانی",
-        "unpinmessage"   => "لغو پیام پین شده"
+        "unpinmessage" => "لغو پیام پین شده"
     ][$userdata['typeservice']];
-
     $typeservice = [
-        "all"          => "ارسال به همه کاربران",
-        "customer"     => "مشتریان",
+        "all" => "ارسال به همه کاربران",
+        "customer" => "مشتریان",
         "nonecustomer" => "کسانی که خرید نداشتند",
     ][$userdata['typeusermessage']];
-
-    $textday = ($userdata['typeservice'] == "xdaynotmessage") ? "تعداد روزی که کاربر پیام نداده است : {$userdata['daynoyuse']}" : "";
-
+    if ($userdata['typeservice'] == "xdaynotmessage") {
+        $textday = "تعداد روزی که کاربر پیام نداده است : {$userdata['daynoyuse']}";
+    } else {
+        $textday = "";
+    }
     $textconfirm = "📌 شما در حال انجام عملیات مربوط به ارسال پیام هستید با بررسی اطلاعات زیر و تایید دکمه زیر عملیات ارسال شروع خواهد شد.
 ⚙️ نوع عملیات : $typesend
 🎛 نوع سرویس : $typeservice
@@ -1260,143 +1297,204 @@ $textday
 ";
     $startaction = json_encode([
         'inline_keyboard' => [
-            [['text' => "تایید و شروع عملیات", 'callback_data' => 'startaction']],
+            [
+                ['text' => "تایید و شروع عملیات", 'callback_data' => 'startaction'],
+            ],
         ]
     ]);
     sendmessage($from_id, $textconfirm, $startaction, 'HTML');
     sendmessage($from_id, "با تایید گزینه بالا فرآیند ارسال شروع خواهد شد", $keyboardadmin, 'HTML');
     step("home", $from_id);
 } elseif ($datain == "startaction") {
-    // ۱. پاسخ فوری و بدون تاخیر به تلگرام برای قطع چرخه تکرار وب‌هوک
-    if (isset($update['callback_query']['id'])) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $update['callback_query']['id'],
-            'text'              => "عملیات درحال آماده‌سازی و ارسال است...",
-            'show_alert'        => false
-        ]);
-    }
-
-    // ۲. بررسی قفل اجرایی یا صف فعال برای جلوگیری از پردازش‌های موازی
-    if (is_file('cronbot/info') || is_file('cronbot/users.json') || is_file('cronbot/send_process.lock')) {
-        sendmessage($from_id, "⚠️ یک عملیات ارسال در حال حاضر فعال است. لطفاً منتظر بمانید یا آن را لغو کنید.", $keyboardadmin, 'HTML');
-        return;
-    }
-
     $userdata = json_decode($user['Processing_value'], true);
     if (!isset($userdata['typeservice'])) {
         sendmessage($from_id, "❌ خطایی رخ داده لطفا مراحل ارسال پیام از اول انجام دهید", $keyboardadmin, 'HTML');
         return;
     }
-
-    // پاکسازی استپ ادمین
-    savedata("clear", null, null);
-
-    $agent           = $userdata['agent'] ?? 'all';
-    $typeservice     = $userdata['typeservice'];
-    $typeusermessage = $userdata['typeusermessage'] ?? 'all';
-    $raw_users       = [];
-
+    $agent = $userdata['agent'];
+    $typeservice = $userdata['typeservice'];
+    $typeusermessage = $userdata['typeusermessage'];
+    $text = $userdata['message'];
     $cancelmessage = json_encode([
         'inline_keyboard' => [
-            [['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage', 'style' => 'danger']],
+            [
+                ['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage'],
+            ],
         ]
     ]);
 
     if ($typeservice == "unpinmessage") {
-        $raw_users = select("user", "id", null, null, "fetchAll") ?: [];
-    } elseif ($typeservice == "sendmessage" || $typeservice == "forwardmessage") {
-        if ($typeusermessage == "all") {
-            if ($agent == "all") {
-                $raw_users = select("user", "id", "User_Status", "Active", "fetchAll") ?: [];
-            } else {
-                $stmt = $pdo->prepare("SELECT DISTINCT id FROM user WHERE agent = :agent AND User_Status = 'Active'");
-                $stmt->execute([':agent' => $agent]);
-                $raw_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $userlist = json_encode(select("user", "id", null, null, "fetchAll"));
+        $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        $dataunpin = json_encode(array(
+            "id_admin" => $from_id,
+            'type' => "unpinmessage",
+            "id_message" => $message_id['result']['message_id']
+        ));
+        file_put_contents("cronbot/users.json", $userlist);
+        file_put_contents('cronbot/info', $dataunpin);
+    } elseif ($typeservice == "sendmessage") {
+        if ($agent == "all") {
+            if ($typeusermessage == "all") {
+                $userslist = json_encode(select("user", "id", "User_Status", "Active", "fetchAll"));
+            } elseif ($typeusermessage == "customer") {
+                if ($userdata['selectpanel'] == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                } else {
+                    $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}') AND u.User_Status = 'Active'");
+                }
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            } elseif ($typeusermessage == "nonecustomer") {
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
             }
-        } elseif ($typeusermessage == "customer") {
-            $sql = "SELECT DISTINCT u.id FROM user u WHERE u.User_Status = 'Active'";
-            $params = [];
-
-            if ($agent != "all") {
-                $sql .= " AND u.agent = :agent";
-                $params[':agent'] = $agent;
+        } else {
+            if ($typeusermessage == "all") {
+                $userslist = json_encode(select("user", "id", "agent", $agent, "fetchAll"));
+            } elseif ($typeusermessage == "customer") {
+                if ($userdata['selectpanel'] == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                } else {
+                    $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE  u.agent =  :agent AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}') AND u.User_Status = 'Active'");
+                }
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            } elseif ($typeusermessage == "nonecustomer") {
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
             }
-
-            if (($userdata['selectpanel'] ?? 'all') == "all") {
-                $sql .= " AND EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
-            } else {
-                $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
-                $panel_name = $panel['name_panel'] ?? '';
-                $sql .= " AND EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = :panel_name)";
-                $params[':panel_name'] = $panel_name;
-            }
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $raw_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } elseif ($typeusermessage == "nonecustomer") {
-            $sql = "SELECT DISTINCT u.id FROM user u WHERE u.User_Status = 'Active' AND NOT EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
-            $params = [];
-
-            if ($agent != "all") {
-                $sql .= " AND u.agent = :agent";
-                $params[':agent'] = $agent;
-            }
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $raw_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
+        $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        $data = json_encode(array(
+            "id_admin" => $from_id,
+            'type' => "sendmessage",
+            "id_message" => $message_id['result']['message_id'],
+            "message" => $userdata['message'],
+            "pingmessage" => $userdata['typepinmessage'],
+            "btnmessage" => $userdata['btntypemessage']
+        ));
+        file_put_contents("cronbot/users.json", $userslist);
+        file_put_contents('cronbot/info', $data);
+    } elseif ($typeservice == "forwardmessage") {
+        if ($agent == "all") {
+            if ($typeusermessage == "all") {
+                $userslist = json_encode(select("user", "id", "User_Status", "Active", "fetchAll"));
+            } elseif ($typeusermessage == "customer") {
+                if ($userdata['selectpanel'] == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                } else {
+                    $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}') AND u.User_Status = 'Active'");
+                }
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            } elseif ($typeusermessage == "nonecustomer") {
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            }
+        } else {
+            if ($typeusermessage == "all") {
+                $userslist = json_encode(select("user", "id", "agent", $agent, "fetchAll"));
+            } elseif ($typeusermessage == "customer") {
+                if ($userdata['selectpanel'] == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                } else {
+                    $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}') AND u.User_Status = 'Active'");
+                }
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            } elseif ($typeusermessage == "nonecustomer") {
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id) AND u.User_Status = 'Active'");
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            }
+        }
+        $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        $data = json_encode(array(
+            "id_admin" => $from_id,
+            'type' => "forwardmessage",
+            "id_message" => $message_id['result']['message_id'],
+            "message" => $userdata['message'],
+            "pingmessage" => $userdata['typepinmessage'],
+        ));
+        file_put_contents("cronbot/users.json", $userslist);
+        file_put_contents('cronbot/info', $data);
     } elseif ($typeservice == "xdaynotmessage") {
-        $timedaystamp = intval($userdata['daynoyuse'] ?? 0) * 86400;
+        $timedaystamp = intval($userdata['daynoyuse']) * 86400;
         $timenouser = time() - $timedaystamp;
-
-        $sql = "SELECT DISTINCT u.id FROM user u WHERE u.last_message_time < :timenouser";
-        $params = [':timenouser' => $timenouser];
-
-        if ($agent != "all") {
-            $sql .= " AND u.agent = :agent";
-            $params[':agent'] = $agent;
-        }
-
-        if ($typeusermessage == "customer") {
-            if (($userdata['selectpanel'] ?? 'all') == "all") {
-                $sql .= " AND EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
-            } else {
-                $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
-                $panel_name = $panel['name_panel'] ?? '';
-                $sql .= " AND EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = :panel_name)";
-                $params[':panel_name'] = $panel_name;
+        if ($agent == "all") {
+            $stmt = $pdo->prepare("SELECT id FROM user  WHERE last_message_time < $timenouser");
+            $stmt->execute();
+            $userslist = json_encode($stmt->fetchAll());
+        } else {
+            if ($typeusermessage == "all") {
+                if ($typeusermessage == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time");
+                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                    $stmt->execute();
+                    $userslist = json_encode($stmt->fetchAll());
+                } elseif ($typeusermessage == "customer") {
+                    if ($userdata['selectpanel'] == "all") {
+                        $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
+                    } else {
+                        $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                        $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}');");
+                    }
+                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                    $stmt->execute();
+                    $userslist = json_encode($stmt->fetchAll());
+                } elseif ($typeusermessage == "nonecustomer") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.last_message_time < :time AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
+                    $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                    $stmt->execute();
+                    $userslist = json_encode($stmt->fetchAll());
+                }
+            } elseif ($typeusermessage == "customer") {
+                if ($userdata['selectpanel'] == "all") {
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
+                } else {
+                    $panel = select("marzban_panel", "*", "code_panel", $userdata['selectpanel'], "select");
+                    $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND u.last_message_time < :time AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id AND i.Service_location = '{$panel['name_panel']}');");
+                }
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
+            } elseif ($typeusermessage == "nonecustomer") {
+                $stmt = $pdo->prepare("SELECT u.id FROM user u WHERE u.agent =  :agent AND u.last_message_time < :time AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);");
+                $stmt->bindParam(':agent', $agent, PDO::PARAM_STR);
+                $stmt->bindParam(':time', $timenouser, PDO::PARAM_STR);
+                $stmt->execute();
+                $userslist = json_encode($stmt->fetchAll());
             }
-        } elseif ($typeusermessage == "nonecustomer") {
-            $sql .= " AND NOT EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
         }
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $raw_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        $data = json_encode(array(
+            "id_admin" => $from_id,
+            'type' => "xdaynotmessage",
+            "id_message" => $message_id['result']['message_id'],
+            "message" => $userdata['message'],
+            "pingmessage" => $userdata['typepinmessage'],
+            "btnmessage" => $userdata['btntypemessage']
+        ));
+        file_put_contents("cronbot/users.json", $userslist);
+        file_put_contents('cronbot/info', $data);
     }
-
-    $clean_ids = array_values(array_unique(array_column($raw_users, 'id')));
-    $userslist = json_encode(array_map(function($id) { return ['id' => $id]; }, $clean_ids));
-
-    $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع‌رسانی خواهد شد.", $cancelmessage);
-
-    $data = [
-        "id_admin"    => $from_id,
-        'type'        => $typeservice,
-        "id_message"  => $message_id['result']['message_id'] ?? null,
-        "message"     => $userdata['message'] ?? null,
-        "pingmessage" => $userdata['typepinmessage'] ?? 'no',
-        "btnmessage"  => $userdata['btntypemessage'] ?? 'none'
-    ];
-
-    file_put_contents("cronbot/users.json", $userslist, LOCK_EX);
-    file_put_contents('cronbot/info', json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
 } elseif ($datain == "cancel_sendmessage") {
-    @unlink('cronbot/users.json');
-    @unlink('cronbot/info');
-    @unlink('cronbot/send_process.lock');
+    file_put_contents('users.json', json_encode(array()));
+    unlink('cronbot/users.json');
+    unlink('cronbot/info');
     deletemessage($from_id, $message_id);
     sendmessage($from_id, "📌 ارسال پیام لغو گردید.", null, 'HTML');
 }
