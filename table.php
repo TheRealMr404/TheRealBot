@@ -346,7 +346,9 @@ try {
         on_hold_test varchar(60) NOT NULL,
         version_panel varchar(60) NOT NULL,
         customvolume TEXT NULL,
-        hide_user TEXT NULL)
+        hide_user TEXT NULL,
+        panel_color varchar(200) NULL,
+        panel_emoji varchar(200) NULL)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
             echo "table marzban_panel" . mysqli_error($connect);
