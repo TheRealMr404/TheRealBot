@@ -280,7 +280,7 @@ $setting_panel =  json_encode([
         [['text' => "⚙️ وضعیت قابلیت ها"]],
         [['text' => "📣 گزارشات ربات"], ['text' => "📯 تنظیمات کانال"]],
         [['text' => "✅ فعالسازی پنل تحت وب"]],
-        [['text' => "🗑 بهینه سازی ربات "],['text' => "🎨 تغییر ایموجی دکمه‌ها"]],
+        [['text' => "🗑 بهینه سازی ربات "]],
         [['text' => "📝 تنظیم متن ربات"],['text' => "👨‍🔧 بخش ادمین"]],
         [['text' => "➕ محدودیت ساخت اکانت تست برای همه"]],
         [['text' => "💰 مبلغ عضویت نمایندگی"],['text' => "🖼 پس زمینه کیوآرکد"]],
@@ -333,7 +333,7 @@ $step_payment = [
     }
    if($affilnecurrency == "ondigi"){
         $step_payment['inline_keyboard'][] = [
-            ['text' =>  $datatextbot['textnowpaymenttron'], 'callback_data' => "offline_crypto_pay", 'style'=>'primary' ]
+            ['text' =>  $datatextbot['textnowpaymenttron'], 'callback_data' => "digitaltron", 'style'=>'primary' ]
     ];
     }
    if($Swapino == "onSwapinoBot"){
@@ -1179,7 +1179,6 @@ $optionX_ui_tunnel = json_encode([
         [['text' => "🔗 ویرایش آدرس پنل"], ['text' => "📍 تغییر گروه کاربری"]],
         [['text' => "🚨 محدودیت ساخت اکانت"], ['text' => "➕ قیمت حجم اضافه"]],
         [['text' => "⚙️ قیمت حجم سرویس دلخواه"], ['text' => "⏳ قیمت زمان اضافه"]],
-        [['text' => "⏳ زمان سرویس تست"], ['text' => "💾 حجم اکانت تست"]],
         [['text' => "⏳ قیمت زمان دلخواه"]],
         [['text' => "📍 حداقل حجم دلخواه"], ['text' => "📍 حداکثر حجم دلخواه"]],
         [['text' => "📍 حداقل زمان دلخواه"], ['text' => "📍 حداکثر زمان دلخواه"]],
@@ -1344,11 +1343,10 @@ $Swapinokey = json_encode([
 
 $tronnowpayments = json_encode([
     'keyboard' => [
-        [['text' => "🪙 ارز های موجود"]],
-        [['text' => "⬇️ حداقل مبلغ رمزارز آفلاین"], ['text' => "⬆️ حداکثر مبلغ رمزارز آفلاین"]],
-        [['text' => "🎨 استایل دکمه های ارز آفلاین"]],
-        [['text' => "🗂 نام درگاه رمز ارز آفلاین"], ['text' => "📚 تنظیم آموزش  ارزی افلاین"]],
-        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
+        [['text' => "🗂 نام درگاه رمز ارز آفلاین"]],
+        [['text' => "⬇️ حداقل مبلغ رمزارز آفلاین"],['text' => "⬆️ حداکثر مبلغ رمزارز آفلاین"]],
+        [['text' => "📚 تنظیم آموزش  ارزی افلاین"]],
+        [['text' => $textbotlang['Admin']['backadmin']],['text' => $textbotlang['Admin']['backmenu']]]
     ],
     'resize_keyboard' => true
 ]);

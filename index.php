@@ -718,6 +718,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboard_json = json_encode($keyboardlists);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
+    // ۳. بخش پورت‌های تانل
 } elseif ($datain == "my_tunnels_list") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE user_id = ? AND status != 'removed' ORDER BY id DESC");
     $stmt->execute([$from_id]);
@@ -775,79 +776,20 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
     }
 
-    $current_listen_port = intval($tunnel['listen_port']);
-    $used_bytes = intval($tunnel['used_traffic'] ?? 0);
-
-
-    $list_res = getInboundsList($tunnel['name_panel']);
-
-    if (isset($list_res['body'])) {
-        $list_data = json_decode($list_res['body'], true);
-        if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-            $matched = null;
-
-            foreach ($list_data['obj'] as $inb) {
-                if (intval($inb['port']) === $current_listen_port) {
-                    $matched = $inb;
-                    break;
-                }
-            }
-
-            if (!$matched && !empty($tunnel['inbound_id'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['id']) === intval($tunnel['inbound_id'])) {
-                        $matched = $inb;
-                        $current_listen_port = intval($inb['port']);
-                        $tunnel['listen_port'] = $current_listen_port;
-                        break;
-                    }
-                }
-            }
-
-            if ($matched) {
-                $used_bytes = intval($matched['up'] ?? 0) + intval($matched['down'] ?? 0);
-                $stmt_up = $pdo->prepare("UPDATE tunnel_orders SET used_traffic = ?, inbound_id = ?, listen_port = ? WHERE id = ?");
-                $stmt_up->execute([$used_bytes, intval($matched['id']), $current_listen_port, $tunnel['id']]);
-            }
-        }
-    }
-
-
     $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
-    $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
-    $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
+    $volume_text = ($tunnel['total_gb'] > 0) ? "{$tunnel['total_gb']} گیگابایت" : "نامحدود";
 
-    $total_bytes = intval($total_gb_val * 1073741824);
-    $expire_time = intval($tunnel['expire_time'] ?? 0);
-
-    $used_volume_text = formatBytes($used_bytes);
-    if ($total_bytes > 0) {
-        $remaining_bytes = max(0, $total_bytes - $used_bytes);
-        $remaining_volume_text = formatBytes($remaining_bytes);
-    } else {
-        $remaining_volume_text = "نامحدود";
-    }
-
-    if ($tunnel['status'] != 'active') {
-        $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
-    } elseif ($expire_time > 0 && time() > $expire_time) {
-        $status_badge = '<tg-emoji emoji-id="5348090777308251395">⌛️</tg-emoji> منقضی شده (اتمام زمان)';
-    } elseif ($total_bytes > 0 && $used_bytes >= $total_bytes) {
-        $status_badge = '<tg-emoji emoji-id="5258236805890710909">🚫</tg-emoji> پایان حجم';
-    } else {
-        $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
-    }
-
+    $status_badge = ($tunnel['status'] == 'active')
+        ? '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال'
+        : '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال';
 
     $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
     $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$current_listen_port}</code>\n";
+    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل:</b> {$volume_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">📉</tg-emoji> <b>حجم مصرف شده:</b> {$used_volume_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5350572310627632617\">📈</tg-emoji> <b>حجم باقی‌مانده:</b> {$remaining_volume_text}\n";
+    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume_text}\n";
     $txt .= "<tg-emoji emoji-id=\"5348090777308251395\">⏳</tg-emoji> <b>تاریخ انقضا:</b> {$expire_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت سرویس:</b> {$status_badge}\n";
+    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت اتصال:</b> {$status_badge}\n";
     $tun_keyboard = json_encode([
         'inline_keyboard' => [
 
@@ -887,7 +829,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
 
-} elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
+}
+
+// ==================== ۱. بخش خرید حجم اضافه تانل ====================
+
+// کلیک روی دکمه «خرید حجم اضافه»
+elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
     $tunnel_id = intval($matches[1]);
@@ -911,7 +858,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sendmessage($from_id, $txt_get_vol, $backuser, 'HTML');
     step("tun_get_extra_vol", $from_id);
-} elseif ($user['step'] == "tun_get_extra_vol") {
+}
+
+// دریافت عدد حجم از کاربر
+elseif ($user['step'] == "tun_get_extra_vol") {
     $vol = intval($text);
     if ($vol < 1) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
@@ -945,7 +895,10 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sendmessage($from_id, $inv_text, $keys, 'HTML');
     step("home", $from_id);
-} elseif ($datain == "tun_confirm_pay_vol") {
+}
+
+// تایید پرداخت حجم اضافه
+elseif ($datain == "tun_confirm_pay_vol") {
     $userdata = json_decode($user['Processing_value'], true);
     $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
     $vol = intval($userdata['tun_vol_amount'] ?? 0);
@@ -1125,7 +1078,7 @@ elseif ($datain == "tun_confirm_pay_time") {
 
 // ==================== ۳. بخش ویرایش آی‌پی و پورت خارج ====================
 
-// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج» (فرمت یک‌جای IP:Port)
+// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج»
 elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 
@@ -1140,8 +1093,7 @@ elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     savedata("clear", "tun_edit_id", $tunnel_id);
 
     $txt_edit = "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>ویرایش مقصد تانل (سرور خارج):</b>\n\n";
-    $txt_edit .= "<b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt_edit .= "<b>پورت ورودی فعلی:</b> <code>{$tunnel['listen_port']}</code>\n\n";
+    $txt_edit .= "🔹 <b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n\n";
     $txt_edit .= "لطفاً آی‌پی و پورت جدید سرور خارج را به فرمت زیر ارسال کنید:\n";
     $txt_edit .= "<code>IP:Port</code> (مثال: <code>45.12.34.56:443</code>)";
 
@@ -1149,7 +1101,7 @@ elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
     step("tun_get_new_target", $from_id);
 }
 
-// دریافت IP:Port جدید و ذخیره در پنل و دیتابیس
+// دریافت IP:Port جدید و ذخیره در پنل
 elseif ($user['step'] == "tun_get_new_target") {
     $parts = explode(':', trim($text));
     if (count($parts) != 2 || empty($parts[0]) || !is_numeric($parts[1]) || intval($parts[1]) < 1 || intval($parts[1]) > 65535) {
@@ -1160,50 +1112,14 @@ elseif ($user['step'] == "tun_get_new_target") {
     $new_ip = trim($parts[0]);
     $new_port = intval($parts[1]);
 
-    if (!isValidPublicIpv4($new_ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
     $userdata = json_decode($user['Processing_value'], true);
     $tunnel_id = intval($userdata['tun_edit_id'] ?? 0);
     $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
 
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات تانل رخ داد.", $keyboard, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    // ۱. بررسی اشغال بودن پورت روی همین سرور
-    if ($new_port != intval($tunnel['listen_port'])) {
-        $stmt_check = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND id != ? LIMIT 1");
-        $stmt_check->execute([$tunnel['name_panel'], $new_port, $tunnel_id]);
-        if ($stmt_check->rowCount() > 0) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} در حال حاضر روی این سرور اشغال است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:\nمثال: <code>45.12.34.56:8080</code>", $backuser, 'HTML');
-            return;
-        }
-
-        // بررسی از روی پنل سنایی
-        $list_res = getInboundsList($tunnel['name_panel']);
-        if (isset($list_res['body'])) {
-            $list_data = json_decode($list_res['body'], true);
-            if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['port']) === $new_port && intval($inb['id']) !== intval($tunnel['inbound_id'])) {
-                        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط سرویس دیگری روی سرور اشغال شده است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:\nمثال: <code>45.12.34.56:8080</code>", $backuser, 'HTML');
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // ۲. ارسال آپدیت به سرور
     $res = updateTunnelForward(
         $tunnel['name_panel'],
         $tunnel['inbound_id'],
-        $new_port,
+        $tunnel['listen_port'],
         $new_ip,
         $new_port,
         "User_{$from_id}",
@@ -1219,30 +1135,28 @@ elseif ($user['step'] == "tun_get_new_target") {
     }
 
     if (isset($resData['success']) && $resData['success'] === true) {
-        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
-        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
+        update("tunnel_orders", "target_ip", $new_ip, "id", $tunnel_id);
+        update("tunnel_orders", "target_port", $new_port, "id", $tunnel_id);
 
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مشخصات تانل با موفقیت تغییر یافت.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>\n";
-        $succ_txt .= "<b>پورت ورودی تانل:</b> <code>{$new_port}</code>";
+        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مقصد سرور خارج با موفقیت تغییر یافت.</b>\n\n";
+        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>";
 
         sendmessage($from_id, $succ_txt, $keyboard, 'HTML');
-        step("home", $from_id);
     } else {
-        $err = $resData['msg'] ?? '';
-        if (stripos($err, 'port') !== false || stripos($err, 'already in use') !== false || stripos($err, 'duplicate') !== false) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط پنل سرور پذیرفته نشد (اشغال است).</b>\nلطفاً یک پورت دیگر وارد کنید:", $backuser, 'HTML');
-        } else {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در ارتباط با سرور سنایی.", $keyboard, 'HTML');
-            step("home", $from_id);
-        }
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در ارتباط با سرور سنایی.", $keyboard, 'HTML');
     }
-}
+    step("home", $from_id);
 
-// دریافت مرحله‌به‌مرحله آی‌پی
-elseif ($user['step'] == "tunnel_edit_get_ip") {
+} elseif (preg_match('/^edit_tunnel_target_(\d+)/', $datain, $matches)) {
+    $tunnel_id = intval($matches[1]);
+    update("user", "Processing_value_one", $tunnel_id, "id", $from_id);
+
+    sendmessage($from_id, "🌐 لطفاً <b>آی‌پی جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
+    step("tunnel_edit_get_ip", $from_id);
+
+} elseif ($user['step'] == "tunnel_edit_get_ip") {
     $new_ip = trim($text);
-    if (!isValidPublicIpv4($new_ip)) {
+    if (!isValidPublicIpv4($ip)) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
         return;
     }
@@ -1254,10 +1168,8 @@ elseif ($user['step'] == "tunnel_edit_get_ip") {
     savedata("save", "tunnel_temp_new_ip", $new_ip);
     sendmessage($from_id, "🔌 لطفاً <b>پورت جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
     step("tunnel_edit_get_port", $from_id);
-}
 
-// دریافت مرحله‌به‌مرحله پورت و ذخیره نهایی
-elseif ($user['step'] == "tunnel_edit_get_port") {
+} elseif ($user['step'] == "tunnel_edit_get_port") {
     $new_port = intval($text);
     if ($new_port < 1 || $new_port > 65535) {
         sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
@@ -1269,44 +1181,13 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     $stmt->execute([$tunnel_id, $from_id]);
     $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    // ۱. بررسی اشغال بودن پورت روی همین سرور
-    if ($new_port != intval($tunnel['listen_port'])) {
-        $stmt_check = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND id != ? LIMIT 1");
-        $stmt_check->execute([$tunnel['name_panel'], $new_port, $tunnel_id]);
-        if ($stmt_check->rowCount() > 0) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} در حال حاضر روی این سرور اشغال است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:", $backuser, 'HTML');
-            return;
-        }
-
-        // بررسی از روی پنل سنایی
-        $list_res = getInboundsList($tunnel['name_panel']);
-        if (isset($list_res['body'])) {
-            $list_data = json_decode($list_res['body'], true);
-            if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['port']) === $new_port && intval($inb['id']) !== intval($tunnel['inbound_id'])) {
-                        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط سرویس دیگری روی سرور اشغال شده است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:", $backuser, 'HTML');
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
     $userdata = json_decode($user['Processing_value'], true);
     $new_ip = $userdata['tunnel_temp_new_ip'];
 
-    // ۲. ارسال تغییرات به سرور
     $res = updateTunnelForward(
         $tunnel['name_panel'],
         $tunnel['inbound_id'],
-        $new_port,
+        $tunnel['listen_port'],
         $new_ip,
         $new_port,
         "User_{$from_id}",
@@ -1314,28 +1195,17 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         $tunnel['total_gb']
     );
 
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
+    $resData = json_decode($res['body'], true);
     if (isset($resData['success']) && $resData['success'] === true) {
-        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
-        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
+        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ? WHERE id = ?");
+        $update_stmt->execute([$new_ip, $new_port, $tunnel_id]);
 
-        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>\n🔌 پورت تانل: <code>{$new_port}</code>", $keyboard, 'HTML');
-        step("home", $from_id);
+        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>", $keyboard, 'HTML');
     } else {
-        $err = $resData['msg'] ?? '';
-        if (stripos($err, 'port') !== false || stripos($err, 'already in use') !== false || stripos($err, 'duplicate') !== false) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط پنل سرور پذیرفته نشد (اشغال است).</b>\nلطفاً یک پورت دیگر وارد کنید:", $backuser, 'HTML');
-        } else {
-            sendmessage($from_id, "❌ خطا در برقراری ارتباط با سرور یا ذخیره تغییرات.", $keyboard, 'HTML');
-            step("home", $from_id);
-        }
+        sendmessage($from_id, "❌ خطا در برقراری ارتباط با سرور یا ذخیره تغییرات.", $keyboard, 'HTML');
     }
+
+    step("home", $from_id);
 } elseif ($datain == 'next_page') {
     $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
@@ -4019,16 +3889,6 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     }
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $location, "select");
-
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
-        savedata("clear", "tunnel_test_panel", $marzban_list_get['name_panel']);
-        deletemessage($from_id, $message_id);
-        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>دریافت پورت تست تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
-        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
-        step("tunnel_test_step_ip", $from_id);
-        return;
-    }
-
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
         if ($user['step'] != "createusertest") {
             step('createusertest', $from_id);
@@ -5011,137 +4871,9 @@ $textinvite
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-} elseif ($datain == "offline_crypto_pay") {
-    $currencies = get_all_crypto_currencies();
-
-    $buttons = [];
-    foreach ($currencies as $sym => $info) {
-        if (($info['status'] ?? 'off') === 'on') {
-            $network_text = !empty($info['network']) ? " - " . strtoupper($info['network']) : "";
-            $btn_title = $info['name'] . $network_text;
-
-            $btn = [
-                'text' => $btn_title,
-                'callback_data' => "user_select_crypto_{$sym}",
-                'style' => $info['style'] ?? 'primary'
-            ];
-
-            // افزودن آیکون ایموجی پریمیوم
-            if (!empty($info['emoji_id'])) {
-                $btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
-            }
-
-            $buttons[] = [$btn];
-        }
-    }
-
-    $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back', 'style' => 'danger']];
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode(['inline_keyboard' => $buttons])
-    ]);
-} elseif (strpos($datain, "user_select_crypto_") === 0) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
-    $sym_upper = strtoupper($sym);
-
-    $info = get_crypto_currency($sym);
-    if (!$info) {
-        $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE LOWER(symbol) = ? LIMIT 1");
-        $stmt->bind_param("s", $sym);
-        $stmt->execute();
-        $info = $stmt->get_result()->fetch_assoc();
-    }
-
-    if (!$info || ($info['status'] ?? 'off') !== 'on') {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text'              => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert'        => true
-        ]);
-        return;
-    }
-
-    $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
-    $maxbalancedigitaltron  = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
-
-    if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
-        $mainbalanceplisio = number_format($mainbalancedigitaltron);
-        $maxbalanceplisio  = number_format($maxbalancedigitaltron);
-        sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
-        return;
-    }
-
-    deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
-
-    $rates = arz_nobitex();
-    $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
-    $usd_rate  = $rates['USD'] ?? 60000;
-
-    $decimals = match ($sym_upper) {
-        'USDT'        => 2,
-        'TRX', 'TON'  => 4,
-        'BNB'         => 5,
-        'BTC', 'ETH'  => 8,
-        default       => 4
-    };
-
-    $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
-    $usdprice           = round($user['Processing_value'] / $usd_rate, 2);
-
-    $dateacc        = date('Y/m/d H:i:s');
-    $randomString   = bin2hex(random_bytes(5));
-    $invoice        = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-    $payment_Status = "Unpaid";
-    $Payment_Method = "offline_" . $sym;
-
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
-    $stmt->execute();
-
-    $wallet_address = trim($info['wallet'] ?? '');
-    $keyboard_rows = [];
-
-    if (!empty($wallet_address)) {
-        $keyboard_rows[] = [
-            ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
-        ];
-    }
-
-    $keyboard_rows[] = [
-        ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
-    ];
-
-    $paymentkeyboard = json_encode(['inline_keyboard' => $keyboard_rows]);
-
-    $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
-
-    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-                       "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-                       $rendered_crypto_msg . "\n\n" .
-                       "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
-
-    $gethelp = getPaySettingValue('helpofflinearze');
-    if ($gethelp !== null && $gethelp != 2) {
-        $data_help = json_decode($gethelp, true);
-        if ($data_help['type'] == "text") {
-            sendmessage($from_id, $data_help['text'], null, 'HTML');
-        } elseif ($data_help['type'] == "photo") {
-            sendphoto($from_id, $data_help['photoid'], null);
-        } elseif ($data_help['type'] == "video") {
-            sendvideo($from_id, $data_help['videoid'], null);
-        }
-    }
-
-    $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
-    updatePaymentMessageId($sent_msg, $randomString);
-} elseif ($user['step'] == "tunnel_step_ip") {
+}  // مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
+// مرحله ۱: دریافت و اعتبارسنجی آی‌پی سرور خارج
+elseif ($user['step'] == "tunnel_step_ip") {
     $ip = trim($text);
     if (!isValidPublicIpv4($ip)) {
         sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
@@ -5232,112 +4964,6 @@ elseif ($user['step'] == "tunnel_step_port") {
 
     sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
     step("home", $from_id);
-
-}
-
-// مرحله ۱ تست تانل: دریافت آی‌پی
-elseif ($user['step'] == "tunnel_test_step_ip") {
-    $ip = trim($text);
-    if (!isValidPublicIpv4($ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً یک آی‌پی IPv4 معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tunnel_test_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (عددی بین ۱۰۲۴ تا ۶۵۵۳۵):";
-    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
-    step("tunnel_test_step_port", $from_id);
-} elseif ($user['step'] == "tunnel_test_step_port") {
-    $port = intval($text);
-    if ($port < 1024 || $port > 65535) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. لطفاً مجدداً پورت مورد نظر را وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['tunnel_test_panel'];
-    $target_ip = $userdata['tunnel_test_target_ip'];
-
-    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
-    $stmt->execute([$panel_name, $port]);
-    if ($stmt->rowCount() > 0) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} قبلاً توسط کاربر دیگری رزرو شده است.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-        return;
-    }
-
-    if (function_exists('isTunnelPortAvailable')) {
-        $isAvailable = isTunnelPortAvailable($panel_name, $port);
-        if (!$isAvailable) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} روی سرور اشغال است یا توسط سیستم استفاده می‌شود.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-            return;
-        }
-    }
-
-
-
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-    $test_hours = intval($panel['time_usertest'] ?? 1);
-    $test_volume_mb = intval($panel['val_usertest'] ?? 100);
-    $test_volume_gb = round($test_volume_mb / 1024, 2);
-
-    $expire_timestamp = time() + ($test_hours * 3600);
-
-    $res = addTunnelForward(
-        $panel_name,
-        $port,
-        $target_ip,
-        $port,
-        "Test_User_{$from_id}",
-        $expire_timestamp,
-        $test_volume_mb,
-        true
-    );
-
-    $resData = json_decode($res['body'] ?? '', true);
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $inbound_id = $resData['obj']['id'];
-
-        $limit_usertest = intval($user['limit_usertest']) - 1;
-        update("user", "limit_usertest", $limit_usertest, "id", $from_id);
-
-        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
-        $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $test_volume_gb, $expire_timestamp]);
-
-        $randomString = bin2hex(random_bytes(4));
-        $date = time();
-        $stmt_inv = $pdo->prepare("INSERT IGNORE INTO invoice (id_user, id_invoice, username, time_sell, Service_location, name_product, price_product, Volume, Service_time, Status) VALUES (?, ?, ?, ?, ?, 'سرویس تست تانل', '0', ?, ?, 'active')");
-        $stmt_inv->execute([$from_id, $randomString, "tun_{$port}", $date, $panel_name, $test_volume_mb, $test_hours]);
-
-        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null"
-            ? trim($panel_details['linksubx'])
-            : parse_url($panel_details['url_panel'], PHP_URL_HOST);
-
-        if ($test_volume_mb >= 1000) {
-            $gb_value = round($test_volume_mb / 1024, 1);
-            $formatted_volume = ($gb_value == intval($gb_value) ? intval($gb_value) : $gb_value) . " گیگابایت";
-        } else {
-            $formatted_volume = intval($test_volume_mb) . " مگابایت";
-        }
-
-        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تست تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم تست:</b> {$formatted_volume}\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار تست:</b> {$test_hours} ساعت\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
-
-        sendmessage($from_id, $success_msg, $keyboard, 'HTML');
-        step("home", $from_id);
-    } else {
-        $err = $resData['msg'] ?? 'خطا در ارتباط با سرور';
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>خطا در ساخت پورت تانل:</b>\nاحتمالاً پورت <code>{$port}</code> روی سرور اشغال است. لطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-    }
 
 } elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
     $userdate = json_decode($user['Processing_value'], true);
@@ -7479,7 +7105,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         return;
     }
     deletemessage($from_id, $message_id);
-    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش را ارسال نمایید.", $backuser, 'HTML');
+    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش ترون را ارسال نمایید.", $backuser, 'HTML');
     step('getresidcurrency', $from_id);
     update("user", "Processing_value", $dataget[1], "id", $from_id);
 } elseif ($user['step'] == "getresidcurrency") {

@@ -15,6 +15,7 @@ $text_panel_admin_login_template = "💎 | Version Bot: $version
 if (!in_array($from_id, $admin_ids))
     return;
 
+// تغییر عنوان دکمه قبلی «گزارش ربات» به «آپدیت ربات» بدون دست‌زدن به ساختار کیبورد.
 if (isset($keyboardadmin) && is_string($keyboardadmin)) {
     $keyboardadmin = str_replace(
         "📬 گزارش ربات",
@@ -1001,7 +1002,9 @@ $paycount
     } elseif ($userdata['type'] == "s_ui") {
         sendmessage($from_id, "❌ نکته :
 1 - از مسیر مدیریت پنل > تنظیم ⚙️ تنظیم پروتکل و اینباند یک نام کاربری کانفیگ را ارسال نمایید.", null, 'HTML');
-    } elseif ($userdata['type'] == "x-ui_tunnel") {
+    }
+
+     elseif ($userdata['type'] == "x-ui_tunnel") {
         sendmessage($from_id, "✅ <b>پنل تانل سنایی با موفقیت اضافه شد.</b>\n\n⚙️ <b>نکته مهم:</b>\nمطمئن شوید فایروال سرور ایران پورت‌های مورد نظر را باز نگه داشته باشد تا اتصالات کاربران بدون اختلال برقرار شود.", null, 'HTML');
     }
 }
@@ -1792,24 +1795,6 @@ links2 : لینک ساب بدون کپی شدن
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
     update("textbot", "text", $savetext, "id_text", "textafterpayibsng");
     step('home', $from_id);
-} elseif (isset($text) && preg_match('/^save_cr_style_([a-zA-Z0-9]+)$/', $user['step'], $matches)) {
-    $sym = $matches[1];
-    $info = get_crypto_currency($sym);
-
-    if ($info) {
-        $parts = explode(' ', trim($text), 2);
-        $info['emoji'] = $parts[0] ?? '💎';
-        $info['display_name'] = $parts[1] ?? $parts[0]; // فقط نام نمایشی کاربر آپدیت می‌شود
-
-        set_crypto_currency($sym, $info);
-        update("user", "step", "none", "id", $from_id);
-
-        sendmessage($from_id, "✅ استایل و نام نمایشی ارز برای کاربران با موفقیت ذخیره شد.", json_encode([
-            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => "edit_crypto_{$sym}"]]]
-        ]), 'HTML');
-    }
-
-
 } elseif ($text == "متن کارت به کارت" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_cart']}</code>", $backadmin, 'HTML');
     sendmessage($from_id, "نام های فارسی متغییر : 
@@ -4288,88 +4273,18 @@ $text_expie_agent
 } elseif ($text == $textbotlang['Admin']['btnkeyboardadmin']['managementpanel'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getloc'], $json_list_marzban_panel, 'HTML');
     step('GetLocationEdit', $from_id);
-} elseif (strpos($datain, "edit_crypto_") === 0) {
-    $sym = str_replace("edit_crypto_", "", $datain);
-    $info = get_crypto_currency($sym);
-
-    $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
-    $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
-
-    $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
-    $network_display = !empty($info['network']) ? $info['network'] : "<i>تعیین نشده</i>";
-    $user_view_title = ($info['emoji'] ?? '💎') . ' ' . ($info['display_name'] ?? $info['name']);
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => "💳 تنظیم آدرس ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
-                ['text' => "🌐 تنظیم شبکه انتقال", 'callback_data' => "set_cr_network_{$sym}"]
-            ],
-            [
-                ['text' => "✏️ ویرایش متن اختصاصی پیام", 'callback_data' => "set_cr_msg_{$sym}"]
-            ],
-            [
-                ['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]
-            ]
-        ]
-    ];
-
-    $text_msg = "⚙️ <b>تنظیمات ارز: {$fixed_title}</b>\n\n" .
-        "👁‍🗨 <b>عنوان نمایشی به کاربر:</b> <code>{$user_view_title}</code>\n" .
-        "📍 <b>آدرس ولت:</b> <code>{$wallet_display}</code>\n" .
-        "🌐 <b>شبکه:</b> <code>{$network_display}</code>\n\n" .
-        "جهت تغییر هر مورد، روی دکمه مربوطه کلیک کنید:";
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => $text_msg,
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode($keyboard)
-    ]);
-}
-
-// تغییر استپ برای دریافت مقادیر ورودی از ادمین
-elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $datain, $matches)) {
-    $field = $matches[1];
-    $sym = $matches[2];
-
-    update("user", "step", "save_cr_{$field}_{$sym}", "id", $from_id);
-
-    $field_names = [
-        'wallet' => 'آدرس ولت',
-        'network' => 'شبکه انتقال (مثلاً TRC20 یا TON)',
-        'style' => 'ایموجی و نام دکمه (مثال: 💎 تتر TRC20)',
-        'msg' => "متن پیام اختصاصی (از تگ‌های {wallet} و {network} می‌توانید استفاده کنید)"
-    ];
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => "✍️ لطفاً مقدار جدید برای <b>{$field_names[$field]}</b> ارز <b>" . strtoupper($sym) . "</b> را ارسال کنید:",
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode(['inline_keyboard' => [[['text' => "🔙 انصراف", 'callback_data' => "edit_crypto_{$sym}"]]]])
-    ]);
-
 } elseif ($user['step'] == "GetLocationEdit") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $text, "select");
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
+if ($marzban_list_get['type'] == "x-ui_tunnel") {
         $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
         $txt_tun = "🔌 <b>پنل پورت تانل متصل است ✅</b>\n\n📍 <b>نام پنل:</b> {$marzban_list_get['name_panel']}\n👥 <b>گروه:</b> {$marzban_list_get['agent']}";
         sendmessage($from_id, $txt_tun, $optionX_ui_tunnel, 'HTML');
-
+        
         update("user", "Processing_value", $text, "id", $from_id);
         step('home', $from_id);
         return; // این دستور مانع از اجرای شرط‌های بعدی و ارسال پیام دوم می‌شود
     }
-
+    
     if ($marzban_list_get['type'] == "marzban") {
         $Check_token = token_panel($marzban_list_get['code_panel'], false);
         if (isset($Check_token['access_token'])) {
@@ -4585,7 +4500,7 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
 
-    // نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
+// نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
@@ -4598,27 +4513,23 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
 
     $keys = ['inline_keyboard' => []];
     foreach ($tunnels as $tun) {
-        $keys['inline_keyboard'][] = [
-            [
-                'text' => "🚪 پورت: {$tun['listen_port']} | کاربر: {$tun['user_id']}",
-                'callback_data' => "adm_view_tun_" . $tun['id'],
-                'style' => 'primary',
-                'icon_custom_emoji_id' => 5350572310627632617
-            ]
-        ];
+        $keys['inline_keyboard'][] = [[
+            'text' => "🚪 پورت: {$tun['listen_port']} | کاربر: {$tun['user_id']}",
+            'callback_data' => "adm_view_tun_" . $tun['id'],
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5350572310627632617
+        ]];
     }
-    $keys['inline_keyboard'][] = [
-        [
-            'text' => "🔙 بازگشت",
-            'callback_data' => "admin",
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+    $keys['inline_keyboard'][] = [[
+        'text' => "🔙 بازگشت", 
+        'callback_data' => "admin", 
+        'style' => 'danger', 
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]];
 
     sendmessage($from_id, "📋 <b>لیست پورت‌های فعال تانل:</b>\nجهت مشاهده جزئیات یا حذف پورت، یکی را انتخاب کنید:", json_encode($keys), 'HTML');
 
-    // مشاهده مشخصات پورت و امکان حذف دستی توسط ادمین
+// مشاهده مشخصات پورت و امکان حذف دستی توسط ادمین
 } elseif (preg_match('/^adm_view_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
     $tun_id = intval($matches[1]);
     $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
@@ -4635,30 +4546,24 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
     $txt .= "<tg-emoji emoji-id=\"5359664288241829619\">📊</tg-emoji> <b>حجم مجاز:</b> {$tunnel['total_gb']} GB\n";
 
-    $adm_keys = json_encode([
-        'inline_keyboard' => [
-            [
-                [
-                    'text' => "❌ حذف این پورت از سرور",
-                    'callback_data' => "adm_del_tun_{$tun_id}",
-                    'style' => 'danger',
-                    'icon_custom_emoji_id' => 5258236805890710909
-                ]
-            ],
-            [
-                [
-                    'text' => "🔙 بازگشت",
-                    'callback_data' => "admin",
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5429571366384842791
-                ]
-            ]
-        ]
-    ]);
+    $adm_keys = json_encode(['inline_keyboard' => [
+        [[
+            'text' => "❌ حذف این پورت از سرور", 
+            'callback_data' => "adm_del_tun_{$tun_id}",
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909
+        ]],
+        [[
+            'text' => "🔙 بازگشت", 
+            'callback_data' => "admin",
+            'style' => 'primary',
+            'icon_custom_emoji_id' => 5429571366384842791
+        ]]
+    ]]);
 
     Editmessagetext($from_id, $message_id, $txt, $adm_keys, 'HTML');
 
-    // اجرای حذف پورت از پنل سنایی و دیتابیس
+// اجرای حذف پورت از پنل سنایی و دیتابیس
 } elseif (preg_match('/^adm_del_tun_(\d+)/', $datain, $matches) && $adminrulecheck['rule'] == "administrator") {
     $tun_id = intval($matches[1]);
     $tunnel = select("tunnel_orders", "*", "id", $tun_id, "select");
@@ -4675,20 +4580,20 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
 } elseif ($text == "🌐 تنظیم آی‌پی/دامنه سرور" && $adminrulecheck['rule'] == "administrator") {
     $current_panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $current_host = !empty($current_panel['linksubx']) ? $current_panel['linksubx'] : "تنظیم نشده";
-
+    
     $txt = "🌐 <b>تنظیم آی‌پی یا دامنه سرور ایران (تانل)</b>\n\n";
     $txt .= "📌 این آدرس پس از خرید به همراه پورت به خریدار نمایش داده می‌شود.\n";
     $txt .= "🔹 <b>مقدار فعلی:</b> <code>{$current_host}</code>\n\n";
     $txt .= "لطفاً آی‌پی سرور ایران یا دامنه متصل به آن را بدون پورت و بدون http ارسال کنید:\n";
     $txt .= "مثال: <code>185.120.45.10</code> یا <code>iran.domain.com</code>";
-
+    
     sendmessage($from_id, $txt, $backadmin, 'HTML');
     step('set_tunnel_server_host', $from_id);
 
-    // ذخیره مقدار ارسالی در دیتابیس
+// ذخیره مقدار ارسالی در دیتابیس
 } elseif ($user['step'] == "set_tunnel_server_host") {
     $host = trim(str_replace(['http://', 'https://', '/'], '', $text));
-
+    
     if (empty($host)) {
         sendmessage($from_id, "❌ لطفاً یک آی‌پی یا دامنه معتبر ارسال کنید:", $backadmin, 'HTML');
         return;
@@ -4696,7 +4601,7 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
 
     update("marzban_panel", "linksubx", $host, "name_panel", $user['Processing_value']);
     $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-
+    
     outtypepanel($typepanel['type'], "✅ <b>آدرس سرور تانل با موفقیت ذخیره گردید:</b>\n<code>{$host}</code>");
     step('home', $from_id);
 
@@ -7211,153 +7116,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 🔗آدرس ورود : https://$domainhosts/panel
 👤نام کاربری :  <code>$from_id</code>
 🔑رمز عبور :  <code>$randomString</code>", $keyboardstatistics, 'HTML');
-} // ==================== ۱. نمایش چیدمان دکمه‌ها با متغیرهای اصلی ====================
-// ==================== ۱. نمایش چیدمان دکمه‌ها برای مدیریت ====================
-elseif (($text == "🎨 تغییر ایموجی دکمه‌ها" || mb_strpos($text, "تغییر ایموجی") !== false) && in_array($from_id, $admin_ids)) {
-
-    if (empty($keyboardRows)) {
-        sendmessage($from_id, "❌ ساختار کیبورد یافت نشد.", $backadmin, 'HTML');
-        return;
-    }
-
-    $trace_keyboard = [];
-    foreach ($keyboardRows as $row_idx => $callback_set) {
-        $row_btns = [];
-        foreach ($callback_set as $btn) {
-            $raw_key = $btn['text'] ?? '';
-            if (empty($raw_key))
-                continue;
-
-            $display_text = $replacements[$raw_key] ?? ($datatextbot[$raw_key] ?? $raw_key);
-
-            $btn_item = [
-                'text' => $display_text,
-                'callback_data' => "chg_btn_key_" . $raw_key
-            ];
-
-            if (isset($btn['style'])) {
-                $btn_item['style'] = $btn['style'];
-            }
-            if (!empty($btn['icon_custom_emoji_id'])) {
-                $btn_item['icon_custom_emoji_id'] = $btn['icon_custom_emoji_id'];
-            }
-
-            $row_btns[] = $btn_item;
-        }
-        if (!empty($row_btns)) {
-            $trace_keyboard[] = $row_btns;
-        }
-    }
-
-    $trace_keyboard[] = [
-        ['text' => "بازگشت", 'callback_data' => "back_to_admin_general", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]
-    ];
-
-    $admin_inline_keyboard = json_encode(['inline_keyboard' => $trace_keyboard]);
-
-    $txt = "<tg-emoji emoji-id=\"5463335865235288297\">🎨</tg-emoji> <b>مدیریت ایموجی دکمه‌های منوی اصلی:</b>\n\n";
-    $txt .= "روی هر دکمه که می‌خواهید ایموجی آن را تغییر دهید کلیک کنید:";
-
-    sendmessage($from_id, $txt, $admin_inline_keyboard, 'HTML');
-} elseif (preg_match('/^chg_btn_key_([a-zA-Z0-9_]+)$/', $datain, $matches) && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $target_key = $matches[1];
-    $current_val = $replacements[$target_key] ?? ($datatextbot[$target_key] ?? $target_key);
-
-    update("user", "Processing_value", $target_key, "id", $from_id);
-
-    $txt = "<tg-emoji emoji-id=\"5348536444589719796\">✏️</tg-emoji> <b>ویرایش ایموجی دکمه:</b> <code>{$current_val}</code>\n\n";
-    $txt .= "<tg-emoji emoji-id=\"5350626672028697529\">💎</tg-emoji> لطفاً <b>ایموجی پریمیوم</b> یا <b>آیدی عددی ایموجی</b> را ارسال فرمایید:";
-    sendmessage($from_id, $txt, $backadmin, 'HTML');
-    step("admin_save_btn_emoji", $from_id);
-} elseif ($user['step'] == "admin_save_btn_emoji" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("home", $from_id);
-        sendmessage($from_id, "عملیات لغو شد.", $setting_panel, 'HTML');
-        return;
-    }
-
-    $target_key = $user['Processing_value'] ?? '';
-    if (empty($target_key)) {
-        sendmessage($from_id, "❌ خطایی در بازخوانی دکمه رخ داد، لطفاً مجدداً از منو دکمه را انتخاب کنید.", $setting_panel, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    $custom_emoji_id = null;
-    $raw_msg = $update['message'] ?? [];
-
-    // ۱. بررسی مستقیم entities در پکت آپدیت ارسالی تلگرام
-    if (!empty($raw_msg['entities']) && is_array($raw_msg['entities'])) {
-        foreach ($raw_msg['entities'] as $entity) {
-            if (isset($entity['type']) && $entity['type'] === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
-                $custom_emoji_id = (string) $entity['custom_emoji_id'];
-                break;
-            }
-        }
-    }
-
-    // ۲. بررسی از طریق خروجی تابع convertCustomEmojiToHTML
-    if ($custom_emoji_id === null && function_exists('convertCustomEmojiToHTML')) {
-        $html_emoji = convertCustomEmojiToHTML($raw_msg);
-        if (preg_match('/emoji-id="(\d+)"/', (string) $html_emoji, $matches_emoji)) {
-            $custom_emoji_id = (string) $matches_emoji[1];
-        }
-    }
-
-    // ۳. بررسی اگر ادمین مستقیماً آیدی عددی ارسال کرده باشد
-    $trimmed_text = trim((string) $text);
-    if ($custom_emoji_id === null && preg_match('/^\d{15,22}$/', $trimmed_text)) {
-        $custom_emoji_id = $trimmed_text;
-    }
-
-    // اگر هیچ شناسه‌ای پیدا نشد
-    if ($custom_emoji_id === null) {
-        sendmessage($from_id, "❌ شناسه ایموجی پریمیوم یافت نشد.\nلطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی</b> آن را ارسال کنید:", $backadmin, 'HTML');
-        return;
-    }
-
-    // ۴. خواندن و ویرایش JSON فیلد keyboardmain در دیتابیس
-    $setting_row = select("setting", "*", null, null, "select");
-    $raw_kb = $setting_row['keyboardmain'] ?? '{}';
-    $keyboard_data = json_decode($raw_kb, true);
-
-    if (isset($keyboard_data['keyboard']) && is_array($keyboard_data['keyboard'])) {
-        foreach ($keyboard_data['keyboard'] as &$row) {
-            if (!is_array($row))
-                continue;
-            foreach ($row as &$btn) {
-                if (isset($btn['text']) && $btn['text'] === $target_key) {
-                    $btn['icon_custom_emoji_id'] = (string) $custom_emoji_id;
-                }
-            }
-        }
-        unset($btn);
-        unset($row);
-
-        $updated_keyboardmain = json_encode($keyboard_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        // آپدیت امن دیتابیس با شرط صحیح
-        $stmt_up = $pdo->prepare("UPDATE setting SET keyboardmain = :kb");
-        $stmt_up->execute([':kb' => $updated_keyboardmain]);
-    }
-
-    $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>ایموجی دکمه با موفقیت ویرایش و ذخیره شد.</b>\n\n";
-    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">🆔</tg-emoji> <b>شناسه ایموجی:</b> <code>{$custom_emoji_id}</code>\n";
-    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">👀</tg-emoji> <b>پیش‌نمایش:</b> <tg-emoji emoji-id=\"{$custom_emoji_id}\">✨</tg-emoji>\n";
-    $succ_txt .= "<tg-emoji emoji-id=\"5348451945403137943\">🔘</tg-emoji> <b>کلید به‌روزرسانی شده:</b> <code>{$target_key}</code>";
-    sendmessage($from_id, $succ_txt, $setting_panel, 'HTML');
-    step("home", $from_id);
-}
-
-// ==================== ۴. بستن پنجره شیشه‌ای ====================
-elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    telegram('deleteMessage', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id
-    ]);
 } elseif (preg_match('/addordermanualـ(\w+)/', $datain, $dataget)) {
     $iduser = $dataget[1];
     update("user", "Processing_value", $iduser, "id", $from_id);
@@ -7828,473 +7586,6 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         ]
     ]);
     sendmessage($from_id, $textoptimize, $Response, 'HTML');
-} elseif ($text == "🪙 ارز های موجود" || $datain == "back_to_crypto_list") {
-    update("user", "step", "none", "id", $from_id);
-
-    $currencies = get_all_crypto_currencies();
-    $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
-
-    $keyboard = [];
-    foreach ($currencies as $sym => $info) {
-        $sym_key = strtolower($sym);
-        $fixed_title = $static_names[$sym_key] ?? strtoupper($sym);
-        $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-        
-        $keyboard[] = [
-            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
-            ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$sym}"]
-        ];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-           "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
-
-    if ($datain == "back_to_crypto_list") {
-        telegram('editMessageText', [
-            'chat_id'      => $from_id,
-            'message_id'   => $message_id,
-            'text'         => $msg,
-            'parse_mode'   => 'HTML',
-            'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
-        ]);
-    } else {
-        sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
-    }
-}
-
-elseif (strpos($datain, "toggle_crypto_") === 0) {
-    $sym = str_replace("toggle_crypto_", "", $datain);
-    $current_status = toggle_crypto_status($sym);
-
-    $currencies = get_all_crypto_currencies();
-    $static_names = [
-    'usdt' => 'تتر (USDT)',
-    'trx'  => 'ترون (TRX)',
-    'ton'  => 'تون کوین (TON)',
-    'btc'  => 'بیت‌کوین (BTC)',
-    'eth'  => 'اتریوم (ETH)',
-    'bnb'  => 'بایننس کوین (BNB)'
-];
-
-    $keyboard = [];
-    foreach ($currencies as $s => $item) {
-        $sym_key = strtolower($s);
-        $fixed_title = $static_names[$sym_key] ?? strtoupper($s);
-        $st = ($s === $sym) ? $current_status : ($item['status'] ?? 'off');
-        $status_icon = ($st == 'on') ? "✅ روشن" : "❌ خاموش";
-        
-        $keyboard[] = [
-            ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
-            ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
-            ['text' => "{$fixed_title}", 'callback_data' => "view_wallet_info_{$s}"]
-        ];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    telegram('editMessageReplyMarkup', [
-        'chat_id'      => $from_id,
-        'message_id'   => $message_id,
-        'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
-    ]);
-}
-
-// ۳. هندلر بستن یا بازگشت سراسری از منوهای شیشه‌ای ادمین
-elseif ($datain == "close_admin_inline" && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    update("user", "step", "none", "id", $from_id);
-    deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['Admin']['Back-Admin'], $keyboardadmin, 'HTML');
-}
-
-// ۲. کلیک روی دکمه تنظیم ولت
-elseif (strpos($datain, "set_cr_wallet_") === 0) {
-    $sym = str_replace("set_cr_wallet_", "", $datain);
-    $info = get_crypto_currency($sym);
-    $current_w = !empty($info['wallet']) ? "<code>{$info['wallet']}</code>" : "<i>تنظیم نشده</i>";
-
-    update("user", "step", "save_cr_wallet_{$sym}", "id", $from_id);
-
-    $msg = "✍️ <b>تنظیم آدرس ولت برای {$info['name']}</b>\n\n" .
-        "📍 <b>آدرس ولت فعلی:</b>\n{$current_w}\n\n" .
-        "لطفاً آدرس ولت جدید را به صورت متنی ارسال کنید:";
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => $msg,
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode([
-            'inline_keyboard' => [[['text' => "🔙 انصراف و بازگشت", 'callback_data' => "back_to_crypto_list"]]]
-        ])
-    ]);
-}
-
-// دریافت و ذخیره آدرس ولت
-elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_wallet_") === 0) {
-    // اگر کاربر دکمه بازگشت یا انصراف متنی زد
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        update("user", "step", "none", "id", $from_id);
-        sendmessage($from_id, "عملیات تنظیم ولت لغو شد.", $keyboardadmin, 'HTML');
-        return;
-    }
-
-    $sym = strtolower(str_replace("save_cr_wallet_", "", $user['step']));
-    set_crypto_wallet($sym, $text);
-    update("user", "step", "none", "id", $from_id);
-
-    sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
-        'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
-    ]), 'HTML');
-} 
-// ۱. با کلیک روی نام ارز: باز شدن منوی تنظیمات نام و شبکه
-elseif (strpos($datain, "view_wallet_info_") === 0 && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $sym = strtolower(str_replace("view_wallet_info_", "", $datain));
-    $info = get_crypto_currency($sym);
-
-    $current_name = !empty($info['name']) ? $info['name'] : "تنظیم نشده";
-    $current_net = !empty($info['network']) ? $info['network'] : "تعیین نشده";
-    $current_w = !empty($info['wallet']) ? "<code>{$info['wallet']}</code>" : "<i>تنظیم نشده</i>";
-
-    $keyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => "✏️ تغییر نام نمایشی", 'callback_data' => "set_cr_name_{$sym}"],
-                ['text' => "🌐 تغییر شبکه انتقال", 'callback_data' => "set_cr_network_{$sym}"]
-            ],
-            [
-                ['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]
-            ]
-        ]
-    ];
-
-    $msg = "⚙️ <b>تنظیمات ارز " . strtoupper($sym) . "</b>\n\n" .
-        "🏷 <b>نام نمایشی به کاربر:</b> <code>{$current_name}</code>\n" .
-        "🌐 <b>شبکه انتقال:</b> <code>{$current_net}</code>\n" .
-        "📍 <b>آدرس ولت:</b> {$current_w}\n\n" .
-        "برای ویرایش نام یا شبکه روی دکمه مربوطه بزنید:";
-
-    Editmessagetext($from_id, $message_id, $msg, json_encode($keyboard), 'HTML');
-}
-
-// ۲. کلیک روی «تغییر نام نمایشی»
-elseif (strpos($datain, "set_cr_name_") === 0 && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $sym = strtolower(str_replace("set_cr_name_", "", $datain));
-    $info = get_crypto_currency($sym);
-
-    savedata("clear", "target_crypto_sym", $sym);
-    step("save_cr_name_step", $from_id);
-
-    $msg = "✍️ <b>تنظیم نام نمایشی جدید برای ارز " . strtoupper($sym) . "</b>\n\n" .
-        "🔹 <b>نام فعلی:</b> <code>{$info['name']}</code>\n\n" .
-        "لطفاً عنوان و نام جدیدی که می‌خواهید به کاربر نمایش داده شود را ارسال کنید:\n" .
-        "<i>(مثال: ترون TRC20 یا تتر دلار)</i>";
-
-    $keyboard = json_encode([
-        'inline_keyboard' => [
-            [['text' => "🔙 انصراف", 'callback_data' => "view_wallet_info_{$sym}"]]
-        ]
-    ]);
-
-    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
-}
-
-// دریافت و ذخیره نام جدید
-elseif ($user['step'] == "save_cr_name_step" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("home", $from_id);
-        sendmessage($from_id, "عملیات تغییر نام لغو شد.", $keyboardadmin, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $sym = $userdata['target_crypto_sym'] ?? '';
-
-    if (!empty($sym) && !empty($text)) {
-        set_crypto_name($sym, $text);
-        step("home", $from_id);
-
-        $keyboard = json_encode([
-            'inline_keyboard' => [
-                [['text' => "🔙 بازگشت به تنظیمات " . strtoupper($sym), 'callback_data' => "view_wallet_info_{$sym}"]]
-            ]
-        ]);
-
-        sendmessage($from_id, "✅ نام نمایشی ارز <b>" . strtoupper($sym) . "</b> با موفقیت به <code>{$text}</code> تغییر یافت.", $keyboard, 'HTML');
-    }
-}
-
-// ۳. کلیک روی «تغییر شبکه انتقال»
-elseif (strpos($datain, "set_cr_network_") === 0 && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $sym = strtolower(str_replace("set_cr_network_", "", $datain));
-    $info = get_crypto_currency($sym);
-
-    savedata("clear", "target_crypto_sym", $sym);
-    step("save_cr_network_step", $from_id);
-
-    $msg = "🌐 <b>تنظیم شبکه انتقال برای ارز " . strtoupper($sym) . "</b>\n\n" .
-        "🔹 <b>شبکه فعلی:</b> <code>{$info['network']}</code>\n\n" .
-        "لطفاً نام شبکه انتقال را ارسال کنید:\n" .
-        "<i>(مثال: TRC20 یا TON یا BEP20)</i>";
-
-    $keyboard = json_encode([
-        'inline_keyboard' => [
-            [['text' => "🔙 انصراف", 'callback_data' => "view_wallet_info_{$sym}"]]
-        ]
-    ]);
-
-    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
-}
-
-// دریافت و ذخیره شبکه جدید
-elseif ($user['step'] == "save_cr_network_step" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("home", $from_id);
-        sendmessage($from_id, "عملیات تغییر شبکه لغو شد.", $keyboardadmin, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $sym = $userdata['target_crypto_sym'] ?? '';
-
-    if (!empty($sym) && !empty($text)) {
-        set_crypto_network($sym, $text);
-        step("home", $from_id);
-
-        $keyboard = json_encode([
-            'inline_keyboard' => [
-                [['text' => "🔙 بازگشت به تنظیمات " . strtoupper($sym), 'callback_data' => "view_wallet_info_{$sym}"]]
-            ]
-        ]);
-
-        sendmessage($from_id, "✅ شبکه انتقال ارز <b>" . strtoupper($sym) . "</b> با موفقیت به <code>{$text}</code> تغییر یافت.", $keyboard, 'HTML');
-    }
-} elseif ($text == "🎨 استایل دکمه های ارز آفلاین") {
-    $currencies = get_all_crypto_currencies();
-
-    $keyboard = [];
-    foreach ($currencies as $sym => $info) {
-        $btn_item = [
-            'text' => $info['name'],
-            'callback_data' => "select_cr_style_{$sym}",
-            'style' => $info['style'] ?? 'primary'
-        ];
-
-        // افزودن آیکون ایموجی پریمیوم به دکمه
-        if (!empty($info['emoji_id'])) {
-            $btn_item['icon_custom_emoji_id'] = (int) $info['emoji_id'];
-        }
-
-        $keyboard[] = [$btn_item];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    $msg = "🎨 <b>مدیریت رنگ و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
-        "پیش‌نمایش زنده دکمه‌ها در زیر قرار دارد.\n" .
-        "برای تغییر رنگ یا ایموجی پریمیوم هر ارز، روی آن کلیک کنید:";
-
-    sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
-}
-
-// کلیک روی دکمه ارز جهت شروع تغییر استایل
-elseif (strpos($datain, "select_cr_style_") === 0 && in_array($from_id, $admin_ids)) {
-    $sym = strtolower(str_replace("select_cr_style_", "", $datain));
-    $info = get_crypto_currency($sym);
-
-    if (!$info) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ ارز یافت نشد.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    // ذخیره ارز انتخاب‌شده و تنظیم مرحله ۱
-    savedata("clear", "style_target_sym", $sym);
-    step("cr_step_get_color", $from_id);
-
-    $msg = "🎨 <b>مرحله ۱ از ۲: تنظیم رنگ دکمه برای {$info['name']}</b>\n\n" .
-        "لطفاً یکی از رنگ‌های زیر را ارسال کنید:\n" .
-        "🟢 <b>سبز</b> (Success)\n" .
-        "🔴 <b>قرمز</b> (Danger)\n" .
-        "🔵 <b>آبی</b> (Primary)\n" .
-        "⚪️ <b>بی رنگ / خاکستری</b> (Secondary)\n\n" .
-        "<i>(می‌توانید فارسی، انگلیسی یا به حروف مختلف بنویسید)</i>";
-
-    $keyboard = json_encode([
-        'inline_keyboard' => [
-            [['text' => "🔙 انصراف", 'callback_data' => "back_to_cr_styles"]]
-        ]
-    ]);
-
-    Editmessagetext($from_id, $message_id, $msg, $keyboard, 'HTML');
-}
-
-// مرحله ۱: دریافت و نرمال‌سازی رنگ
-elseif ($user['step'] == "cr_step_get_color" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("home", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $keyboardadmin, 'HTML');
-        return;
-    }
-
-    // نرمال‌سازی دقیق متن ورودی (حذف فاصله‌ها، تبدیل حروف آ/ا و کوچیک‌سازی انگلیسی)
-    $input = trim(mb_strtolower($text, 'UTF-8'));
-    $input = str_replace(['آ', 'إ', 'أ'], 'ا', $input);
-    $input = str_replace([' ', '_', '-'], '', $input);
-
-    $color = null;
-
-    // نگاشت انواع املاهای ممکن فارسی و انگلیسی
-    if (in_array($input, ['سبز', 'green', 'success'])) {
-        $color = 'success';
-    } elseif (in_array($input, ['قرمز', 'red', 'danger'])) {
-        $color = 'danger';
-    } elseif (in_array($input, ['ابی', 'نیلی', 'blue', 'primary'])) {
-        $color = 'primary';
-    } elseif (in_array($input, ['بیرنگ', 'بی_رنگ', 'خاکستری', 'سفید', 'طوسی', 'gray', 'grey', 'white', 'secondary', 'none'])) {
-        $color = 'secondary';
-    }
-
-    if ($color === null) {
-        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backadmin, 'HTML');
-        return;
-    }
-
-    // ذخیره موقت رنگ و رفتن به مرحله بعد
-    savedata("save", "style_temp_color", $color);
-    step("cr_step_get_emoji", $from_id);
-
-    $color_names_fa = [
-        'success' => '🟢 سبز',
-        'danger' => '🔴 قرمز',
-        'primary' => '🔵 آبی',
-        'secondary' => '⚪️ بی رنگ / خاکستری'
-    ];
-
-    $msg = "✅ رنگ <b>{$color_names_fa[$color]}</b> با موفقیت انتخاب شد.\n\n" .
-        "💎 <b>مرحله ۲ از ۲: تنظیم ایموجی پریمیوم</b>\n" .
-        "لطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی ایموجی</b> را ارسال کنید:\n\n" .
-        "<i>(در صورت عدم تمایل به ایموجی، عدد <code>0</code> را ارسال فرمایید)</i>";
-
-    sendmessage($from_id, $msg, $backadmin, 'HTML');
-}
-
-// مرحله ۲: دریافت و ذخیره ایموجی و اعمال تغییرات
-elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("home", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $keyboardadmin, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $sym = $userdata['style_target_sym'] ?? '';
-    $color = $userdata['style_temp_color'] ?? 'primary';
-
-    if (empty($sym)) {
-        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات ارز رخ داد. لطفاً مجدداً از منو دکمه را انتخاب کنید.", $keyboardadmin, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    $custom_emoji_id = null;
-    $trimmed_text = trim((string) $text);
-
-    // ۱. اگر ادمین عدد 0 ارسال کرده باشد (حذف ایموجی)
-    if ($trimmed_text === '0') {
-        $custom_emoji_id = '';
-    }
-
-    // ۲. بررسی مستقیم entities تلگرام
-    $raw_msg = $update['message'] ?? [];
-    if ($custom_emoji_id === null && !empty($raw_msg['entities']) && is_array($raw_msg['entities'])) {
-        foreach ($raw_msg['entities'] as $entity) {
-            if (isset($entity['type']) && $entity['type'] === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
-                $custom_emoji_id = (string) $entity['custom_emoji_id'];
-                break;
-            }
-        }
-    }
-
-    // ۳. بررسی با تابع تبدیل ایموجی
-    if ($custom_emoji_id === null && function_exists('convertCustomEmojiToHTML')) {
-        $html_emoji = convertCustomEmojiToHTML($raw_msg);
-        if (preg_match('/emoji-id="(\d+)"/', (string) $html_emoji, $matches_emoji)) {
-            $custom_emoji_id = (string) $matches_emoji[1];
-        }
-    }
-
-    // ۴. بررسی آیدی عددی ارسالی
-    if ($custom_emoji_id === null && preg_match('/^\d{15,22}$/', $trimmed_text)) {
-        $custom_emoji_id = $trimmed_text;
-    }
-
-    if ($custom_emoji_id === null) {
-        sendmessage($from_id, "❌ شناسه ایموجی پریمیوم شناسایی نشد.\nلطفاً یک <b>ایموجی پریمیوم</b> یا <b>شناسه عددی</b> ارسال کنید (یا عدد <code>0</code> برای حذف):", $backadmin, 'HTML');
-        return;
-    }
-
-    // ذخیره نهایی هر دو فیلد رنگ و ایموجی در جدول offline_crypto
-    set_crypto_style($sym, $color);
-    set_crypto_emoji($sym, $custom_emoji_id);
-
-    step("home", $from_id);
-
-    $info = get_crypto_currency($sym);
-    $preview_btn = [
-        'text' => $info['name'],
-        'callback_data' => "noop",
-        'style' => $info['style'] ?? 'primary'
-    ];
-    if (!empty($info['emoji_id'])) {
-        $preview_btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
-    }
-
-    $final_keyboard = json_encode([
-        'inline_keyboard' => [
-            [$preview_btn],
-            [['text' => "🔙 بازگشت به لیست استایل‌ها", 'callback_data' => "back_to_cr_styles"]]
-        ]
-    ]);
-
-    sendmessage($from_id, "✅ <b>استایل دکمه ارز " . strtoupper($sym) . " با موفقیت به‌روزرسانی شد.</b>\n\nپیش‌نمایش دکمه جدید:", $final_keyboard, 'HTML');
-} elseif ($datain == "back_to_cr_styles" && in_array($from_id, $admin_ids)) {
-    update("user", "step", "none", "id", $from_id);
-    $currencies = get_all_crypto_currencies();
-
-    $keyboard = [];
-    foreach ($currencies as $sym => $info) {
-        $btn_item = [
-            'text' => $info['name'],
-            'callback_data' => "select_cr_style_{$sym}",
-            'style' => $info['style'] ?? 'primary'
-        ];
-        if (!empty($info['emoji_id'])) {
-            $btn_item['icon_custom_emoji_id'] = (int) $info['emoji_id'];
-        }
-        $keyboard[] = [$btn_item];
-    }
-    $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
-
-    $msg = "🎨 <b>مدیریت رنگ و ایموجی دکمه‌های ارز آفلاین</b>\n\n" .
-        "برای تغییر استایل هر ارز، روی دکمه آن کلیک کنید:";
-
-    Editmessagetext($from_id, $message_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
 } elseif ($datain == "optimizebot") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست'");
     $stmt->execute();
@@ -8569,22 +7860,24 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
 
 } elseif (strpos($datain, 'setproto_') === 0) {
     $selected_protocol = str_replace('setproto_', '', $datain);
-
+    
     $panel_name = $user['Processing_value'];
-
+    
     if ($selected_protocol === 'null') {
-        $db_value = "";
+        $db_value = ""; 
         $display_text = "خالی (Null)";
     } else {
         $db_value = $selected_protocol;
         $display_text = strtoupper($selected_protocol);
     }
-
+    
     update("marzban_panel", "protocol", $db_value, "name_panel", $panel_name);
-
+    
     $success_text = "✅ پروتکل این پنل با موفقیت روی حالت " . $display_text . "تنظیم شد.";
     Editmessagetext($from_id, $message_id, $success_text, null);
-} elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
+}
+
+elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
     $nodeid = $dataget[1];
     update("user", "Processing_value_one", $nodeid, "id", $from_id);
     $node = Get_Node($user['Processing_value'], $nodeid);
@@ -8858,14 +8151,14 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
-            // [
-            //     ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
-            // ],
+            [
+                ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
+            ],
         ]
     ]);
     sendmessage($from_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
 
-⚠️   هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status, 'HTML');
+⚠️ تیم میرزا هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status, 'HTML');
 } elseif ($text == "🎁 کش بک تمدید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "📌 مقدار درصدی که می خواهید حساب کاربر بعد از تمدید به عنوان هدیه شارژ شود را ارسال کنید.
 ⚠️ در صورتی که میخواهید غیرفعال باشد عدد 0 را ارسال کنید", $backadmin, 'HTML');
@@ -9082,14 +8375,14 @@ n2", $backadmin, 'HTML');
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
-            // [
-            //     ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
-            // ],
+            [
+                ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
+            ],
         ]
     ]);
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
 
-⚠️   هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
+⚠️ تیم میرزا هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
 } elseif ($text == "💰 کش بک کارت به کارت") {
     sendmessage($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
     step("getcashcart", $from_id);
@@ -11476,8 +10769,9 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("DELETE FROM app WHERE name = :name");
     $stmt->bindParam(':name', $text, PDO::PARAM_STR);
     $stmt->execute();
-} elseif ($text == "تنظیم پروتکل کانفیگ") {
-    $keyboard = json_encode([
+}
+elseif ($text == "تنظیم پروتکل کانفیگ") {
+$keyboard = json_encode([
         'inline_keyboard' => [
             [
                 ['text' => 'VLESS', 'callback_data' => 'setproto_vless'],
@@ -11491,10 +10785,11 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ]
         ]
     ]);
-
+    
     $text_msg = "⚙️ لطفا پروتکل مورد نظر برای این پنل را انتخاب کنید:\n\n⚠️ نکته: اگر شادوساکس را انتخاب می‌کنید، حتماً تنظیمات اینباند در سرور باید روی Shadowsocks باشد.";
     sendmessage($from_id, $text_msg, $keyboard, 'HTML');
-} elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
+}
+elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
         update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
@@ -11594,13 +10889,13 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify' , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -11616,7 +10911,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard", 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard" , 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],
@@ -11849,13 +11144,13 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال کانفیگ", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
@@ -11871,7 +11166,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "📊 اولین اتصال اکانت تست", 'callback_data' => "none"],
         ];
     }
-    if (!in_array($panel['type'], ["Manualsale", "WGDashboard", 'x-ui_tunnel'])) {
+    if (!in_array($panel['type'], ["Manualsale", "WGDashboard"])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $changeloc, 'callback_data' => "editpanel-changeloc-{$panel['changeloc']}-{$panel['code_panel']}"],
             ['text' => "🌍 تغییر لوکیشن", 'callback_data' => "none"],

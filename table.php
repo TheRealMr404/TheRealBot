@@ -418,7 +418,7 @@ try {
         addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
-        $next_num = $max_row['max_num'] ? (int) $max_row['max_num'] + 1 : 15;
+        $next_num = $max_row['max_num'] ? (int)$max_row['max_num'] + 1 : 15;
         $stmt = $connect->query("SELECT id FROM marzban_panel WHERE code_panel IS NULL OR code_panel = ''");
         while ($row = $stmt->fetch_assoc()) {
             $code = '7e' . $next_num;
@@ -861,40 +861,6 @@ try {
     file_put_contents('error_log', $e->getMessage());
 }
 
-try {
-    $result = $connect->query("SHOW TABLES LIKE 'offline_crypto'");
-    $table_exists = ($result->num_rows > 0);
-
-    if (!$table_exists) {
-        $result = $connect->query("CREATE TABLE offline_crypto (
-            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            symbol VARCHAR(20) NOT NULL UNIQUE,
-            name VARCHAR(100) NOT NULL,
-            wallet VARCHAR(255) DEFAULT '',
-            network VARCHAR(50) DEFAULT 'Mainnet',
-            status ENUM('on', 'off') DEFAULT 'on',
-            emoji_id VARCHAR(50) DEFAULT '5836907383292436018',
-            style VARCHAR(50) DEFAULT 'primary'
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $default_cryptos = [
-            ['ton', 'تون کوین (TON)', '', 'TON', 'on', '5836907383292436018', 'primary'],
-            ['trx', 'ترون (TRX)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
-            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
-            ['btc', 'بیت‌کوین (BTC)', '', 'BTC / Lightning', 'on', '5836907383292436018', 'primary'],
-            ['eth', 'اتریوم (ETH)', '', 'ERC20 / Arbitrum', 'on', '5836907383292436018', 'primary'],
-            ['bnb', 'بایننس کوین (BNB)', '', 'BEP20 (BSC)', 'on', '5836907383292436018', 'primary']
-        ];
-
-        foreach ($default_cryptos as $cr) {
-            $stmt = $connect->prepare("INSERT INTO offline_crypto (symbol, name, wallet, network, status, emoji_id, style) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("sssssss", $cr[0], $cr[1], $cr[2], $cr[3], $cr[4], $cr[5], $cr[6]);
-            $stmt->execute();
-        }
-    }
-} catch (Exception $e) {
-    file_put_contents('error_log offline_crypto', $e->getMessage());
-}
 try {
     $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");
     $table_exists = ($result->num_rows > 0);
