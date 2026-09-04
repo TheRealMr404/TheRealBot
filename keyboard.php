@@ -657,76 +657,97 @@ $helpappremove['keyboard'][] = [
 ];
 $json_list_remove_helpـlink = json_encode($helpappremove);
  //------------------  [ listpanelusers ]----------------//
-    $stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE status = 'active' AND (agent = :agent OR agent = 'all')");
-    $stmt->bindParam(':agent', $users['agent']);
-    $stmt->execute();
-    $list_marzban_panel_users = ['inline_keyboard' => []];
-    $panelcount = select("marzban_panel","*","status","active","count");
-    if($panelcount > 10){
-        $temp_row = [];
-         while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
+$stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE status = 'active' AND (agent = :agent OR agent = 'all')");
+$stmt->bindParam(':agent', $users['agent']);
+$stmt->execute();
+$list_marzban_panel_users = ['inline_keyboard' => []];
+$panelcount = select("marzban_panel", "*", "status", "active", "count");
+
+if ($panelcount > 10) {
+    $temp_row = [];
+    while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         if ($result['hide_user'] != null && in_array($from_id, json_decode($result['hide_user'], true))) continue;
-        if($result['type'] == "Manualsale"){
-            $stmt = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :codepanel AND status = 'active'");
-            $stmt->bindParam(':codepanel', $result['code_panel']);
-            $stmt->execute();
-            $configexits = $stmt->rowCount();
-            if(intval($configexits) == 0)continue;
+        if ($result['type'] == "Manualsale") {
+            $stmtManual = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :codepanel AND status = 'active'");
+            $stmtManual->bindParam(':codepanel', $result['code_panel']);
+            $stmtManual->execute();
+            if (intval($stmtManual->rowCount()) == 0) continue;
         }
-        if ($users['step'] == "getusernameinfo") {
-            $temp_row[] = ['text' => $result['name_panel'], 'callback_data' => "locationnotuser_{$result['code_panel']}"];
-        } else {
-            $temp_row[] = [
-    'text' => '🌍 '.$result['name_panel'],
-    'callback_data' => "location_{$result['code_panel']}",
-    'style'=>'primary',
-    'icon_custom_emoji_id'=> 5258236805890710909
-];
+
+        // استخراج رنگ و ایموجی پرمیوم داینامیک از دیتابیس
+        $btn = [
+            'text'          => ($users['step'] == "getusernameinfo") ? $result['name_panel'] : '🌍 ' . $result['name_panel'],
+            'callback_data' => ($users['step'] == "getusernameinfo") ? "locationnotuser_{$result['code_panel']}" : "location_{$result['code_panel']}",
+        ];
+
+        if (!empty($result['panel_color']) && in_array($result['panel_color'], ['primary', 'success', 'danger'])) {
+            $btn['style'] = $result['panel_color'];
         }
-         if (count($temp_row) == 2) {
+
+        if (!empty($result['panel_emoji'])) {
+            if (preg_match('/emoji-id="(\d+)"/', $result['panel_emoji'], $matches)) {
+                $btn['icon_custom_emoji_id'] = (string) $matches[1];
+            } elseif (preg_match('/(\d{15,22})/', $result['panel_emoji'], $matches)) {
+                $btn['icon_custom_emoji_id'] = (string) $matches[1];
+            }
+        }
+
+        $temp_row[] = $btn;
+
+        if (count($temp_row) == 2) {
             $list_marzban_panel_users['inline_keyboard'][] = $temp_row;
-            $temp_row = []; 
+            $temp_row = [];
         }
-    } 
-        if (!empty($temp_row)) {
+    }
+    if (!empty($temp_row)) {
         $list_marzban_panel_users['inline_keyboard'][] = $temp_row;
     }
-    }else{
+} else {
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if($result['type'] == "Manualsale"){
+        if ($result['type'] == "Manualsale") {
             $stmts = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :codepanel AND status = 'active'");
             $stmts->bindParam(':codepanel', $result['code_panel']);
             $stmts->execute();
-            $configexits = $stmts->rowCount();
-            if(intval($configexits) == 0)continue;
+            if (intval($stmts->rowCount()) == 0) continue;
         }
-        if($result['hide_user'] != null and in_array($from_id,json_decode($result['hide_user'],true)))continue;
-        if ($users['step'] == "getusernameinfo") {
-            $list_marzban_panel_users['inline_keyboard'][] = [
-                ['text' => $result['name_panel'], 'callback_data' => "locationnotuser_{$result['code_panel']}" , 'style' => 'primary']
-            ];
+        if ($result['hide_user'] != null && in_array($from_id, json_decode($result['hide_user'], true))) continue;
+
+        // استخراج رنگ و ایموجی پرمیوم داینامیک از دیتابیس
+        $btn = [
+            'text'          => $result['name_panel'],
+            'callback_data' => ($users['step'] == "getusernameinfo") ? "locationnotuser_{$result['code_panel']}" : "location_{$result['code_panel']}",
+        ];
+
+        if (!empty($result['panel_color']) && in_array($result['panel_color'], ['primary', 'success', 'danger'])) {
+            $btn['style'] = $result['panel_color'];
         }
-        else{
-            $list_marzban_panel_users['inline_keyboard'][] = [[
-    'text' => $result['name_panel'],
-    'callback_data' => "location_{$result['code_panel']}",
-    'style' => 'primary',
-]];
+
+        if (!empty($result['panel_emoji'])) {
+            if (preg_match('/emoji-id="(\d+)"/', $result['panel_emoji'], $matches)) {
+                $btn['icon_custom_emoji_id'] = (string) $matches[1];
+            } elseif (preg_match('/(\d{15,22})/', $result['panel_emoji'], $matches)) {
+                $btn['icon_custom_emoji_id'] = (string) $matches[1];
+            }
         }
+
+        $list_marzban_panel_users['inline_keyboard'][] = [$btn];
     }
-    }
-$statusnote = false; 
-if($setting['statusnamecustom'] == 'onnamecustom')$statusnote = true;
-if($setting['statusnoteforf'] == "0" && $users['agent'] == "f")$statusnote = false;
-    if($statusnote){
-$list_marzban_panel_users['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "buyback"],
-];
-}else{
-$list_marzban_panel_users['inline_keyboard'][] = [
-    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909],
-];  
 }
+
+$statusnote = false;
+if ($setting['statusnamecustom'] == 'onnamecustom') $statusnote = true;
+if ($setting['statusnoteforf'] == "0" && $users['agent'] == "f") $statusnote = false;
+
+if ($statusnote) {
+    $list_marzban_panel_users['inline_keyboard'][] = [
+        ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "buyback"],
+    ];
+} else {
+    $list_marzban_panel_users['inline_keyboard'][] = [
+        ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
+    ];
+}
+
 $list_marzban_panel_user = json_encode($list_marzban_panel_users);
 
 
@@ -1495,7 +1516,6 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     $product = ['inline_keyboard' => []];
     $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
 
-    // واکشی استایل اختصاصی پنل/لوکیشن جاری
     $panelInfo = select("marzban_panel", "*", "name_panel", $location, "select");
     $panelColor = $panelInfo['panel_color'] ?? '';
     $panelEmoji = $panelInfo['panel_emoji'] ?? '';
@@ -1539,7 +1559,6 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
             'callback_data' => "{$datakeyboard}{$result['code_product']}{$valuetow}",
         ];
 
-        // اعمال استایل و ایموجی پنل
         if (!empty($panelColor)) {
             $btn['style'] = $panelColor;
         }
