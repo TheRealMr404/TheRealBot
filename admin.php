@@ -4763,7 +4763,7 @@ elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_
         : 'primary';
 
     $preview_btn = [
-        'text' => '🌍 ' . $panel_info['name_panel'],
+        'text' => '' . $panel_info['name_panel'],
         'callback_data' => "noop",
         'style' => $btn_style
     ];
