@@ -62,16 +62,34 @@ while (true) {
             }
         }
 
-        $keyboardbuy = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_sell'], 'callback_data' => 'buy']]]]);
-        $keyboardstart = json_encode(['inline_keyboard' => [[['text' => "شروع", 'callback_data' => 'start']]]]);
-        $keyboardusertest = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_usertest'], 'callback_data' => 'usertestbtn']]]]);
-        $keyboardhelpbtn = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_help'], 'callback_data' => 'helpbtn']]]]);
-        $keyboardaffiliates = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_affiliates'], 'callback_data' => 'affiliatesbtn']]]]);
-        $keyboardaddbalance = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_Add_Balance'], 'callback_data' => 'Add_Balance']]]]);
+        // دکمه‌های اینلاین همراه با استایل رنگی و آیکون ایموجی پریمیوم
+        $keyboardbuy = json_encode(['inline_keyboard' => [[
+            ['text' => $datatextbot['text_sell'], 'callback_data' => 'buy', 'style' => 'primary', 'icon_custom_emoji_id' => '5258236805890710909']
+        ]]]);
+        
+        $keyboardstart = json_encode(['inline_keyboard' => [[
+            ['text' => "شروع", 'callback_data' => 'start', 'style' => 'primary']
+        ]]]);
+        
+        $keyboardusertest = json_encode(['inline_keyboard' => [[
+            ['text' => $datatextbot['text_usertest'], 'callback_data' => 'usertestbtn', 'style' => 'primary']
+        ]]]);
+        
+        $keyboardhelpbtn = json_encode(['inline_keyboard' => [[
+            ['text' => $datatextbot['text_help'], 'callback_data' => 'helpbtn', 'style' => 'primary']
+        ]]]);
+        
+        $keyboardaffiliates = json_encode(['inline_keyboard' => [[
+            ['text' => $datatextbot['text_affiliates'], 'callback_data' => 'affiliatesbtn', 'style' => 'primary']
+        ]]]);
+        
+        $keyboardaddbalance = json_encode(['inline_keyboard' => [[
+            ['text' => $datatextbot['text_Add_Balance'], 'callback_data' => 'Add_Balance', 'style' => 'success']
+        ]]]);
 
         $cancelmessage = json_encode([
             'inline_keyboard' => [
-                [['text' => "❌ لغو عملیات", 'callback_data' => 'cancel_sendmessage']]
+                [['text' => "❌ لغو عملیات", 'callback_data' => 'cancel_sendmessage', 'style' => 'danger']]
             ]
         ]);
 
@@ -113,7 +131,13 @@ while (true) {
                 elseif ($btn == "affiliatesbtn") $reply_markup = $keyboardaffiliates;
                 elseif ($btn == "addbalance") $reply_markup = $keyboardaddbalance;
 
-                $meesage = sendmessage($target_chat_id, $info['message'], $reply_markup, 'HTML');
+                // پشتیبانی از دکمه سفارشی که ادمین با ایموجی پرمیوم ست کرده باشد
+                if (!empty($info['custom_keyboard'])) {
+                    $reply_markup = is_array($info['custom_keyboard']) ? json_encode($info['custom_keyboard']) : $info['custom_keyboard'];
+                }
+
+                $msgToSend = $info['message'];
+                $meesage = sendmessage($target_chat_id, $msgToSend, $reply_markup, 'HTML');
 
                 $is_ok = false;
                 if (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] == true) {
