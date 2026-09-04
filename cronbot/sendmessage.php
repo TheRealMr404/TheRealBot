@@ -7,13 +7,22 @@ require_once __DIR__ . '/../function.php';
 set_time_limit(0);
 ini_set('memory_limit', '256M');
 
+// جلوگیری قطعی از اجرای همزمان چند پروسس
+$lock_file = fopen(__DIR__ . '/cron_send.lock', 'c');
+if (!$lock_file || !flock($lock_file, LOCK_EX | LOCK_NB)) {
+    exit("یک نسخه از اسکریپت در حال حاضر در حال اجراست.\n");
+}
+
 $info_path = __DIR__ . '/info';
 $users_path = __DIR__ . '/users.json';
 
 while (true) {
     if (is_file($info_path) && is_file($users_path)) {
-        $info = json_decode(file_get_contents($info_path), true);
-        $userid = json_decode(file_get_contents($users_path), true);
+        $raw_info = @file_get_contents($info_path);
+        $raw_users = @file_get_contents($users_path);
+
+        $info = json_decode($raw_info, true);
+        $userid = json_decode($raw_users, true);
 
         if (!is_array($info)) {
             sleep(2);
@@ -23,22 +32,25 @@ while (true) {
         if (!isset($info['count_success'])) $info['count_success'] = 0;
         if (!isset($info['count_blocked'])) $info['count_blocked'] = 0;
 
+        // اگر لیست کاربران خالی شد
         if (!is_array($userid) || count($userid) == 0) {
             if (isset($info['id_admin'])) {
                 $count_success = (int)$info['count_success'];
                 $count_blocked = (int)$info['count_blocked'];
                 $count_total = $count_success + $count_blocked;
 
-                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n";
-                $final_report .= "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n";
-                $final_report .= "✅ <b>ارسال موفق:</b> {$count_success}\n";
-                $final_report .= "🚫 <b>ناموفق (بلاک / خطا):</b> {$count_blocked}";
+                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n" .
+                               "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n" .
+                               "✅ <b>ارسال موفق:</b> {$count_success}\n" .
+                               "🚫 <b>ناموفق (بلاک / خطا):</b> {$count_blocked}";
 
                 if (isset($info['id_message'])) {
                     deletemessage($info['id_admin'], $info['id_message']);
                 }
                 sendmessage($info['id_admin'], $final_report, null, 'HTML');
+
                 @unlink($users_path);
+                @unlink($info_path); // حذف فایل وضعیت برای جلوگیری از چرخه تکراری
             }
             sleep(2);
             continue;
@@ -62,7 +74,6 @@ while (true) {
             }
         }
 
-        // دکمه‌های اینلاین همراه با استایل رنگی و آیکون ایموجی پریمیوم
         $keyboardbuy = json_encode(['inline_keyboard' => [[
             ['text' => $datatextbot['text_sell'], 'callback_data' => 'buy', 'style' => 'primary', 'icon_custom_emoji_id' => '5258236805890710909']
         ]]]);
@@ -131,7 +142,6 @@ while (true) {
                 elseif ($btn == "affiliatesbtn") $reply_markup = $keyboardaffiliates;
                 elseif ($btn == "addbalance") $reply_markup = $keyboardaddbalance;
 
-                // پشتیبانی از دکمه سفارشی که ادمین با ایموجی پرمیوم ست کرده باشد
                 if (!empty($info['custom_keyboard'])) {
                     $reply_markup = is_array($info['custom_keyboard']) ? json_encode($info['custom_keyboard']) : $info['custom_keyboard'];
                 }
@@ -139,16 +149,12 @@ while (true) {
                 $msgToSend = $info['message'];
                 $meesage = sendmessage($target_chat_id, $msgToSend, $reply_markup, 'HTML');
 
-                $is_ok = false;
-                if (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] == true) {
-                    $is_ok = true;
-                }
+                $is_ok = (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] == true);
 
                 if ($is_ok) {
                     $info['count_success']++;
                 } else {
                     $info['count_blocked']++;
-
                     $desc = is_array($meesage) ? ($meesage['description'] ?? '') : '';
                     if (strpos($desc, 'blocked by the user') !== false) {
                         $invoicecount = select("invoice", "*", "id_user", $target_chat_id, "count");
@@ -165,11 +171,7 @@ while (true) {
                 }
             } elseif ($info['type'] == "forwardmessage") {
                 $meesage = forwardMessage($info['id_admin'], $info['message'], $target_chat_id);
-
-                $is_ok = false;
-                if (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] == true) {
-                    $is_ok = true;
-                }
+                $is_ok = (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] == true);
 
                 if ($is_ok) {
                     $info['count_success']++;
@@ -196,18 +198,18 @@ while (true) {
                 $count_blocked = (int)$info['count_blocked'];
                 $count_total = $count_success + $count_blocked;
 
-                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n";
-                $final_report .= "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n";
-                $final_report .= "✅ <b>ارسال موفق:</b> {$count_success}\n";
-                $final_report .= "🚫 <b>ناموفق (بلاک / خطا):</b> {$count_blocked}";
+                $final_report = "📌 <b>عملیات ارسال همگانی با موفقیت به پایان رسید.</b>\n\n" .
+                               "👥 <b>کل کاربران پردازش‌شده:</b> {$count_total}\n" .
+                               "✅ <b>ارسال موفق:</b> {$count_success}\n" .
+                               "🚫 <b>ناموفق (بلاک / خطا):</b> {$count_blocked}";
 
                 if (isset($info['id_message'])) {
                     deletemessage($info['id_admin'], $info['id_message']);
                 }
                 sendmessage($info['id_admin'], $final_report, null, 'HTML');
             }
-            file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             @unlink($users_path);
+            @unlink($info_path);
         }
     } else {
         sleep(2);
