@@ -4616,37 +4616,33 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
 }
-if ($text == "🎨 تنظیم رنگ پنل" && in_array($from_id, $admin_ids)) {
-    $active_panel = $user['Processing_value_one'] ?? '';
+elseif ($text == "🎨 تنظیم رنگ پنل" && in_array($from_id, $admin_ids)) {
+    // خواندن نام پنل از فیلد فعال کاربر
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
-    if (empty($active_panel)) {
-        sendmessage($from_id, "❌ ابتدا یک پنل را انتخاب کنید.", $optionMarzban, 'HTML');
-        return;
-    }
-
-    step("cr_step_get_panel_color", $from_id);
-
-    $msg = "🎨 <b>تنظیم رنگ دکمه برای پنل {$active_panel}</b>\n\n" .
+    sendmessage(
+        $from_id,
+        "🎨 <b>تنظیم رنگ دکمه برای پنل {$active_panel}</b>\n\n" .
         "لطفاً یکی از رنگ‌های زیر را ارسال کنید:\n" .
         "🟢 <b>سبز</b> (Success)\n" .
         "🔴 <b>قرمز</b> (Danger)\n" .
         "🔵 <b>آبی</b> (Primary)\n" .
         "⚪️ <b>بی رنگ / خاکستری</b> (Secondary)\n\n" .
         "<i>(می‌توانید فارسی، انگلیسی یا به حروف مختلف بنویسید)</i>\n" .
-        "<i>(برای حذف رنگ، کلمه <b>none</b> یا <b>حذف</b> را ارسال فرمایید)</i>";
-
-    sendmessage($from_id, $msg, $backAdmin, 'HTML');
-    return;
-}
-
-if ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)) {
+        "<i>(برای حذف رنگ، کلمه <b>none</b> یا <b>حذف</b> را ارسال فرمایید)</i>",
+        $backadmin,
+        'HTML'
+    );
+    step("cr_step_get_panel_color", $from_id);
+} 
+elseif ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)) {
     if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
         step("none", $from_id);
         sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
         return;
     }
 
-    $active_panel = $user['Processing_value_one'] ?? '';
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
     if ($text == 'none' || $text == 'حذف' || $text == '0') {
         update("marzban_panel", "panel_color", "", "name_panel", $active_panel);
@@ -4655,6 +4651,7 @@ if ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)
         return;
     }
 
+    // نرمال‌سازی متن ورودی
     $input = trim(mb_strtolower($text, 'UTF-8'));
     $input = str_replace(['آ', 'إ', 'أ'], 'ا', $input);
     $input = str_replace([' ', '_', '-'], '', $input);
@@ -4672,7 +4669,7 @@ if ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)
     }
 
     if ($color === null) {
-        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backAdmin, 'HTML');
+        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backadmin, 'HTML');
         return;
     }
 
@@ -4680,42 +4677,36 @@ if ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)
     step("none", $from_id);
 
     $color_names_fa = [
-        'success' => '🟢 سبز',
-        'danger' => '🔴 قرمز',
-        'primary' => '🔵 آبی',
+        'success'   => '🟢 سبز',
+        'danger'    => '🔴 قرمز',
+        'primary'   => '🔵 آبی',
         'secondary' => '⚪️ بی رنگ / خاکستری'
     ];
 
     sendmessage($from_id, "✅ رنگ دکمه پنل <b>{$active_panel}</b> با موفقیت به <b>{$color_names_fa[$color]}</b> تغییر یافت.", $optionMarzban, 'HTML');
-    return;
+
 }
+elseif ($text == "⭐ تنظیم ایموجی پرمیوم" && in_array($from_id, $admin_ids)) {
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
-if ($text == "⭐ تنظیم ایموجی پرمیوم" && in_array($from_id, $admin_ids)) {
-    $active_panel = $user['Processing_value_one'] ?? '';
-
-    if (empty($active_panel)) {
-        sendmessage($from_id, "❌ ابتدا یک پنل را انتخاب کنید.", $optionMarzban, 'HTML');
-        return;
-    }
-
-    step("cr_step_get_panel_emoji", $from_id);
-
-    $msg = "💎 <b>تنظیم ایموجی پریمیوم برای پنل {$active_panel}</b>\n\n" .
+    sendmessage(
+        $from_id,
+        "💎 <b>تنظیم ایموجی پریمیوم برای پنل {$active_panel}</b>\n\n" .
         "لطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی ایموجی</b> را ارسال کنید:\n\n" .
-        "<i>(در صورت عدم تمایل یا حذف ایموجی، عدد <code>0</code> یا کلمه <b>none</b> را ارسال فرمایید)</i>";
-
-    sendmessage($from_id, $msg, $backAdmin, 'HTML');
-    return;
-}
-
-if ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)) {
+        "<i>(در صورت عدم تمایل یا حذف ایموجی، عدد <code>0</code> یا کلمه <b>none</b> را ارسال فرمایید)</i>",
+        $backadmin,
+        'HTML'
+    );
+    step("cr_step_get_panel_emoji", $from_id);
+} 
+elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)) {
     if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
         step("none", $from_id);
         sendmessage($from_id, "عملیات تغییر ایموجی لغو شد.", $optionMarzban, 'HTML');
         return;
     }
 
-    $active_panel = $user['Processing_value_one'] ?? '';
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
     if ($text === '0' || $text === 'none' || $text === 'حذف') {
         update("marzban_panel", "panel_emoji", "", "name_panel", $active_panel);
@@ -4739,14 +4730,17 @@ if ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)
         update("marzban_panel", "panel_emoji", $emojiTag, "name_panel", $active_panel);
         step("none", $from_id);
 
-        $msg = "✅ <b>ایموجی پریمیوم پنل {$active_panel} با موفقیت ثبت شد:</b>\n\n" .
-            "پیش‌نمایش: {$emojiTag}";
-
-        sendmessage($from_id, $msg, $optionMarzban, 'HTML');
+        sendmessage(
+            $from_id,
+            "✅ <b>ایموجی پریمیوم پنل {$active_panel} با موفقیت ثبت شد:</b>\n\n" .
+            "پیش‌نمایش: {$emojiTag}",
+            $optionMarzban,
+            'HTML'
+        );
     } else {
-        sendmessage($from_id, "❌ ایموجی پریمیوم تشخیص داده نشد!\nلطفاً یک <b>ایموجی پریمیوم</b> بفرستید یا آیدی عددی آن را وارد کنید (جهت انصراف عدد <code>0</code> را بفرستید):", $backAdmin, 'HTML');
+        sendmessage($from_id, "❌ ایموجی پریمیوم تشخیص داده نشد!\nلطفاً یک <b>ایموجی پریمیوم</b> بفرستید یا آیدی عددی آن را وارد کنید (جهت انصراف عدد <code>0</code> را بفرستید):", $backadmin, 'HTML');
     }
-    return;
+
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
