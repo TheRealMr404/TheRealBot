@@ -2449,3 +2449,28 @@ function abangateway($order_id, $price)
 
     return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
 }
+
+function getPanelCustomTitle($panel)
+{
+    $colorsMap = [
+        'success'   => '🟢',
+        'danger'    => '🔴',
+        'primary'   => '🔵',
+        'secondary' => '⚪️'
+    ];
+
+    $colorEmoji = $colorsMap[$panel['panel_color'] ?? ''] ?? '';
+    $premiumEmoji = $panel['panel_emoji'] ?? '';
+    $name = $panel['name_panel'];
+
+    $parts = [];
+    if (!empty($premiumEmoji)) {
+        $parts[] = $premiumEmoji;
+    }
+    if (!empty($colorEmoji)) {
+        $parts[] = $colorEmoji;
+    }
+    $parts[] = $name;
+
+    return implode(' ', $parts);
+}

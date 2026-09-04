@@ -4264,7 +4264,7 @@ $text_expie_agent
         'callback_query_id' => $callback_query_id
     ]);
     sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه آبان‌پی خوش آمدید:", $AbanGatewayManage, 'HTML');
-}elseif ($datain == "editpayment-endpointabangateway") {
+} elseif ($datain == "editpayment-endpointabangateway") {
     step('set_endpointabangateway', $from_id);
     telegram('answerCallbackQuery', [
         'callback_query_id' => $callback_query_id,
@@ -4276,9 +4276,7 @@ $text_expie_agent
             [['text' => "🔙 بازگشت", 'callback_data' => "abangatewaysetting"]]
         ]
     ]));
-}
-
-elseif ($step == "set_endpointabangateway") {
+} elseif ($step == "set_endpointabangateway") {
     $new_endpoint = trim($message);
     if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
         sendmessage($from_id, "❌ آدرس وارد شده معتبر نیست. لطفاً یک URL معتبر بفرستید:", null, 'HTML');
@@ -4617,8 +4615,138 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     update("product", "Location", $text, "Location", $user['Processing_value']);
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
+}
+if ($text == "🎨 تنظیم رنگ پنل" && in_array($from_id, $admin_ids)) {
+    $active_panel = $user['Processing_value_one'] ?? '';
 
-    // نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
+    if (empty($active_panel)) {
+        sendmessage($from_id, "❌ ابتدا یک پنل را انتخاب کنید.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    step("cr_step_get_panel_color", $from_id);
+
+    $msg = "🎨 <b>تنظیم رنگ دکمه برای پنل {$active_panel}</b>\n\n" .
+        "لطفاً یکی از رنگ‌های زیر را ارسال کنید:\n" .
+        "🟢 <b>سبز</b> (Success)\n" .
+        "🔴 <b>قرمز</b> (Danger)\n" .
+        "🔵 <b>آبی</b> (Primary)\n" .
+        "⚪️ <b>بی رنگ / خاکستری</b> (Secondary)\n\n" .
+        "<i>(می‌توانید فارسی، انگلیسی یا به حروف مختلف بنویسید)</i>\n" .
+        "<i>(برای حذف رنگ، کلمه <b>none</b> یا <b>حذف</b> را ارسال فرمایید)</i>";
+
+    sendmessage($from_id, $msg, $backAdmin, 'HTML');
+    return;
+}
+
+if ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("none", $from_id);
+        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    $active_panel = $user['Processing_value_one'] ?? '';
+
+    if ($text == 'none' || $text == 'حذف' || $text == '0') {
+        update("marzban_panel", "panel_color", "", "name_panel", $active_panel);
+        step("none", $from_id);
+        sendmessage($from_id, "✅ رنگ پنل <b>{$active_panel}</b> حذف شد.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    $input = trim(mb_strtolower($text, 'UTF-8'));
+    $input = str_replace(['آ', 'إ', 'أ'], 'ا', $input);
+    $input = str_replace([' ', '_', '-'], '', $input);
+
+    $color = null;
+
+    if (in_array($input, ['سبز', 'green', 'success'])) {
+        $color = 'success';
+    } elseif (in_array($input, ['قرمز', 'red', 'danger'])) {
+        $color = 'danger';
+    } elseif (in_array($input, ['ابی', 'نیلی', 'blue', 'primary'])) {
+        $color = 'primary';
+    } elseif (in_array($input, ['بیرنگ', 'بی_رنگ', 'خاکستری', 'سفید', 'طوسی', 'gray', 'grey', 'white', 'secondary'])) {
+        $color = 'secondary';
+    }
+
+    if ($color === null) {
+        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backAdmin, 'HTML');
+        return;
+    }
+
+    update("marzban_panel", "panel_color", $color, "name_panel", $active_panel);
+    step("none", $from_id);
+
+    $color_names_fa = [
+        'success' => '🟢 سبز',
+        'danger' => '🔴 قرمز',
+        'primary' => '🔵 آبی',
+        'secondary' => '⚪️ بی رنگ / خاکستری'
+    ];
+
+    sendmessage($from_id, "✅ رنگ دکمه پنل <b>{$active_panel}</b> با موفقیت به <b>{$color_names_fa[$color]}</b> تغییر یافت.", $optionMarzban, 'HTML');
+    return;
+}
+
+if ($text == "⭐ تنظیم ایموجی پرمیوم" && in_array($from_id, $admin_ids)) {
+    $active_panel = $user['Processing_value_one'] ?? '';
+
+    if (empty($active_panel)) {
+        sendmessage($from_id, "❌ ابتدا یک پنل را انتخاب کنید.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    step("cr_step_get_panel_emoji", $from_id);
+
+    $msg = "💎 <b>تنظیم ایموجی پریمیوم برای پنل {$active_panel}</b>\n\n" .
+        "لطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی ایموجی</b> را ارسال کنید:\n\n" .
+        "<i>(در صورت عدم تمایل یا حذف ایموجی، عدد <code>0</code> یا کلمه <b>none</b> را ارسال فرمایید)</i>";
+
+    sendmessage($from_id, $msg, $backAdmin, 'HTML');
+    return;
+}
+
+if ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)) {
+    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
+        step("none", $from_id);
+        sendmessage($from_id, "عملیات تغییر ایموجی لغو شد.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    $active_panel = $user['Processing_value_one'] ?? '';
+
+    if ($text === '0' || $text === 'none' || $text === 'حذف') {
+        update("marzban_panel", "panel_emoji", "", "name_panel", $active_panel);
+        step("none", $from_id);
+        sendmessage($from_id, "✅ ایموجی پریمیوم پنل <b>{$active_panel}</b> حذف شد.", $optionMarzban, 'HTML');
+        return;
+    }
+
+    $emojiTag = '';
+
+    if (is_numeric(trim($text))) {
+        $emojiTag = '<tg-emoji emoji-id="' . trim($text) . '">⭐</tg-emoji>';
+    } else {
+        $converted = convertCustomEmojiToHTML($message);
+        if (stripos($converted, '<tg-emoji') !== false) {
+            $emojiTag = trim($converted);
+        }
+    }
+
+    if (!empty($emojiTag)) {
+        update("marzban_panel", "panel_emoji", $emojiTag, "name_panel", $active_panel);
+        step("none", $from_id);
+
+        $msg = "✅ <b>ایموجی پریمیوم پنل {$active_panel} با موفقیت ثبت شد:</b>\n\n" .
+            "پیش‌نمایش: {$emojiTag}";
+
+        sendmessage($from_id, $msg, $optionMarzban, 'HTML');
+    } else {
+        sendmessage($from_id, "❌ ایموجی پریمیوم تشخیص داده نشد!\nلطفاً یک <b>ایموجی پریمیوم</b> بفرستید یا آیدی عددی آن را وارد کنید (جهت انصراف عدد <code>0</code> را بفرستید):", $backAdmin, 'HTML');
+    }
+    return;
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
@@ -12948,9 +13076,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     update("PaySetting", "ValuePay", $text, "NamePay", "helpabangateway");
     sendmessage($from_id, "✅ راهنمای درگاه با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
     step("home", $from_id);
-}
-
-elseif ($text == "🌐 تنظیم آدرس درگاه آبان پی") {
+} elseif ($text == "🌐 تنظیم آدرس درگاه آبان پی") {
     sendmessage($from_id, "📌 لطفاً آدرس جدید درگاه (Endpoint) را ارسال کنید (مثال: https://abanpay.com/api):", $backadmin, 'HTML');
     step("set_endpointabangateway", $from_id);
 } elseif ($user['step'] == "set_endpointabangateway") {
