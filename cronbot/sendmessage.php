@@ -1,14 +1,12 @@
 <?php
-// ۱. قفل انحصاری سخت‌افزاری در سطح فایل (Non-Blocking)
+// قفل سیستمی برای جلوگیری از اجرای همزمان چند کرون
 $lock_file = fopen(__DIR__ . '/send_process.lock', 'c+');
 if (!$lock_file || !flock($lock_file, LOCK_EX | LOCK_NB)) {
-    // اگر پروسس دیگری در حال اجراست، این پروسس در کسری از میلی‌ثانیه کشته می‌شود
     exit;
 }
 
-// بستن پروسس در صورت قطعی اتصال یا تایم‌اوت
 ignore_user_abort(true);
-set_time_limit(300);
+set_time_limit(180);
 ini_set('memory_limit', '256M');
 
 date_default_timezone_set('Asia/Tehran');
@@ -19,7 +17,6 @@ require_once __DIR__ . '/../function.php';
 $info_path = __DIR__ . '/info';
 $users_path = __DIR__ . '/users.json';
 
-// بررسی وجود صف ارسال
 if (!is_file($info_path) || !is_file($users_path)) {
     flock($lock_file, LOCK_UN);
     fclose($lock_file);
@@ -27,9 +24,27 @@ if (!is_file($info_path) || !is_file($users_path)) {
 }
 
 $info = json_decode(file_get_contents($info_path), true);
-$userid = json_decode(file_get_contents($users_path), true);
+$raw_users = json_decode(file_get_contents($users_path), true);
 
-if (!is_array($info) || !is_array($userid) || count($userid) === 0) {
+if (!is_array($info) || !is_array($raw_users) || count($raw_users) === 0) {
+    @unlink($users_path);
+    @unlink($info_path);
+    flock($lock_file, LOCK_UN);
+    fclose($lock_file);
+    exit;
+}
+
+// نرمال‌سازی آیدی‌ها (چه آرایه آبجکت باشد چه آیدی خام)
+$userid = [];
+foreach ($raw_users as $u) {
+    $uid = is_array($u) ? ($u['id'] ?? null) : (is_object($u) ? ($u->id ?? null) : $u);
+    if (!empty($uid)) {
+        $userid[] = $uid;
+    }
+}
+$userid = array_values(array_unique($userid));
+
+if (count($userid) === 0) {
     @unlink($users_path);
     @unlink($info_path);
     flock($lock_file, LOCK_UN);
@@ -40,7 +55,6 @@ if (!is_array($info) || !is_array($userid) || count($userid) === 0) {
 if (!isset($info['count_success'])) $info['count_success'] = 0;
 if (!isset($info['count_blocked'])) $info['count_blocked'] = 0;
 
-// دریافت متون دکمه‌ها از دیتابیس
 $datatextbotget = select("textbot", "*", null, null, "fetchAll");
 $datatextbot = [
     'text_usertest' => '',
@@ -59,26 +73,24 @@ if (is_array($datatextbotget)) {
     }
 }
 
-// ساخت دکمه‌ها با استایل و ایموجی کاستوم تلگرام
-$keyboardbuy = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_sell'], 'callback_data' => 'buy', 'style' => 'primary', 'icon_custom_emoji_id' => '5258236805890710909']]]]);
-$keyboardstart = json_encode(['inline_keyboard' => [[['text' => "شروع", 'callback_data' => 'start', 'style' => 'primary']]]]);
-$keyboardusertest = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_usertest'], 'callback_data' => 'usertestbtn', 'style' => 'primary']]]]);
-$keyboardhelpbtn = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_help'], 'callback_data' => 'helpbtn', 'style' => 'primary']]]]);
-$keyboardaffiliates = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_affiliates'], 'callback_data' => 'affiliatesbtn', 'style' => 'primary']]]]);
-$keyboardaddbalance = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_Add_Balance'], 'callback_data' => 'Add_Balance', 'style' => 'success']]]]);
+$keyboardbuy = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_sell'], 'callback_data' => 'buy']]]]);
+$keyboardstart = json_encode(['inline_keyboard' => [[['text' => "شروع", 'callback_data' => 'start']]]]);
+$keyboardusertest = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_usertest'], 'callback_data' => 'usertestbtn']]]]);
+$keyboardhelpbtn = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_help'], 'callback_data' => 'helpbtn']]]]);
+$keyboardaffiliates = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_affiliates'], 'callback_data' => 'affiliatesbtn']]]]);
+$keyboardaddbalance = json_encode(['inline_keyboard' => [[['text' => $datatextbot['text_Add_Balance'], 'callback_data' => 'Add_Balance']]]]);
 
 $cancelmessage = json_encode([
     'inline_keyboard' => [
-        [['text' => "❌ لغو عملیات", 'callback_data' => 'cancel_sendmessage', 'style' => 'danger']]
+        [['text' => "❌ لغو عملیات", 'callback_data' => 'cancel_sendmessage']]
     ]
 ]);
 
-// پردازش بسته ۵۰تایی در هر بار اجرا برای حفظ ثبات و جلوگیری از هنگ رم
-$batch_size = min(50, count($userid));
+// در هر نوبت کرون (هر ۱ دقیقه) حداکثر ۱۰۰ پیام ارسال می‌شود
+$batch_size = min(100, count($userid));
 $current_batch = array_slice($userid, 0, $batch_size);
 
-foreach ($current_batch as $item) {
-    $target_chat_id = is_array($item) ? ($item['id'] ?? null) : (is_object($item) ? ($item->id ?? null) : $item);
+foreach ($current_batch as $target_chat_id) {
     if (empty($target_chat_id)) continue;
 
     $meesage = null;
@@ -98,9 +110,7 @@ foreach ($current_batch as $item) {
 
         $meesage = sendmessage($target_chat_id, $info['message'], $reply_markup, 'HTML');
 
-        $is_ok = (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] === true);
-
-        if ($is_ok) {
+        if (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] === true) {
             $info['count_success']++;
             if (isset($info['pingmessage']) && $info['pingmessage'] == "yes") {
                 pinmessage($target_chat_id, $meesage['result']['message_id']);
@@ -120,9 +130,7 @@ foreach ($current_batch as $item) {
     } elseif ($info['type'] == "forwardmessage") {
         $meesage = forwardMessage($info['id_admin'], $info['message'], $target_chat_id);
 
-        $is_ok = (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] === true);
-
-        if ($is_ok) {
+        if (is_array($meesage) && isset($meesage['ok']) && $meesage['ok'] === true) {
             $info['count_success']++;
             if (isset($info['pingmessage']) && $info['pingmessage'] == "yes") {
                 pinmessage($target_chat_id, $meesage['result']['message_id']);
@@ -132,18 +140,17 @@ foreach ($current_batch as $item) {
         }
     }
 
-    usleep(40000); // وقفه ۴۰ میلی‌ثانیه‌ای برای رعایت سقف درخواست‌های تلگرام (۳۰ درخواست در ثانیه)
+    usleep(35000); // رعایت محدودیت نرخ تلگرام (~30 درخواست در ثانیه)
 }
 
-// حذف افراد ارسال‌شده از صف
+// حذف اعضای پردازش‌شده
 array_splice($userid, 0, $batch_size);
 $count_remein = count($userid);
 
 if ($count_remein > 0) {
     file_put_contents($users_path, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
-    file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE));
 
-    // آپدیت متن پیام وضعیت برای ادمین
     if (isset($info['id_admin']) && isset($info['id_message'])) {
         $textprocces = "✏️ عملیات ارسال پیام درحال انجام می‌باشد...\n\n" .
                        "👥 تعداد نفرات باقی‌مانده: <b>{$count_remein}</b>\n" .
@@ -159,7 +166,6 @@ if ($count_remein > 0) {
         ]);
     }
 } else {
-    // اتمام عملیات و ارسال گزارش نهایی
     if (isset($info['id_admin'])) {
         $count_success = (int)$info['count_success'];
         $count_blocked = (int)$info['count_blocked'];
@@ -180,7 +186,6 @@ if ($count_remein > 0) {
     @unlink($info_path);
 }
 
-// آزادسازی قفل و خروج نهایی
 flock($lock_file, LOCK_UN);
 fclose($lock_file);
 exit;

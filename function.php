@@ -1720,7 +1720,7 @@ function activecron()
         "*/1 * * * * curl https://$domainhosts/cronbot/croncard.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/NoticationsService.php",
         "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
+        // "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
