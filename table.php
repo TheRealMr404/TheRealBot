@@ -346,9 +346,7 @@ try {
         on_hold_test varchar(60) NOT NULL,
         version_panel varchar(60) NOT NULL,
         customvolume TEXT NULL,
-        hide_user TEXT NULL,
-        panel_color varchar(200) NULL,
-        panel_emoji varchar(200) NULL)
+        hide_user TEXT NULL)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
             echo "table marzban_panel" . mysqli_error($connect);
@@ -797,50 +795,49 @@ try {
 🔝لزومی به ارسال رسید نیست، اما در صورتی که بعد از گذشت مدتی واریز شما تایید نشد، عکس رسید خود را ارسال کنید.";
     $insertQueries = [
         ['text_start', 'سلام خوش آمدید'],
-        ['text_usertest', 'اکانت تست'],
-        ['text_Purchased_services', 'سرویس های من'],
-        ['text_support', 'پشتیبانی'],
-        ['text_help', 'آموزش'],
-        ['text_bot_off', 'ربات خاموش است، لطفا دقایقی دیگر مراجعه کنید'],
+        ['text_usertest', '🔑 اکانت تست'],
+        ['text_Purchased_services', '🛍 سرویس های من'],
+        ['text_support', '☎️ پشتیبانی'],
+        ['text_help', '📚 آموزش'],
+        ['text_bot_off', '❌ ربات خاموش است، لطفا دقایقی دیگر مراجعه کنید'],
         ['text_roll', $text_roll],
-        ['text_fq', 'سوالات متداول'],
+        ['text_fq', '❓ سوالات متداول'],
         ['text_dec_fq', $text_dec_fq],
-        ['text_sell', 'خرید اشتراک'],
-        ['text_Add_Balance', 'افزایش موجودی'],
+        ['text_sell', '🔐 خرید اشتراک'],
+        ['text_Add_Balance', '💰 افزایش موجودی'],
         ['text_channel', $text_channel],
-        ['text_Discount', 'کد هدیه'],
-        ['text_Tariff_list', 'تعرفه اشتراک ها'],
+        ['text_Discount', '🎁 کد هدیه'],
+        ['text_Tariff_list', '💵 تعرفه اشتراک ها'],
         ['text_dec_Tariff_list', 'تنظیم نشده است'],
-        ['text_Account_op', 'حساب کاربری'],
-        ['text_affiliates', 'زیر مجموعه گیری'],
+        ['text_Account_op', '🎛 حساب کاربری'],
+        ['text_affiliates', '👥 زیر مجموعه گیری'],
         ['text_pishinvoice', $text_invoice],
-        ['accountwallet', 'کیف پول + شارژ'],
-        ['carttocart', 'کارت به کارت'],
-        ['textnowpayment', 'پرداخت ارزی 1'],
-        ['textnowpaymenttron', 'واریز رمزارز ترون'],
-        ['textsnowpayment', 'پرداخت با ارز دیجیتال'],
-        ['iranpay1', 'درگاه  پرداخت ریالی'],
-        ['iranpay2', 'درگاه  پرداخت ریالی دوم'],
-        ['iranpay3', 'درگاه  پرداخت ریالی سوم'],
-        ['aqayepardakht', 'درگاه آقای پرداخت'],
-        ['mowpayment', 'پرداخت با ارز دیجیتال'],
-        ['zarinpal', 'زرین پال'],
-        ['abangateway', 'درگاه پرداخت آبان‌پی'],
+        ['accountwallet', '🏦 کیف پول + شارژ'],
+        ['carttocart', '💳 کارت به کارت'],
+        ['textnowpayment', '💵 پرداخت ارزی 1'],
+        ['textnowpaymenttron', '💵 واریز رمزارز ترون'],
+        ['textsnowpayment', '💸 پرداخت با ارز دیجیتال'],
+        ['iranpay1', '💸 درگاه  پرداخت ریالی'],
+        ['iranpay2', '💸 درگاه  پرداخت ریالی دوم'],
+        ['iranpay3', '💸 درگاه  پرداخت ریالی سوم'],
+        ['aqayepardakht', '🔵 درگاه آقای پرداخت'],
+        ['mowpayment', '💸 پرداخت با ارز دیجیتال'],
+        ['zarinpal', '🟡 زرین پال'],
         ['textafterpay', $textafterpay],
         ['textafterpayibsng', $textafterpayibsng],
         ['textaftertext', $textaftertext],
         ['textmanual', $textmanual],
-        ['textselectlocation', 'موقعیت سرویس را انتخاب نمایید.'],
+        ['textselectlocation', '📌 موقعیت سرویس را انتخاب نمایید.'],
         ['crontest', $textconfigtest],
         ['textpaymentnotverify', 'درگاه ریالی'],
-        ['textrequestagent', 'درخواست نمایندگی'],
-        ['textpanelagent', 'پنل نمایندگی'],
-        ['text_wheel_luck', 'گردونه شانس'],
+        ['textrequestagent', '👨‍💻 درخواست نمایندگی'],
+        ['textpanelagent', '👨‍💻 پنل نمایندگی'],
+        ['text_wheel_luck', '🎲 گردونه شانس'],
         ['text_cart', $textcart],
         ['text_cart_auto', $textcartauto],
-        ['text_star_telegram', "Star Telegram"],
-        ['text_request_agent_dec', 'توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
-        ['text_extend', 'تمدید سرویس'],
+        ['text_star_telegram', "💫 Star Telegram"],
+        ['text_request_agent_dec', '📌 توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
+        ['text_extend', '♻️ تمدید سرویس'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
     if (!$table_exists) {
@@ -978,15 +975,7 @@ try {
         ['statusnowpayment', '0'],
         ['Exception_auto_cart', '{}'],
         ['marchent_floypay', '0'],
-        ['statusabangateway', 'offabangateway'],
-        ['api_abangateway', '0'],
-        ['chashbackabangateway', '0'],
-        ['minbalanceabangateway', $main],
-        ['maxbalanceabangateway', $max],
-        ['helpabangateway', '2'],
-        ['endpointabangateway', '0'],
     ];
-
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (
         NamePay varchar(500) PRIMARY KEY NOT NULL,
@@ -1001,8 +990,13 @@ try {
         }
     } else {
         foreach ($settings as $setting) {
-            $connect->query("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}') ON DUPLICATE KEY UPDATE NamePay = NamePay");
+            $connect->query("INSERT IGNORE INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}')");
         }
+
+
+
+
+
     }
 } catch (Exception $e) {
     file_put_contents('error_log', $e->getMessage());

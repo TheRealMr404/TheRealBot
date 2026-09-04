@@ -1720,7 +1720,7 @@ function activecron()
         "*/1 * * * * curl https://$domainhosts/cronbot/croncard.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/NoticationsService.php",
         "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
-        // "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
+        "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
@@ -2394,83 +2394,4 @@ function arz_nobitex() {
     @file_put_contents($cache_file, json_encode($rates));
 
     return $rates;
-}
-
-function abangatewayEndpoint(): ?string
-{
-    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'));
-    if ($endpoint === '' || $endpoint === '0') {
-        return null;
-    }
-
-    $parts = parse_url($endpoint);
-    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
-        return null;
-    }
-
-    return rtrim($endpoint, '/');
-}
-
-function abangateway($order_id, $price)
-{
-    global $domainhosts;
-    
-    $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
-    $endpoint = abangatewayEndpoint();
-    
-    if ($api_key === '' || $api_key === '0' || $endpoint === null) {
-        return ['success' => false, 'message' => 'abangateway: key or endpoint is unset'];
-    }
-
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => $endpoint . '/create',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 25,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $api_key,
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'amount' => intval($price),
-            'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
-        ], JSON_UNESCAPED_UNICODE),
-    ]);
-
-    $response = curl_exec($curl);
-    if ($response === false) {
-        curl_close($curl);
-        return ['success' => false, 'message' => 'abangateway: gateway unreachable'];
-    }
-    curl_close($curl);
-
-    return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
-}
-
-function getPanelCustomTitle($panel)
-{
-    $colorsMap = [
-        'success'   => '🟢',
-        'danger'    => '🔴',
-        'primary'   => '🔵',
-        'secondary' => '⚪️'
-    ];
-
-    $colorEmoji = $colorsMap[$panel['panel_color'] ?? ''] ?? '';
-    $premiumEmoji = $panel['panel_emoji'] ?? '';
-    $name = $panel['name_panel'];
-
-    $parts = [];
-    if (!empty($premiumEmoji)) {
-        $parts[] = $premiumEmoji;
-    }
-    if (!empty($colorEmoji)) {
-        $parts[] = $colorEmoji;
-    }
-    $parts[] = $name;
-
-    return implode(' ', $parts);
 }

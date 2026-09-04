@@ -4259,37 +4259,6 @@ $text_expie_agent
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $keyboardadmin, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_tronseller");
     step('home', $from_id);
-} elseif ($datain == "abangatewaysetting" && in_array($from_id, $admin_ids)) {
-    telegram('answerCallbackQuery', [
-        'callback_query_id' => $callback_query_id
-    ]);
-    sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه آبان‌پی خوش آمدید:", $AbanGatewayManage, 'HTML');
-} elseif ($datain == "editpayment-endpointabangateway") {
-    step('set_endpointabangateway', $from_id);
-    telegram('answerCallbackQuery', [
-        'callback_query_id' => $callback_query_id,
-        'text' => "لطفاً آدرس جدید درگاه (Endpoint) را ارسال کنید:",
-        'show_alert' => false
-    ]);
-    editmessage($from_id, $message_id, "🌐 لطفاً آدرس جدید درگاه آبان‌پی را ارسال کنید (مثال: https://abanpay.com/api):", json_encode([
-        'inline_keyboard' => [
-            [['text' => "🔙 بازگشت", 'callback_data' => "abangatewaysetting"]]
-        ]
-    ]));
-} elseif ($step == "set_endpointabangateway") {
-    $new_endpoint = trim($message);
-    if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
-        sendmessage($from_id, "❌ آدرس وارد شده معتبر نیست. لطفاً یک URL معتبر بفرستید:", null, 'HTML');
-        return;
-    }
-
-    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('endpointabangateway', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
-    $stmt->bind_param("ss", $new_endpoint, $new_endpoint);
-    $stmt->execute();
-    $stmt->close();
-
-    step('home', $from_id);
-    sendmessage($from_id, "✅ آدرس درگاه با موفقیت به روز شد.", $keyboard, 'HTML');
 } elseif ($datain == "aqayepardakhtsetting" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $aqayepardakht, 'HTML');
 } elseif ($datain == "zarinpalsetting" && $adminrulecheck['rule'] == "administrator") {
@@ -4324,13 +4293,13 @@ $text_expie_agent
     $info = get_crypto_currency($sym);
 
     $static_names = [
-        'usdt' => 'تتر (USDT)',
-        'trx' => 'ترون (TRX)',
-        'ton' => 'تون کوین (TON)',
-        'btc' => 'بیت‌کوین (BTC)',
-        'eth' => 'اتریوم (ETH)',
-        'bnb' => 'بایننس کوین (BNB)'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
     $fixed_title = $static_names[strtolower($sym)] ?? strtoupper($sym);
 
     $wallet_display = !empty($info['wallet']) ? $info['wallet'] : "<i>تنظیم نشده</i>";
@@ -4615,176 +4584,8 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     update("product", "Location", $text, "Location", $user['Processing_value']);
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
-} elseif ($text == "🎨 تنظیم رنگ پنل" && in_array($from_id, $admin_ids)) {
-    // خواندن نام پنل از فیلد فعال کاربر
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
-    sendmessage(
-        $from_id,
-        "🎨 <b>تنظیم رنگ دکمه برای پنل {$active_panel}</b>\n\n" .
-        "لطفاً یکی از رنگ‌های زیر را ارسال کنید:\n" .
-        "🟢 <b>سبز</b> (Success)\n" .
-        "🔴 <b>قرمز</b> (Danger)\n" .
-        "🔵 <b>آبی</b> (Primary)\n" .
-        "⚪️ <b>بی رنگ / خاکستری</b> (Secondary)\n\n" .
-        "<i>(می‌توانید فارسی، انگلیسی یا به حروف مختلف بنویسید)</i>\n" .
-        "<i>(برای حذف رنگ، کلمه <b>none</b> یا <b>حذف</b> را ارسال فرمایید)</i>",
-        $backadmin,
-        'HTML'
-    );
-    step("cr_step_get_panel_color", $from_id);
-} elseif ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("none", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
-        return;
-    }
-
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
-
-    if ($text == 'none' || $text == 'حذف' || $text == '0') {
-        update("marzban_panel", "panel_color", "", "name_panel", $active_panel);
-        step("none", $from_id);
-        sendmessage($from_id, "✅ رنگ پنل <b>{$active_panel}</b> حذف شد.", $optionMarzban, 'HTML');
-        return;
-    }
-
-    // نرمال‌سازی متن ورودی
-    $input = trim(mb_strtolower($text, 'UTF-8'));
-    $input = str_replace(['آ', 'إ', 'أ'], 'ا', $input);
-    $input = str_replace([' ', '_', '-'], '', $input);
-
-    $color = null;
-
-    if (in_array($input, ['سبز', 'green', 'success'])) {
-        $color = 'success';
-    } elseif (in_array($input, ['قرمز', 'red', 'danger'])) {
-        $color = 'danger';
-    } elseif (in_array($input, ['ابی', 'نیلی', 'blue', 'primary'])) {
-        $color = 'primary';
-    } elseif (in_array($input, ['بیرنگ', 'بی_رنگ', 'خاکستری', 'سفید', 'طوسی', 'gray', 'grey', 'white', 'secondary'])) {
-        $color = 'secondary';
-    }
-
-    if ($color === null) {
-        sendmessage($from_id, "❌ رنگ نامعتبر است.\nلطفاً یکی از گزینه‌های <b>سبز</b>، <b>قرمز</b>، <b>آبی</b> یا <b>بی رنگ</b> را ارسال کنید:", $backadmin, 'HTML');
-        return;
-    }
-
-    update("marzban_panel", "panel_color", $color, "name_panel", $active_panel);
-    step("none", $from_id);
-
-    $color_names_fa = [
-        'success' => '🟢 سبز',
-        'danger' => '🔴 قرمز',
-        'primary' => '🔵 آبی',
-        'secondary' => '⚪️ بی رنگ / خاکستری'
-    ];
-
-    sendmessage($from_id, "✅ رنگ دکمه پنل <b>{$active_panel}</b> با موفقیت به <b>{$color_names_fa[$color]}</b> تغییر یافت.", $optionMarzban, 'HTML');
-
-} elseif ($text == "⭐ تنظیم ایموجی پرمیوم" && in_array($from_id, $admin_ids)) {
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
-
-    sendmessage(
-        $from_id,
-        "💎 <b>تنظیم ایموجی پریمیوم برای پنل {$active_panel}</b>\n\n" .
-        "لطفاً یک <b>ایموجی پریمیوم تلگرام</b> یا <b>شناسه عددی ایموجی</b> را ارسال کنید:\n\n" .
-        "<i>(در صورت عدم تمایل یا حذف ایموجی، عدد <code>0</code> یا کلمه <b>none</b> را ارسال فرمایید)</i>",
-        $backadmin,
-        'HTML'
-    );
-    step("cr_step_get_panel_emoji", $from_id);
-}
-// مرحله ۲: دریافت و ذخیره ایموجی و اعمال تغییرات برای پنل مرزبان
-elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)) {
-    if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
-        step("none", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
-        return;
-    }
-
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
-
-    if (empty($active_panel)) {
-        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات پنل رخ داد. لطفاً مجدداً از منو پنل را انتخاب کنید.", $optionMarzban, 'HTML');
-        step("none", $from_id);
-        return;
-    }
-
-    $custom_emoji_id = null;
-    $trimmed_text = trim((string) $text);
-
-    // ۱. اگر ادمین عدد 0 یا کلمه حذف ارسال کرده باشد (حذف ایموجی)
-    if ($trimmed_text === '0' || $trimmed_text === 'none' || $trimmed_text === 'حذف') {
-        $custom_emoji_id = '';
-    }
-
-    // ۲. بررسی مستقیم entities و caption_entities تلگرام
-    $raw_msg = $update['message'] ?? $message ?? [];
-    $entities = $raw_msg['entities'] ?? $raw_msg['caption_entities'] ?? [];
-
-    if ($custom_emoji_id === null && !empty($entities) && is_array($entities)) {
-        foreach ($entities as $entity) {
-            if (isset($entity['type']) && $entity['type'] === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
-                $custom_emoji_id = (string) $entity['custom_emoji_id'];
-                break;
-            }
-        }
-    }
-
-    // ۳. بررسی با تابع تبدیل ایموجی
-    if ($custom_emoji_id === null && function_exists('convertCustomEmojiToHTML')) {
-        $html_emoji = convertCustomEmojiToHTML($raw_msg);
-        if (preg_match('/emoji-id="(\d+)"/', (string) $html_emoji, $matches_emoji)) {
-            $custom_emoji_id = (string) $matches_emoji[1];
-        }
-    }
-
-    // ۴. بررسی آیدی عددی ارسالی
-    if ($custom_emoji_id === null && preg_match('/^\d{15,22}$/', $trimmed_text)) {
-        $custom_emoji_id = $trimmed_text;
-    }
-
-    if ($custom_emoji_id === null) {
-        sendmessage($from_id, "❌ شناسه ایموجی پریمیوم شناسایی نشد.\nلطفاً یک <b>ایموجی پریمیوم</b> یا <b>شناسه عددی</b> ارسال کنید (یا عدد <code>0</code> برای حذف):", $backadmin, 'HTML');
-        return;
-    }
-
-    // ذخیره در دیتابیس پنل مرزبان
-    update("marzban_panel", "panel_emoji", $custom_emoji_id, "name_panel", $active_panel);
-
-    step("none", $from_id);
-
-    // واکشی مجدد جهت ساخت پیش‌نمایش دکمه
-    $panel_info = select("marzban_panel", "*", "name_panel", $active_panel, "select");
-    $btn_style = (!empty($panel_info['panel_color']) && in_array($panel_info['panel_color'], ['primary', 'success', 'danger']))
-        ? $panel_info['panel_color']
-        : 'primary';
-
-    $preview_btn = [
-        'text' => '' . $panel_info['name_panel'],
-        'callback_data' => "noop",
-        'style' => $btn_style
-    ];
-
-    if (!empty($custom_emoji_id)) {
-        $preview_btn['icon_custom_emoji_id'] = (string) $custom_emoji_id;
-    }
-
-    $final_keyboard = json_encode([
-        'inline_keyboard' => [
-            [$preview_btn]
-        ]
-    ]);
-
-    $res_msg = "✅ <b>استایل پنل {$active_panel} با موفقیت ذخیره شد.</b>\n\n" .
-        "🎨 رنگ: <code>{$btn_style}</code>\n" .
-        "💎 شناسه ایموجی: " . (!empty($custom_emoji_id) ? "<code>{$custom_emoji_id}</code>" : "<i>بدون ایموجی</i>") . "\n\n" .
-        "👇 پیش‌نمایش ظاهر دکمه برای کاربران:";
-
-    sendmessage($from_id, $res_msg, $final_keyboard, 'HTML');
-    sendmessage($from_id, "منوی مدیریت پنل:", $optionMarzban, 'HTML');
+    // نمایش لیست کلیه پورت‌های فعال سرورها به ادمین
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
@@ -7975,13 +7776,6 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     sendmessage($from_id, "✅  متن با موفقیت تنظیم گردید.", $keyboardzarinpal, 'HTML');
     update("textbot", "text", $text, "id_text", "zarinpal");
     step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه آبان پی") {
-    sendmessage($from_id, " 📌 نام درگاه را ارسال نمايید", $backadmin, 'HTML');
-    step("gettextabangateway", $from_id);
-} elseif ($user['step'] == "gettextabangateway") {
-    sendmessage($from_id, "✅  متن با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
-    update("textbot", "text", $text, "id_text", "abangateway");
-    step("home", $from_id);
 } elseif ($text == "⚙️  اینباند اکانت غیرفعال" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['Inbound']['GetProtocol'], $keyboardprotocol, 'HTML');
     step('getprotocoldisable', $from_id);
@@ -8039,20 +7833,20 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-        'usdt' => 'تتر (USDT)',
-        'trx' => 'ترون (TRX)',
-        'ton' => 'تون کوین (TON)',
-        'btc' => 'بیت‌کوین (BTC)',
-        'eth' => 'اتریوم (ETH)',
-        'bnb' => 'بایننس کوین (BNB)'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
 
     $keyboard = [];
     foreach ($currencies as $sym => $info) {
         $sym_key = strtolower($sym);
         $fixed_title = $static_names[$sym_key] ?? strtoupper($sym);
         $status_icon = ($info['status'] == 'on') ? "✅ روشن" : "❌ خاموش";
-
+        
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$sym}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$sym}"],
@@ -8062,34 +7856,36 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     $msg = "<b>مدیریت ارزهای پرداخت آفلاین</b>\n\n" .
-        "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
-        "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
-        "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
+           "🔹 برای فعال/غیرفعال‌سازی روی <b>وضعیت</b> بزنید.\n" .
+           "🔹 برای ثبت یا تغییر آدرس ولت روی <b>تنظیم ولت</b> بزنید.\n" .
+           "🔹 با زدن روی نام ارز، تنظیمات نام و شبکه را مدیریت کنید.";
 
     if ($datain == "back_to_crypto_list") {
         telegram('editMessageText', [
-            'chat_id' => $from_id,
-            'message_id' => $message_id,
-            'text' => $msg,
-            'parse_mode' => 'HTML',
+            'chat_id'      => $from_id,
+            'message_id'   => $message_id,
+            'text'         => $msg,
+            'parse_mode'   => 'HTML',
             'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
         ]);
     } else {
         sendmessage($from_id, $msg, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
     }
-} elseif (strpos($datain, "toggle_crypto_") === 0) {
+}
+
+elseif (strpos($datain, "toggle_crypto_") === 0) {
     $sym = str_replace("toggle_crypto_", "", $datain);
     $current_status = toggle_crypto_status($sym);
 
     $currencies = get_all_crypto_currencies();
     $static_names = [
-        'usdt' => 'تتر (USDT)',
-        'trx' => 'ترون (TRX)',
-        'ton' => 'تون کوین (TON)',
-        'btc' => 'بیت‌کوین (BTC)',
-        'eth' => 'اتریوم (ETH)',
-        'bnb' => 'بایننس کوین (BNB)'
-    ];
+    'usdt' => 'تتر (USDT)',
+    'trx'  => 'ترون (TRX)',
+    'ton'  => 'تون کوین (TON)',
+    'btc'  => 'بیت‌کوین (BTC)',
+    'eth'  => 'اتریوم (ETH)',
+    'bnb'  => 'بایننس کوین (BNB)'
+];
 
     $keyboard = [];
     foreach ($currencies as $s => $item) {
@@ -8097,7 +7893,7 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
         $fixed_title = $static_names[$sym_key] ?? strtoupper($s);
         $st = ($s === $sym) ? $current_status : ($item['status'] ?? 'off');
         $status_icon = ($st == 'on') ? "✅ روشن" : "❌ خاموش";
-
+        
         $keyboard[] = [
             ['text' => "💳 تنظیم ولت", 'callback_data' => "set_cr_wallet_{$s}"],
             ['text' => $status_icon, 'callback_data' => "toggle_crypto_{$s}"],
@@ -8107,8 +7903,8 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     $keyboard[] = [['text' => "🔙 بازگشت", 'callback_data' => 'close_admin_inline']];
 
     telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
+        'chat_id'      => $from_id,
+        'message_id'   => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => $keyboard])
     ]);
 }
@@ -8160,7 +7956,7 @@ elseif (isset($text) && isset($user['step']) && strpos($user['step'], "save_cr_w
     sendmessage($from_id, "✅ آدرس ولت ارز <b>" . strtoupper($sym) . "</b> با موفقیت ذخیره شد:\n\n<code>{$text}</code>", json_encode([
         'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست ارزها", 'callback_data' => "back_to_crypto_list"]]]
     ]), 'HTML');
-}
+} 
 // ۱. با کلیک روی نام ارز: باز شدن منوی تنظیمات نام و شبکه
 elseif (strpos($datain, "view_wallet_info_") === 0 && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
@@ -8948,7 +8744,6 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
 } elseif ($text == "💎 مالی" && $adminrulecheck['rule'] == "administrator") {
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
     $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
-    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
     $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot');
     if ($arzireyali1 != "onSwapinoBot" && $arzireyali1 != "offSwapinoBot") {
         update("PaySetting", "ValuePay", "onSwapinoBot", "NamePay", "statusSwapWallet");
@@ -9002,10 +8797,6 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
     ][$payment_status_nowpayment];
-    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
-    $abangatewaystatus = ($abangateway == 'onabangateway')
-        ? ($textbotlang['Admin']['Status']['statuson'] ?? '🟢 فعال')
-        : ($textbotlang['Admin']['Status']['statusoff'] ?? '🔴 غیرفعال');
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
@@ -9042,11 +8833,6 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
                 ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
                 ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
-            ],
-            [
-                ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
-                ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
-                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
@@ -9183,18 +8969,9 @@ n2", $backadmin, 'HTML');
             $valuenew = "1";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusnowpayment");
-    } elseif ($type == "abangateway") {
-        if ($value == "onabangateway") {
-            $valuenew = "offabangateway";
-        } else {
-            $valuenew = "onabangateway";
-        }
-        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
-        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
     }
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
-    $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
     $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
     $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot');
     $arzireyali2 = getPaySettingValue('statustarnado', 'offternado');
@@ -9244,10 +9021,6 @@ n2", $backadmin, 'HTML');
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
     ][$payment_status_nowpayment];
-    $abangatewaystatus = [
-        'onabangateway' => $textbotlang['Admin']['Status']['statuson'],
-        'offabangateway' => $textbotlang['Admin']['Status']['statusoff']
-    ][$abangateway];
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
@@ -9284,11 +9057,6 @@ n2", $backadmin, 'HTML');
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
                 ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
                 ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
-            ],
-            [
-                ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
-                ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
-                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
@@ -13063,67 +12831,4 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $Swapinokey, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_floypay");
     step('home', $from_id);
-} elseif ($text == "API آبان پی") {
-    sendmessage($from_id, "📌 کلید API دریافتی از آبان‌پی را ارسال نمایید.", $backadmin, 'HTML');
-    step("getapiabangateway", $from_id);
-} elseif ($user['step'] == "getapiabangateway") {
-    update("PaySetting", "ValuePay", trim($text), "NamePay", "api_abangateway");
-    sendmessage($from_id, "✅ کلید API با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
-
-} elseif ($text == "💰 کش بک آبان پی") {
-    sendmessage($from_id, "📌 درصد کش‌بک را به عدد ارسال نمایید (مثال: 5 یا 10 برای درصد، عدد 0 برای غیرفعال‌سازی):", $backadmin, 'HTML');
-    step("getcashbackabangateway", $from_id);
-} elseif ($user['step'] == "getcashbackabangateway") {
-    if (!is_numeric($text)) {
-        sendmessage($from_id, "❌ لطفاً فقط مقدار عددی ارسال نمایید.", $backadmin, 'HTML');
-        return;
-    }
-    update("PaySetting", "ValuePay", trim($text), "NamePay", "chashbackabangateway");
-    sendmessage($from_id, "✅ درصد کش‌بک با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
-
-} elseif ($text == "⬇️ حداقل مبلغ آبان پی") {
-    sendmessage($from_id, "📌 حداقل مبلغ شارژ را به تومان وارد نمایید:", $backadmin, 'HTML');
-    step("getminbalanceabangateway", $from_id);
-} elseif ($user['step'] == "getminbalanceabangateway") {
-    if (!ctype_digit($text)) {
-        sendmessage($from_id, "❌ لطفاً فقط عدد انگلیسی وارد نمایید.", $backadmin, 'HTML');
-        return;
-    }
-    update("PaySetting", "ValuePay", trim($text), "NamePay", "minbalanceabangateway");
-    sendmessage($from_id, "✅ حداقل مبلغ با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
-
-} elseif ($text == "⬆️ حداکثر مبلغ آبان پی") {
-    sendmessage($from_id, "📌 حداکثر مبلغ شارژ را به تومان وارد نمایید:", $backadmin, 'HTML');
-    step("getmaxbalanceabangateway", $from_id);
-} elseif ($user['step'] == "getmaxbalanceabangateway") {
-    if (!ctype_digit($text)) {
-        sendmessage($from_id, "❌ لطفاً فقط عدد انگلیسی وارد نمایید.", $backadmin, 'HTML');
-        return;
-    }
-    update("PaySetting", "ValuePay", trim($text), "NamePay", "maxbalanceabangateway");
-    sendmessage($from_id, "✅ حداکثر مبلغ با موفقیت تنظیم گردید.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
-
-} elseif ($text == "📚 تنظیم آموزش آبان پی") {
-    sendmessage($from_id, "📌 متن آموزش و راهنمای پرداخت را ارسال نمایید (جهت غیرفعال‌سازی عدد 2 را بفرستید):", $backadmin, 'HTML');
-    step("gethelpabangateway", $from_id);
-} elseif ($user['step'] == "gethelpabangateway") {
-    update("PaySetting", "ValuePay", $text, "NamePay", "helpabangateway");
-    sendmessage($from_id, "✅ راهنمای درگاه با موفقیت ذخیره گردید.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
-} elseif ($text == "🌐 تنظیم آدرس درگاه آبان پی") {
-    sendmessage($from_id, "📌 لطفاً آدرس جدید درگاه (Endpoint) را ارسال کنید (مثال: https://abanpay.com/api):", $backadmin, 'HTML');
-    step("set_endpointabangateway", $from_id);
-} elseif ($user['step'] == "set_endpointabangateway") {
-    $new_endpoint = trim($text);
-    if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
-        sendmessage($from_id, "❌ آدرس وارد شده معتبر نیست. لطفاً یک URL معتبر بفرستید:", $backadmin, 'HTML');
-        return;
-    }
-    update("PaySetting", "ValuePay", $new_endpoint, "NamePay", "endpointabangateway");
-    sendmessage($from_id, "✅ آدرس درگاه با موفقیت به روز شد.", $AbanGatewayManage, 'HTML');
-    step("home", $from_id);
 }
