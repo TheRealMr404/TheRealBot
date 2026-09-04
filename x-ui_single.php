@@ -213,7 +213,7 @@ function removeClient($location, $username)
 
 //-----------------------port forward (Tunnel)------------------------//
 
-function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
+function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0, $is_test = false) {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
     if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
@@ -241,10 +241,20 @@ function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $
         "routeOnly"    => false
     ];
 
+    // محاسبه بر اساس مگابایت در حالت تست، یا گیگابایت در حالت عادی
+    $total_bytes = 0;
+    if (floatval($total_gb) > 0) {
+        if ($is_test) {
+            $total_bytes = round(floatval($total_gb) * 1048576);
+        } else {
+            $total_bytes = round(floatval($total_gb) * 1073741824);
+        }
+    }
+
     $postData = [
         "up"                   => 0,
         "down"                 => 0,
-        "total"                => ($total_gb > 0) ? intval($total_gb) * 1073741824 : 0,
+        "total"                => $total_bytes,
         "remark"               => $remark,
         "enable"               => true,
         "expiryTime"           => ($expire_time > 0) ? intval($expire_time) * 1000 : 0,
@@ -277,7 +287,7 @@ function addTunnelForward($name_panel, $listen_port, $target_ip, $target_port, $
     return $response;
 }
 
-function updateTunnelForward($panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0) {
+function updateTunnelForward($panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $remark = "Tunnel", $expire_time = 0, $total_gb = 0, $is_test = false) {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $panel_name, "select");
     if (!$marzban_list_get) {
         return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
@@ -305,10 +315,20 @@ function updateTunnelForward($panel_name, $inbound_id, $listen_port, $target_ip,
         "routeOnly"    => false
     ];
 
+    // محاسبه بر اساس مگابایت در حالت تست، یا گیگابایت در حالت عادی
+    $total_bytes = 0;
+    if (floatval($total_gb) > 0) {
+        if ($is_test) {
+            $total_bytes = round(floatval($total_gb) * 1048576);
+        } else {
+            $total_bytes = round(floatval($total_gb) * 1073741824);
+        }
+    }
+
     $postData = [
         "up"                   => 0,
         "down"                 => 0,
-        "total"                => ($total_gb > 0) ? intval($total_gb) * 1073741824 : 0,
+        "total"                => $total_bytes,
         "remark"               => $remark,
         "enable"               => true,
         "expiryTime"           => ($expire_time > 0) ? intval($expire_time) * 1000 : 0,
@@ -419,4 +439,28 @@ function isValidPublicIpv4($ip) {
         FILTER_VALIDATE_IP,
         FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
     ) !== false;
+}
+
+function getInbound($name_panel, $inbound_id) {
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+    if (!$marzban_list_get) {
+        return ['body' => json_encode(['success' => false, 'msg' => 'Panel not found'])];
+    }
+
+    login($marzban_list_get['code_panel']);
+
+    $url = rtrim($marzban_list_get['url_panel'], '/') . '/panel/api/inbounds/get/' . intval($inbound_id);
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ];
+
+    $req = new CurlRequest($url);
+    $req->setHeaders($headers);
+    $req->setCookie('cookie.txt');
+    $response = $req->get();
+    if (is_file('cookie.txt')) {
+        @unlink('cookie.txt');
+    }
+    return $response;
 }

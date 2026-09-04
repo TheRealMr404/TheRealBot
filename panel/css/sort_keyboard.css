@@ -45,7 +45,7 @@
 
     :root,
     :host {
-        --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        --font-sans: 'Vazirmatn', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         --color-red-100: oklch(93.6% .032 17.717);
         --color-red-300: oklch(80.8% .114 19.571);
@@ -1147,72 +1147,59 @@
 }
 
 :root {
-    --radius: .625rem;
-    --background: oklch(1 0 0);
-    --foreground: oklch(.147 .004 49.25);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(.147 .004 49.25);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(.147 .004 49.25);
-    --primary: oklch(.216 .006 56.043);
-    --primary-foreground: oklch(.985 .001 106.423);
-    --secondary: oklch(.97 .001 106.424);
-    --secondary-foreground: oklch(.216 .006 56.043);
-    --muted: oklch(.97 .001 106.424);
-    --muted-foreground: oklch(.553 .013 58.071);
-    --accent: oklch(.97 .001 106.424);
-    --accent-foreground: oklch(.216 .006 56.043);
-    --destructive: oklch(.577 .245 27.325);
-    --border: oklch(.923 .003 48.717);
-    --input: oklch(.923 .003 48.717);
-    --ring: oklch(.709 .01 56.259);
-    --chart-1: oklch(.646 .222 41.116);
-    --chart-2: oklch(.6 .118 184.704);
-    --chart-3: oklch(.398 .07 227.392);
-    --chart-4: oklch(.828 .189 84.429);
-    --chart-5: oklch(.769 .188 70.08);
-    --sidebar: oklch(.985 .001 106.423);
-    --sidebar-foreground: oklch(.147 .004 49.25);
-    --sidebar-primary: oklch(.216 .006 56.043);
-    --sidebar-primary-foreground: oklch(.985 .001 106.423);
-    --sidebar-accent: oklch(.97 .001 106.424);
-    --sidebar-accent-foreground: oklch(.216 .006 56.043);
-    --sidebar-border: oklch(.923 .003 48.717);
-    --sidebar-ring: oklch(.709 .01 56.259)
+    --radius: 1rem;
+    --background: #090d16 !important;
+    --foreground: #f1f5f9 !important;
+    --card: rgba(17, 24, 39, 0.75) !important;
+    --card-foreground: #f8fafc !important;
+    --popover: #0f172a !important;
+    --popover-foreground: #f8fafc !important;
+    --primary: #3b82f6 !important;
+    --primary-foreground: #ffffff !important;
+    --secondary: rgba(255, 255, 255, 0.07) !important;
+    --secondary-foreground: #cbd5e1 !important;
+    --muted: rgba(255, 255, 255, 0.04) !important;
+    --muted-foreground: #64748b !important;
+    --accent: rgba(59, 130, 246, 0.15) !important;
+    --accent-foreground: #60a5fa !important;
+    --destructive: #ef4444 !important;
+    --border: rgba(255, 255, 255, 0.08) !important;
+    --input: rgba(255, 255, 255, 0.08) !important;
+    --ring: rgba(59, 130, 246, 0.4) !important;
 }
 
 .dark {
-    --background: oklch(.147 .004 49.25);
-    --foreground: oklch(.985 .001 106.423);
-    --card: oklch(.216 .006 56.043);
-    --card-foreground: oklch(.985 .001 106.423);
-    --popover: oklch(.216 .006 56.043);
-    --popover-foreground: oklch(.985 .001 106.423);
-    --primary: oklch(.923 .003 48.717);
-    --primary-foreground: oklch(.216 .006 56.043);
-    --secondary: oklch(.268 .007 34.298);
-    --secondary-foreground: oklch(.985 .001 106.423);
-    --muted: oklch(.268 .007 34.298);
-    --muted-foreground: oklch(.709 .01 56.259);
-    --accent: oklch(.268 .007 34.298);
-    --accent-foreground: oklch(.985 .001 106.423);
-    --destructive: oklch(.704 .191 22.216);
-    --border: oklch(1 0 0/10%);
-    --input: oklch(1 0 0/15%);
-    --ring: oklch(.553 .013 58.071);
+    --background: oklch(0.12 0.02 260);
+    --foreground: oklch(0.98 0.005 260);
+    --card: oklch(0.16 0.03 260 / 85%);
+    --card-foreground: oklch(0.98 0.005 260);
+    --popover: oklch(0.16 0.03 260);
+    --popover-foreground: oklch(0.98 0.005 260);
+    --primary: oklch(0.62 0.19 250);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.22 0.03 260);
+    --secondary-foreground: oklch(0.98 0.005 260);
+    --muted: oklch(0.2 0.02 260);
+    --muted-foreground: oklch(0.7 0.02 260);
+    --accent: oklch(0.24 0.04 260);
+    --accent-foreground: oklch(0.98 0.005 260);
+    --destructive: oklch(0.6 0.22 25);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.62 0.19 250);
     --chart-1: oklch(.488 .243 264.376);
     --chart-2: oklch(.696 .17 162.48);
     --chart-3: oklch(.769 .188 70.08);
     --chart-4: oklch(.627 .265 303.9);
     --chart-5: oklch(.645 .246 16.439);
-    --sidebar: oklch(.216 .006 56.043);
-    --sidebar-foreground: oklch(.985 .001 106.423);
-    --sidebar-primary: oklch(.488 .243 264.376);
-    --sidebar-primary-foreground: oklch(.985 .001 106.423);
-    --sidebar-accent: oklch(.268 .007 34.298);
-    --sidebar-accent-foreground: oklch(.985 .001 106.423);
-    --sidebar-border: oklch(1 0 0/10%);
-    --sidebar-ring: oklch(.553 .013 58.071)
+    --sidebar: oklch(0.16 0.03 260);
+    --sidebar-foreground: oklch(0.98 0.005 260);
+    --sidebar-primary: oklch(0.62 0.19 250);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.24 0.04 260);
+    --sidebar-accent-foreground: oklch(0.98 0.005 260);
+    --sidebar-border: oklch(1 0 0 / 12%);
+    --sidebar-ring: oklch(0.62 0.19 250)
 }
 
 @property --tw-translate-x {
@@ -1398,5 +1385,611 @@
     to {
         opacity: var(--tw-exit-opacity, 1);
         transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))rotate(var(--tw-exit-rotate, 0))
+    }
+}
+
+/* =========================================================
+   استایل‌های تکمیلی برای مدرن‌سازی کامپوننت‌های کیبورد
+   ========================================================= */
+
+/* شیشه‌ای کردن پس‌زمینه کادرهای چینش و خط‌چین‌ها */
+.border-dashed {
+    border: 2px dashed rgba(255, 255, 255, 0.18) !important;
+    background: rgba(30, 41, 59, 0.5) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 14px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
+    transition: all 0.25s ease !important;
+}
+
+.border-dashed:hover {
+    border-color: rgba(96, 165, 250, 0.5) !important;
+    background: rgba(30, 41, 59, 0.7) !important;
+}
+
+/* بهبود ظاهری دکمه‌ها در حالت هاور و کلیک */
+[role="button"], button {
+    border-radius: 10px !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+[role="button"]:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+}
+
+[role="button"]:active {
+    transform: scale(0.98);
+}
+
+/* تیره‌کردن پس‌زمینه بزرگ وسط صفحه */
+#root > div, 
+.bg-slate-100, 
+.bg-slate-200, 
+.bg-gray-100, 
+.bg-white,
+div[class*="bg-"] {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #f8fafc !important;
+}
+
+/* هماهنگ‌سازی باکس‌های داخلی و دکمه‌های مخزن سمت راست */
+#root div[style*="background"], 
+#root section {
+    background-color: rgba(30, 41, 59, 0.4) !important;
+}
+
+/* =========================================================
+   PREMIUM HEADER + RESPONSIVE FIX
+   فقط Override — بدون تغییر ساختار فعلی
+   ========================================================= */
+
+/* ---------- Global responsive safety ---------- */
+
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+}
+
+#root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100svh;
+    overflow-x: hidden;
+}
+
+#root * {
+    min-width: 0;
+}
+
+/* جلوگیری از بیرون‌زدگی تصاویر و SVGها */
+#root img,
+#root svg,
+#root video,
+#root canvas {
+    max-width: 100%;
+}
+
+/* ---------- Header detection ---------- */
+
+#root > div > header,
+#root > div > nav,
+#root header,
+#root nav {
+    position: relative;
+    z-index: 100;
+
+    width: 100%;
+    max-width: 100%;
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(15, 23, 42, 0.92),
+            rgba(9, 13, 22, 0.82)
+        ) !important;
+
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.16),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+
+    transition:
+        background .25s ease,
+        box-shadow .25s ease,
+        border-color .25s ease;
+}
+
+/* ---------- Header direct layout ---------- */
+
+#root header,
+#root nav {
+    box-sizing: border-box;
+}
+
+/* محتویات هدر بیش از عرض صفحه نشوند */
+#root header > *,
+#root nav > * {
+    max-width: 100%;
+}
+
+/* ---------- Header buttons ---------- */
+
+#root header button,
+#root nav button,
+#root header [role="button"],
+#root nav [role="button"] {
+    position: relative;
+
+    min-height: 38px;
+
+    border: 1px solid transparent !important;
+    border-radius: 11px !important;
+
+    transition:
+        background-color .2s ease,
+        border-color .2s ease,
+        transform .2s cubic-bezier(.22,1,.36,1),
+        box-shadow .2s ease;
+}
+
+#root header button:hover:not(:disabled),
+#root nav button:hover:not(:disabled),
+#root header [role="button"]:hover:not(:disabled),
+#root nav [role="button"]:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.055) !important;
+
+    border-color: rgba(255, 255, 255, 0.08) !important;
+
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+    transform: translateY(-1px);
+}
+
+#root header button:active,
+#root nav button:active,
+#root header [role="button"]:active,
+#root nav [role="button"]:active {
+    transform: scale(.97);
+}
+
+/* ---------- Header links ---------- */
+
+#root header a,
+#root nav a {
+    transition:
+        color .2s ease,
+        background-color .2s ease,
+        opacity .2s ease;
+}
+
+#root header a:hover,
+#root nav a:hover {
+    color: #60a5fa !important;
+}
+
+/* ---------- Header icons ---------- */
+
+#root header svg,
+#root nav svg {
+    flex-shrink: 0;
+    transition:
+        transform .2s ease,
+        color .2s ease,
+        opacity .2s ease;
+}
+
+#root header button:hover svg,
+#root nav button:hover svg {
+    color: #60a5fa;
+}
+
+/* ---------- Header logo / brand ---------- */
+
+#root header img,
+#root nav img {
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+/* ---------- Header separators ---------- */
+
+#root header hr,
+#root nav hr {
+    border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* =========================================================
+   DESKTOP
+   ========================================================= */
+
+@media (min-width: 1024px) {
+
+    #root header,
+    #root nav {
+        min-height: 64px;
+    }
+
+    #root header > div,
+    #root nav > div {
+        max-width: 100%;
+    }
+
+}
+
+/* =========================================================
+   TABLET
+   ========================================================= */
+
+@media (max-width: 1023px) {
+
+    #root header,
+    #root nav {
+        min-height: 58px;
+    }
+
+    #root header > *,
+    #root nav > * {
+        max-width: 100%;
+    }
+
+    /* فاصله‌های خیلی بزرگ Tailwind */
+    #root header .px-6,
+    #root nav .px-6 {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+
+}
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 767px) {
+
+    #root header,
+    #root nav {
+        min-height: 56px;
+
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    /* جلوگیری از شلوغی هدر */
+    #root header > div,
+    #root nav > div {
+        gap: 8px !important;
+    }
+
+    /* دکمه‌ها جمع‌وجورتر */
+    #root header button,
+    #root nav button,
+    #root header [role="button"],
+    #root nav [role="button"] {
+        min-width: 36px;
+        min-height: 36px;
+
+        padding: 8px !important;
+
+        border-radius: 10px !important;
+    }
+
+    /* متن‌های هدر */
+    #root header .text-lg,
+    #root nav .text-lg {
+        font-size: 15px !important;
+    }
+
+    #root header .text-sm,
+    #root nav .text-sm {
+        font-size: 13px !important;
+    }
+
+    /* فاصله‌های Tailwind در موبایل */
+    #root header .gap-5,
+    #root nav .gap-5 {
+        gap: 10px !important;
+    }
+
+    #root header .gap-4,
+    #root nav .gap-4 {
+        gap: 8px !important;
+    }
+
+    #root header .gap-3,
+    #root nav .gap-3 {
+        gap: 6px !important;
+    }
+
+    /* Padding */
+    #root header .px-6,
+    #root nav .px-6 {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    #root header .px-4,
+    #root nav .px-4 {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    /* متن طولانی هدر باعث Overflow نشود */
+    #root header h1,
+    #root header h2,
+    #root header h3,
+    #root header span,
+    #root nav h1,
+    #root nav h2,
+    #root nav h3,
+    #root nav span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+}
+
+/* =========================================================
+   SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 480px) {
+
+    #root header,
+    #root nav {
+        min-height: 52px;
+
+        padding-left: 7px !important;
+        padding-right: 7px !important;
+    }
+
+    #root header button,
+    #root nav button,
+    #root header [role="button"],
+    #root nav [role="button"] {
+        min-width: 34px;
+        min-height: 34px;
+
+        padding: 7px !important;
+    }
+
+    #root header svg,
+    #root nav svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    /* اگر متن کنار لوگو باشد */
+    #root header .font-semibold,
+    #root nav .font-semibold {
+        font-size: 14px !important;
+    }
+
+}
+
+/* =========================================================
+   VERY SMALL DEVICES
+   ========================================================= */
+
+@media (max-width: 360px) {
+
+    #root header,
+    #root nav {
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+    }
+
+    #root header > div,
+    #root nav > div {
+        gap: 5px !important;
+    }
+
+    #root header button,
+    #root nav button {
+        min-width: 32px;
+        min-height: 32px;
+
+        padding: 6px !important;
+    }
+
+    #root header svg,
+    #root nav svg {
+        width: 16px;
+        height: 16px;
+    }
+
+}
+
+/* =========================================================
+   PREVENT HORIZONTAL OVERFLOW
+   ========================================================= */
+
+@media (max-width: 767px) {
+
+    #root .grid {
+        max-width: 100%;
+    }
+
+    #root .grid-cols-6 {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    #root .w-85 {
+        width: min(100%, 340px) !important;
+    }
+
+    #root .max-w-\[calc\(100\%-2rem\)\] {
+        max-width: calc(100% - 1rem) !important;
+    }
+
+}
+
+/* =========================================================
+   TOUCH DEVICES
+   ========================================================= */
+
+@media (hover: none) and (pointer: coarse) {
+
+    #root header button:hover,
+    #root nav button:hover,
+    #root header [role="button"]:hover,
+    #root nav [role="button"]:hover {
+        transform: none;
+    }
+
+    #root header button:active,
+    #root nav button:active,
+    #root header [role="button"]:active,
+    #root nav [role="button"]:active {
+        transform: scale(.96);
+    }
+
+}
+
+/* =========================================================
+   SAFE AREA — MOBILE NOTCH
+   ========================================================= */
+
+@supports (padding: max(0px)) {
+
+    @media (max-width: 767px) {
+
+        #root header,
+        #root nav {
+            padding-left: max(8px, env(safe-area-inset-left)) !important;
+            padding-right: max(8px, env(safe-area-inset-right)) !important;
+        }
+
+    }
+
+}
+
+
+
+/* =========================================================
+   FIX: جلوگیری از اسکرول عمودی و ثابت ماندن صفحه
+   ========================================================= */
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+body {
+    position: fixed;
+    inset: 0;
+    max-width: 100vw;
+    max-height: 100vh;
+}
+
+#root {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100vh;
+    overflow: hidden !important;
+}
+
+/* جلوگیری از بیرون‌زدگی المان‌ها در عرض موبایل */
+*,
+*::before,
+*::after {
+    max-width: 100%;
+}
+
+/* جلوگیری از ایجاد اسکرول به‌خاطر عرض محتوا */
+div,
+section,
+main,
+header,
+footer {
+    min-width: 0;
+}
+
+/* موبایل */
+@media (max-width: 768px) {
+    html,
+    body,
+    #root {
+        width: 100vw;
+        height: 100dvh;
+        min-height: 100dvh;
+        max-height: 100dvh;
+        overflow: hidden !important;
+    }
+
+    body {
+        position: fixed;
+        inset: 0;
+    }
+}
+
+/* دسکتاپ */
+@media (min-width: 769px) {
+    html,
+    body,
+    #root {
+        height: 100vh;
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden !important;
+    }
+}
+
+/* =========================================================
+   بهینه‌سازی و هماهنگ‌سازی نهایی دکمه‌ها و المان‌ها
+   ========================================================= */
+
+/* استایل یکپارچه برای دکمه‌های هدر و پنل */
+.nav-btn, button:not(.btnback):not(.btndefult) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 12px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    white-space: nowrap;
+}
+
+.nav-btn:hover, button:not(.btnback):not(.btndefult):hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* واکنش‌گرا کردن دکمه‌ها در موبایل */
+@media (max-width: 576px) {
+    .nav-actions {
+        width: 100%;
+        justify-content: center;
+    }
+    .nav-btn {
+        flex: 1;
+        padding: 8px 10px;
+        font-size: 12px !important;
     }
 }

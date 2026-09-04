@@ -524,16 +524,66 @@ function generateUUID()
 function rate_arze()
 {
     $arze_rate = [];
-    $requests_tron = json_decode(file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000'), true);
-    $html_read = file_get_contents("https://www.bon-bast.com/");
-    preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read, $matches);
-    if (!empty($matches[1])) {
-        $requestsusd = str_replace(',', '', $matches[1]);
-    }
-    $arze_rate['USD'] = intval($requestsusd);
-    $arze_rate['TRX'] = intval($requests_tron['Price'] * $arze_rate['USD']);
 
-    return $arze_rate;
+$base_usdt_price = 180000; 
+$base_trx_price  = 60000; 
+
+$cache_file = __DIR__ . "/arze_rate_cache.json";
+
+$arze_rate['USD'] = $base_usdt_price;
+$arze_rate['TRX'] = $base_trx_price;
+
+if (file_exists($cache_file)) {
+    $cache_data = json_decode(file_get_contents($cache_file), true);
+
+    if (is_array($cache_data)) {
+        if (!empty($cache_data['USD']) && intval($cache_data['USD']) > 0) {
+            $arze_rate['USD'] = intval($cache_data['USD']);
+        }
+
+        if (!empty($cache_data['TRX']) && intval($cache_data['TRX']) > 0) {
+            $arze_rate['TRX'] = intval($cache_data['TRX']);
+        }
+    }
+}
+
+$requests_tron_raw = @file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000');
+$requests_tron = $requests_tron_raw ? json_decode($requests_tron_raw, true) : null;
+
+if (
+    is_array($requests_tron) &&
+    isset($requests_tron['Price']) &&
+    floatval($requests_tron['Price']) > 0
+) {
+    $arze_rate['TRX'] = intval($requests_tron['Price']);
+}
+
+$html_read = @file_get_contents("https://www.bon-bast.com/");
+preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read ?: '', $matches);
+
+if (!empty($matches[1])) {
+    $requestsusd = str_replace(',', '', $matches[1]);
+
+    if (intval($requestsusd) > 0) {
+        $arze_rate['USD'] = intval($requestsusd);
+    }
+}
+
+if (intval($arze_rate['USD']) <= 0) {
+    $arze_rate['USD'] = $base_usdt_price;
+}
+
+if (intval($arze_rate['TRX']) <= 0) {
+    $arze_rate['TRX'] = $base_trx_price;
+}
+
+@file_put_contents($cache_file, json_encode([
+    'USD' => intval($arze_rate['USD']),
+    'TRX' => intval($arze_rate['TRX']),
+    'updated_at' => date('Y-m-d H:i:s')
+], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+
+return $arze_rate;
 }
 function updatePaymentMessageId($response, $orderId)
 {
@@ -637,35 +687,42 @@ function trnado($order_id, $price)
     global $domainhosts;
     $apitronseller = select("PaySetting", "*", "NamePay", "apiternado", "select")['ValuePay'];
     $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
-    $urlpay = select("PaySetting", "*", "NamePay", "urlpaymenttron", "select")['ValuePay'];
+    
+    $urlpay = "https://bot.tronado.cloud/api/v5/GetOrderToken";
+    
     $curl = curl_init();
     $data = array(
-        "PaymentID" => $order_id,
-        "WalletAddress" => $walletaddress,
-        "TronAmount" => $price,
-        "CallbackUrl" => "https://" . $domainhosts . "/payment/tronado.php"
+        "PaymentID"     => (string)$order_id,
+        "WalletAddress" => trim($walletaddress),
+        "TronAmount"    => floatval($price),
+        "CallbackUrl"   => "https://" . $domainhosts . "/payment/tronado.php"
     );
-    $datasend = json_encode($data);
+    
     curl_setopt_array($curl, array(
-        CURLOPT_URL => "$urlpay",
+        CURLOPT_URL            => $urlpay,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => array(
-            'x-api-key:' . $apitronseller,
-            'Content-Type: application/json',
-            'Cookie: ASP.NET_SessionId=spou2s5lo4nnxkjtavscrrlo'
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_POSTFIELDS     => json_encode($data),
+        CURLOPT_HTTPHEADER     => array(
+            'x-api-key: ' . trim($apitronseller),
+            'Content-Type: application/json'
         ),
     ));
-    curl_setopt($curl, CURLOPT_POSTFIELDS, $datasend);
 
     $response = curl_exec($curl);
-
+    $curl_error = curl_error($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
+
+    file_put_contents(__DIR__ . "/tronado_create_order.log", print_r([
+        "time"         => date("Y-m-d H:i:s"),
+        "send_data"    => $data,
+        "raw_response" => $response,
+        "http_code"    => $http_code,
+        "curl_error"   => $curl_error
+    ], true) . "\n--------------------------\n", FILE_APPEND);
+
     return json_decode($response, true);
 }
 function formatBytes($bytes, $precision = 2): string
@@ -1663,7 +1720,7 @@ function activecron()
         "*/1 * * * * curl https://$domainhosts/cronbot/croncard.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/NoticationsService.php",
         "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
+        // "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
@@ -2160,4 +2217,260 @@ function convertCustomEmojiToHTML($message)
     }
 
     return $text;
+}
+
+function get_all_crypto_currencies() {
+    global $connect;
+    $res = $connect->query("SELECT * FROM offline_crypto ORDER BY id ASC");
+    $list = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $list[$row['symbol']] = $row;
+        }
+    }
+    return $list;
+}
+
+// دریافت اطلاعات یک ارز بر اساس نماد
+function get_crypto_currency($sym) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE symbol = ?");
+    $stmt->bind_param("s", $sym);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    return $res->fetch_assoc();
+}
+
+// ذخیره ولت
+function set_crypto_wallet($sym, $wallet) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $wallet = trim($wallet);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET wallet = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $wallet, $sym);
+    return $stmt->execute();
+}
+
+// تغییر وضعیت روشن/خاموش
+function toggle_crypto_status($sym) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $info = get_crypto_currency($sym);
+    if ($info) {
+        $new_status = ($info['status'] == 'on') ? 'off' : 'on';
+        $stmt = $connect->prepare("UPDATE offline_crypto SET status = ? WHERE symbol = ?");
+        $stmt->bind_param("ss", $new_status, $sym);
+        $stmt->execute();
+        return $new_status;
+    }
+    return 'off';
+}
+
+function render_crypto_message($data, $amount_toman, $crypto_amount, $unit_price = null) {
+    $sym = strtoupper($data['symbol'] ?? 'CRYPTO');
+    $wallet = !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده';
+    $emoji_id = !empty($data['emoji_id']) ? $data['emoji_id'] : '5836907383292436018';
+    $network = !empty($data['network']) ? $data['network'] : 'اصلی';
+    $formatted_toman = number_format($amount_toman);
+    $unit_price_text = ($unit_price !== null) ? number_format($unit_price) . " تومان" : "درحال استعلام...";
+
+    $titles = [
+        'TON'  => ['icon' => '🔷', 'name' => 'تون کوین (TON)'],
+        'TRX'  => ['icon' => '🔴', 'name' => 'ترون (TRX)'],
+        'USDT' => ['icon' => '💎', 'name' => 'تتر (USDT)'],
+        'BTC'  => ['icon' => '🪙', 'name' => 'بیت‌کوین (BTC)'],
+        'ETH'  => ['icon' => '🔷', 'name' => 'اتریوم (ETH)'],
+        'BNB'  => ['icon' => '🟡', 'name' => 'بایننس کوین (BNB)']
+    ];
+
+    $title_info = $titles[$sym] ?? ['icon' => '💎', 'name' => "پرداخت {$sym}"];
+
+    return "<tg-emoji emoji-id=\"{$emoji_id}\">{$title_info['icon']}</tg-emoji> <b>پرداخت {$title_info['name']}</b>\n\n" .
+           "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n" .
+           "<tg-emoji emoji-id=\"5348418461838098123\">📊</tg-emoji> <b>نرخ هر واحد:</b> {$unit_price_text}\n" .
+           "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>شبکه انتقال:</b> <code>{$network}</code>\n\n" .
+           "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت لحظه‌ای تغییر می‌کند).\n\n" .
+           "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
+           "<b>مقدار واریز ({$sym}):</b> <code>{$crypto_amount}</code>";
+}
+
+
+function set_crypto_emoji($sym, $emoji_id) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("UPDATE offline_crypto SET emoji_id = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $emoji_id, $sym);
+    return $stmt->execute();
+}
+
+function set_crypto_style($sym, $style) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $stmt = $connect->prepare("UPDATE offline_crypto SET style = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $style, $sym);
+    return $stmt->execute();
+}
+
+function set_crypto_name($sym, $name) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $name = trim($name);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET name = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $name, $sym);
+    return $stmt->execute();
+}
+
+function set_crypto_network($sym, $network) {
+    global $connect;
+    $sym = strtolower(trim($sym));
+    $network = trim($network);
+    $stmt = $connect->prepare("UPDATE offline_crypto SET network = ? WHERE symbol = ?");
+    $stmt->bind_param("ss", $network, $sym);
+    return $stmt->execute();
+}
+
+function arz_nobitex() {
+    $cache_file = sys_get_temp_dir() . '/nobitex_rates_cache.json';
+    
+    // اگر از زمان آخرین استعلام کمتر از ۶۰ ثانیه گذشته باشد، از کش بخواند
+    if (file_exists($cache_file) && (time() - filemtime($cache_file) < 60)) {
+        $cached_data = json_decode(@file_get_contents($cache_file), true);
+        if (!empty($cached_data)) {
+            return $cached_data;
+        }
+    }
+
+    $rates = [];
+    $url = "https://apiv2.nobitex.ir/market/stats";
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 4,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        CURLOPT_HTTPHEADER     => ['Accept: application/json']
+    ]);
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $res = json_decode((string)$response, true);
+    $stats = $res['stats'] ?? [];
+
+    $usdt_rls = (float)($stats['usdt-rls']['latest'] ?? 0);
+    $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
+
+    $rates['USD']  = $usdt_toman;
+    $rates['USDT'] = $usdt_toman;
+
+    $map = [
+        'btc'  => ['btc-rls', 'btc-irt', 'btc-usdt'],
+        'eth'  => ['eth-rls', 'eth-irt', 'eth-usdt'],
+        'bnb'  => ['bnb-rls', 'bnb-irt', 'bnb-usdt'],
+        'trx'  => ['trx-rls', 'trx-irt', 'trx-usdt'],
+        'ton'  => ['ton-rls', 'ton-irt', 'ton-usdt', 'gram-rls', 'gram-usdt']
+    ];
+
+    foreach ($map as $key => $pairs) {
+        $price = 0;
+        foreach ($pairs as $pair) {
+            if (!empty($stats[$pair]['latest'])) {
+                $val = (float)$stats[$pair]['latest'];
+                if (str_ends_with($pair, '-rls')) {
+                    $price = intval($val / 10);
+                } elseif (str_ends_with($pair, '-irt')) {
+                    $price = intval($val);
+                } elseif (str_ends_with($pair, '-usdt')) {
+                    $price = intval($val * $usdt_toman);
+                }
+                break;
+            }
+        }
+        $rates[strtoupper($key)] = $price > 0 ? $price : $usdt_toman;
+        $rates[strtolower($key)] = $price > 0 ? $price : $usdt_toman;
+    }
+
+    @file_put_contents($cache_file, json_encode($rates));
+
+    return $rates;
+}
+
+function abangatewayEndpoint(): ?string
+{
+    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'));
+    if ($endpoint === '' || $endpoint === '0') {
+        return null;
+    }
+
+    $parts = parse_url($endpoint);
+    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
+        return null;
+    }
+
+    return rtrim($endpoint, '/');
+}
+
+function abangateway($order_id, $price)
+{
+    global $domainhosts;
+    
+    $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
+    $endpoint = abangatewayEndpoint();
+    
+    if ($api_key === '' || $api_key === '0' || $endpoint === null) {
+        return ['success' => false, 'message' => 'abangateway: key or endpoint is unset'];
+    }
+
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL => $endpoint . '/create',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 25,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Bearer ' . $api_key,
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            'amount' => intval($price),
+            'order_id' => $order_id,
+            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
+        ], JSON_UNESCAPED_UNICODE),
+    ]);
+
+    $response = curl_exec($curl);
+    if ($response === false) {
+        curl_close($curl);
+        return ['success' => false, 'message' => 'abangateway: gateway unreachable'];
+    }
+    curl_close($curl);
+
+    return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
+}
+
+function getPanelCustomTitle($panel)
+{
+    $colorsMap = [
+        'success'   => '🟢',
+        'danger'    => '🔴',
+        'primary'   => '🔵',
+        'secondary' => '⚪️'
+    ];
+
+    $colorEmoji = $colorsMap[$panel['panel_color'] ?? ''] ?? '';
+    $premiumEmoji = $panel['panel_emoji'] ?? '';
+    $name = $panel['name_panel'];
+
+    $parts = [];
+    if (!empty($premiumEmoji)) {
+        $parts[] = $premiumEmoji;
+    }
+    if (!empty($colorEmoji)) {
+        $parts[] = $colorEmoji;
+    }
+    $parts[] = $name;
+
+    return implode(' ', $parts);
 }

@@ -346,7 +346,9 @@ try {
         on_hold_test varchar(60) NOT NULL,
         version_panel varchar(60) NOT NULL,
         customvolume TEXT NULL,
-        hide_user TEXT NULL)
+        hide_user TEXT NULL,
+        panel_color varchar(200) NULL,
+        panel_emoji varchar(200) NULL)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         if (!$result) {
             echo "table marzban_panel" . mysqli_error($connect);
@@ -418,7 +420,7 @@ try {
         addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
-        $next_num = $max_row['max_num'] ? (int)$max_row['max_num'] + 1 : 15;
+        $next_num = $max_row['max_num'] ? (int) $max_row['max_num'] + 1 : 15;
         $stmt = $connect->query("SELECT id FROM marzban_panel WHERE code_panel IS NULL OR code_panel = ''");
         while ($row = $stmt->fetch_assoc()) {
             $code = '7e' . $next_num;
@@ -795,49 +797,50 @@ try {
 🔝لزومی به ارسال رسید نیست، اما در صورتی که بعد از گذشت مدتی واریز شما تایید نشد، عکس رسید خود را ارسال کنید.";
     $insertQueries = [
         ['text_start', 'سلام خوش آمدید'],
-        ['text_usertest', '🔑 اکانت تست'],
-        ['text_Purchased_services', '🛍 سرویس های من'],
-        ['text_support', '☎️ پشتیبانی'],
-        ['text_help', '📚 آموزش'],
-        ['text_bot_off', '❌ ربات خاموش است، لطفا دقایقی دیگر مراجعه کنید'],
+        ['text_usertest', 'اکانت تست'],
+        ['text_Purchased_services', 'سرویس های من'],
+        ['text_support', 'پشتیبانی'],
+        ['text_help', 'آموزش'],
+        ['text_bot_off', 'ربات خاموش است، لطفا دقایقی دیگر مراجعه کنید'],
         ['text_roll', $text_roll],
-        ['text_fq', '❓ سوالات متداول'],
+        ['text_fq', 'سوالات متداول'],
         ['text_dec_fq', $text_dec_fq],
-        ['text_sell', '🔐 خرید اشتراک'],
-        ['text_Add_Balance', '💰 افزایش موجودی'],
+        ['text_sell', 'خرید اشتراک'],
+        ['text_Add_Balance', 'افزایش موجودی'],
         ['text_channel', $text_channel],
-        ['text_Discount', '🎁 کد هدیه'],
-        ['text_Tariff_list', '💵 تعرفه اشتراک ها'],
+        ['text_Discount', 'کد هدیه'],
+        ['text_Tariff_list', 'تعرفه اشتراک ها'],
         ['text_dec_Tariff_list', 'تنظیم نشده است'],
-        ['text_Account_op', '🎛 حساب کاربری'],
-        ['text_affiliates', '👥 زیر مجموعه گیری'],
+        ['text_Account_op', 'حساب کاربری'],
+        ['text_affiliates', 'زیر مجموعه گیری'],
         ['text_pishinvoice', $text_invoice],
-        ['accountwallet', '🏦 کیف پول + شارژ'],
-        ['carttocart', '💳 کارت به کارت'],
-        ['textnowpayment', '💵 پرداخت ارزی 1'],
-        ['textnowpaymenttron', '💵 واریز رمزارز ترون'],
-        ['textsnowpayment', '💸 پرداخت با ارز دیجیتال'],
-        ['iranpay1', '💸 درگاه  پرداخت ریالی'],
-        ['iranpay2', '💸 درگاه  پرداخت ریالی دوم'],
-        ['iranpay3', '💸 درگاه  پرداخت ریالی سوم'],
-        ['aqayepardakht', '🔵 درگاه آقای پرداخت'],
-        ['mowpayment', '💸 پرداخت با ارز دیجیتال'],
-        ['zarinpal', '🟡 زرین پال'],
+        ['accountwallet', 'کیف پول + شارژ'],
+        ['carttocart', 'کارت به کارت'],
+        ['textnowpayment', 'پرداخت ارزی 1'],
+        ['textnowpaymenttron', 'واریز رمزارز ترون'],
+        ['textsnowpayment', 'پرداخت با ارز دیجیتال'],
+        ['iranpay1', 'درگاه  پرداخت ریالی'],
+        ['iranpay2', 'درگاه  پرداخت ریالی دوم'],
+        ['iranpay3', 'درگاه  پرداخت ریالی سوم'],
+        ['aqayepardakht', 'درگاه آقای پرداخت'],
+        ['mowpayment', 'پرداخت با ارز دیجیتال'],
+        ['zarinpal', 'زرین پال'],
+        ['abangateway', 'درگاه پرداخت آبان‌پی'],
         ['textafterpay', $textafterpay],
         ['textafterpayibsng', $textafterpayibsng],
         ['textaftertext', $textaftertext],
         ['textmanual', $textmanual],
-        ['textselectlocation', '📌 موقعیت سرویس را انتخاب نمایید.'],
+        ['textselectlocation', 'موقعیت سرویس را انتخاب نمایید.'],
         ['crontest', $textconfigtest],
         ['textpaymentnotverify', 'درگاه ریالی'],
-        ['textrequestagent', '👨‍💻 درخواست نمایندگی'],
-        ['textpanelagent', '👨‍💻 پنل نمایندگی'],
-        ['text_wheel_luck', '🎲 گردونه شانس'],
+        ['textrequestagent', 'درخواست نمایندگی'],
+        ['textpanelagent', 'پنل نمایندگی'],
+        ['text_wheel_luck', 'گردونه شانس'],
         ['text_cart', $textcart],
         ['text_cart_auto', $textcartauto],
-        ['text_star_telegram', "💫 Star Telegram"],
-        ['text_request_agent_dec', '📌 توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
-        ['text_extend', '♻️ تمدید سرویس'],
+        ['text_star_telegram', "Star Telegram"],
+        ['text_request_agent_dec', 'توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
+        ['text_extend', 'تمدید سرویس'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
     if (!$table_exists) {
@@ -861,6 +864,40 @@ try {
     file_put_contents('error_log', $e->getMessage());
 }
 
+try {
+    $result = $connect->query("SHOW TABLES LIKE 'offline_crypto'");
+    $table_exists = ($result->num_rows > 0);
+
+    if (!$table_exists) {
+        $result = $connect->query("CREATE TABLE offline_crypto (
+            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20) NOT NULL UNIQUE,
+            name VARCHAR(100) NOT NULL,
+            wallet VARCHAR(255) DEFAULT '',
+            network VARCHAR(50) DEFAULT 'Mainnet',
+            status ENUM('on', 'off') DEFAULT 'on',
+            emoji_id VARCHAR(50) DEFAULT '5836907383292436018',
+            style VARCHAR(50) DEFAULT 'primary'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $default_cryptos = [
+            ['ton', 'تون کوین (TON)', '', 'TON', 'on', '5836907383292436018', 'primary'],
+            ['trx', 'ترون (TRX)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['usdt', 'تتر (USDT)', '', 'TRC20', 'on', '5836907383292436018', 'primary'],
+            ['btc', 'بیت‌کوین (BTC)', '', 'BTC / Lightning', 'on', '5836907383292436018', 'primary'],
+            ['eth', 'اتریوم (ETH)', '', 'ERC20 / Arbitrum', 'on', '5836907383292436018', 'primary'],
+            ['bnb', 'بایننس کوین (BNB)', '', 'BEP20 (BSC)', 'on', '5836907383292436018', 'primary']
+        ];
+
+        foreach ($default_cryptos as $cr) {
+            $stmt = $connect->prepare("INSERT INTO offline_crypto (symbol, name, wallet, network, status, emoji_id, style) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("sssssss", $cr[0], $cr[1], $cr[2], $cr[3], $cr[4], $cr[5], $cr[6]);
+            $stmt->execute();
+        }
+    }
+} catch (Exception $e) {
+    file_put_contents('error_log offline_crypto', $e->getMessage());
+}
 try {
     $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");
     $table_exists = ($result->num_rows > 0);
@@ -941,7 +978,15 @@ try {
         ['statusnowpayment', '0'],
         ['Exception_auto_cart', '{}'],
         ['marchent_floypay', '0'],
+        ['statusabangateway', 'offabangateway'],
+        ['api_abangateway', '0'],
+        ['chashbackabangateway', '0'],
+        ['minbalanceabangateway', $main],
+        ['maxbalanceabangateway', $max],
+        ['helpabangateway', '2'],
+        ['endpointabangateway', '0'],
     ];
+
     if (!$table_exists) {
         $result = $connect->query("CREATE TABLE PaySetting (
         NamePay varchar(500) PRIMARY KEY NOT NULL,
@@ -956,13 +1001,8 @@ try {
         }
     } else {
         foreach ($settings as $setting) {
-            $connect->query("INSERT IGNORE INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}')");
+            $connect->query("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('{$setting[0]}', '{$setting[1]}') ON DUPLICATE KEY UPDATE NamePay = NamePay");
         }
-
-
-
-
-
     }
 } catch (Exception $e) {
     file_put_contents('error_log', $e->getMessage());
