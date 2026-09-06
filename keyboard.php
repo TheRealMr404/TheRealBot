@@ -1559,19 +1559,6 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     $product = ['inline_keyboard' => []];
     $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
 
-    $panelInfo = select("marzban_panel", "*", "name_panel", $location, "select");
-    $panelColor = $panelInfo['panel_color'] ?? '';
-    $panelEmoji = $panelInfo['panel_emoji'] ?? '';
-
-    $emojiId = null;
-    if (!empty($panelEmoji)) {
-        if (preg_match('/emoji-id="(\d+)"/', $panelEmoji, $matches)) {
-            $emojiId = (int) $matches[1];
-        } elseif (is_numeric($panelEmoji)) {
-            $emojiId = (int) $panelEmoji;
-        }
-    }
-
     $stmt = $pdo->prepare($query);
     $stmt->execute();
 
@@ -1582,7 +1569,8 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
         if (in_array($location, $hide_panel))
             continue;
 
-        $stmts2 = $pdo->prepare("SELECT id FROM invoice WHERE Status != 'Unpaid' AND id_user = ?");
+        // اصلاح باگ لود نشدن لیست محصولات (استفاده از 1 به جای id در جدول invoice)
+        $stmts2 = $pdo->prepare("SELECT 1 FROM invoice WHERE Status != 'Unpaid' AND id_user = ?");
         $stmts2->execute([$from_id]);
         $countorder = $stmts2->rowCount();
 
@@ -1599,24 +1587,19 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
             $btnText .= " - " . number_format($result['price_product']) . " تومان";
         }
 
+        // ایجاد دکمه با استایل مستقل (رفع مشکل همرنگ شدن با پنل)
         $btn = [
             'text' => $btnText,
             'callback_data' => "{$datakeyboard}{$result['code_product']}{$valuetow}",
+            'style' => 'primary' // استایل پیش‌فرض دکمه محصولات
         ];
-
-        if (!empty($panelColor)) {
-            $btn['style'] = $panelColor;
-        }
-        if ($emojiId !== null) {
-            $btn['icon_custom_emoji_id'] = $emojiId;
-        }
 
         $product['inline_keyboard'][] = [$btn];
     }
 
     if ($statuscustom) {
         $product['inline_keyboard'][] = [
-            ['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => $customvolume]
+            ['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => $customvolume, 'style' => 'primary']
         ];
     }
 
