@@ -1142,8 +1142,7 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
-تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1174,8 +1173,7 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
-تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1229,8 +1227,7 @@ elseif ($datain == "systemsms") {
     }
     if ($userdata['typeservice'] == "xdaynotmessage") {
         step("gettextday", $from_id);
-        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند
-تعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
+        sendmessage($from_id, "📌 در این قابلیت پیام به کاربرانی ارسال میشود که تعیین  میکنید چند روز از ربات استفاده نکرده اند\nتعداد روز خود را ارسال نمایید.", $backadmin, 'HTML');
         return;
     }
     step("gettextSystemMessage", $from_id);
@@ -1256,18 +1253,24 @@ elseif ($datain == "systemsms") {
         sendmessage($from_id, "❌ خطایی رخ داده لطفا مراحل ارسال پیام از اول انجام دهید", $keyboardadmin, 'HTML');
         return;
     }
+
+    // ---------- پردازش ایموجی پریمیوم -----------
+    $raw_msg = $update['message'] ?? $message ?? [];
+    $formatted_text = function_exists('convertCustomEmojiToHTML') ? convertCustomEmojiToHTML($raw_msg) : $text;
+    // ---------------------------------------------
+
     if ($userdata['typeservice'] == "forwardmessage") {
         savedata("save", "message", $message_id);
     } elseif ($userdata['typeservice'] == "xdaynotmessage") {
         if ($text) {
-            savedata("save", "message", $text);
+            savedata("save", "message", $formatted_text);
         } else {
             sendmessage($from_id, "📌  در بخش کاربرانی که به تعداد روز تعیین شده استفاده نکردند فقط امکان ارسال متن وجود دارد.", $backadmin, 'HTML');
             return;
         }
     } elseif ($userdata['typeservice'] == "sendmessage") {
         if ($text) {
-            savedata("save", "message", $text);
+            savedata("save", "message", $formatted_text);
         } else {
             sendmessage($from_id, "📌  در بخش ارسال همگانی فقط امکان ارسال متن وجود دارد.", $backadmin, 'HTML');
             return;
