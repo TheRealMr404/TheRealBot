@@ -2508,7 +2508,6 @@ function cubepay($order_id, $price)
 {
     global $domainhosts;
     $token_cubepay = select("PaySetting", "*", "NamePay", "apicubepay", "select")['ValuePay'] ?? '';
-    $amount_toman = cubepayPayableAmount($price);
     
     $curl = curl_init();
     curl_setopt_array($curl, array(
