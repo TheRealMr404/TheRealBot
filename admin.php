@@ -4294,8 +4294,6 @@ $text_expie_agent
     
     telegram('answerCallbackQuery', [
         'callback_query_id' => $callback_query_id,
-        'text' => ($new_status == "oncubepay") ? "✅ درگاه کیوب‌پی روشن شد" : "❌ درگاه کیوب‌پی خاموش شد",
-        'show_alert' => false
     ]);
     
     
