@@ -1570,5 +1570,5 @@ try {
 
 
 telegram('setwebhook', [
-    'url' => "https://$domainhosts:88/index.php"
+    'url' => "https://$domainhosts/index.php"
 ]);
