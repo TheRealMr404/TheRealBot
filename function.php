@@ -2532,13 +2532,29 @@ function cubepay($order_id, $price)
     ));
 
     $response = curl_exec($curl);
+    $err = curl_error($curl);
     curl_close($curl);
 
+    // اگر cURL خطایی داشت
+    if ($err) {
+        return ['success' => false, 'message' => 'Curl Error: ' . $err];
+    }
+
+    // اگر پاسخ کلاً خالی بود
+    if (empty($response)) {
+        return ['success' => false, 'message' => 'Empty response from server'];
+    }
+
     $decoded = json_decode($response, true);
-    if (is_array($decoded) && empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
+    
+    // اگر پاسخ JSON نبود (مثلا خطای HTML سرور بود)
+    if (!is_array($decoded)) {
+        return ['success' => false, 'message' => 'Invalid JSON response: ' . $response];
+    }
+
+    if (empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
         $decoded['payment_link'] = $decoded['pay_page_url'];
     }
 
     return $decoded;
 }
-
