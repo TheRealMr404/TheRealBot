@@ -9220,8 +9220,15 @@ n2", $backadmin, 'HTML');
             $valuenew = "onabangateway";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
-        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
+    } elseif ($type == "cubepay") {
+        if ($value == "oncubepay") {
+            $valuenew = "offcubepay";
+        } else {
+            $valuenew = "oncubepay";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statuscubepay");
     }
+
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
     $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
@@ -9234,6 +9241,8 @@ n2", $backadmin, 'HTML');
     $paymentstatussnotverify = getPaySettingValue('paymentstatussnotverify', 'offpaymentstatus');
     $paymentsstartelegram = getPaySettingValue('statusstar', '0');
     $payment_status_nowpayment = getPaySettingValue('statusnowpayment', '0');
+    $statuscubepay = getPaySettingValue('statuscubepay', 'oncubepay');
+
     $cartotcartstatus = [
         'oncard' => $textbotlang['Admin']['Status']['statuson'],
         'offcard' => $textbotlang['Admin']['Status']['statusoff']
@@ -9278,6 +9287,11 @@ n2", $backadmin, 'HTML');
         'onabangateway' => $textbotlang['Admin']['Status']['statuson'],
         'offabangateway' => $textbotlang['Admin']['Status']['statusoff']
     ][$abangateway];
+    $cubepaystatus = [
+        'oncubepay' => $textbotlang['Admin']['Status']['statuson'],
+        'offcubepay' => $textbotlang['Admin']['Status']['statusoff']
+    ][$statuscubepay];
+
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
@@ -9303,17 +9317,17 @@ n2", $backadmin, 'HTML');
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay1setting"],
                 ['text' => $arzireyali1status, 'callback_data' => "editpayment-arzireyali1-$arzireyali1"],
-                ['text' => "📌 ارزی ریالی اول", 'callback_data' => "arzireyali1"],
+                ['text' => "تتراپی 💳", 'callback_data' => "arzireyali1"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay2setting"],
                 ['text' => $arzireyali2status, 'callback_data' => "editpayment-arzireyali2-$arzireyali2"],
-                ['text' => "📌 ارزی ریالی دوم", 'callback_data' => "arzireyali2"],
+                ['text' => "ترونادو 💳", 'callback_data' => "arzireyali2"],
             ],
             [
-                ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
-                ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
-                ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
+                ['text' => "⚙️ تنظیمات", 'callback_data' => "cubepaysetting"],
+                ['text' => $cubepaystatus, 'callback_data' => "editpayment-cubepay-$statuscubepay"],
+                ['text' => "کیوب‌پی 💳", 'callback_data' => "cubepay"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
@@ -9344,14 +9358,9 @@ n2", $backadmin, 'HTML');
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
-            // [
-            //     ['text' => "آدرس ولت", 'callback_data' => "walletaddress"],
-            // ],
         ]
     ]);
-    Editmessagetext($from_id, $message_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
-
-⚠️   هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
+    Editmessagetext($from_id, $message_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.\n\n⚠️   هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status);
 } elseif ($text == "💰 کش بک کارت به کارت") {
     sendmessage($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
     step("getcashcart", $from_id);
