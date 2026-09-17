@@ -9034,18 +9034,18 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay1setting"],
                 ['text' => $arzireyali1status, 'callback_data' => "editpayment-arzireyali1-$arzireyali1"],
-                ['text' => "📌 ارزی ریالی اول", 'callback_data' => "arzireyali1"],
+                ['text' => "تتراپی", 'callback_data' => "arzireyali1"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay2setting"],
                 ['text' => $arzireyali2status, 'callback_data' => "editpayment-arzireyali2-$arzireyali2"],
-                ['text' => "📌 ارزی ریالی دوم", 'callback_data' => "arzireyali2"],
+                ['text' => "ترونادو", 'callback_data' => "arzireyali2"],
             ],
-            [
-                ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
-                ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
-                ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
-            ],
+            // [
+            //     ['text' => "⚙️ تنظیمات", 'callback_data' => "iranpay3setting"],
+            //     ['text' => $arzireyali3text, 'callback_data' => "editpayment-oniranpay3-$arzireyali3"],
+            //     ['text' => "📌ارزی ریالی سوم", 'callback_data' => "oniranpay3"],
+            // ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
                 ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],

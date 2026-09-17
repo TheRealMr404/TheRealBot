@@ -1720,11 +1720,11 @@ function activecron()
         "*/1 * * * * curl https://$domainhosts/cronbot/croncard.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/NoticationsService.php",
         "*/5 * * * * curl https://$domainhosts/cronbot/payment_expire.php",
-        // "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
+        "*/1 * * * * curl https://$domainhosts/cronbot/sendmessage.php",
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/iranpay1.php",
+        "*/1 * * * * curl https://$domainhosts/cronbot/tetrapay.php",
         "0 */5 * * * curl https://$domainhosts/cronbot/backupbot.php",
         "*/2 * * * * curl https://$domainhosts/cronbot/gift.php",
         "*/30 * * * * curl https://$domainhosts/cronbot/expireagent.php",
@@ -1802,7 +1802,7 @@ function createInvoiceiranpay1($amount, $id_invoice)
         "ApiKey" => $PaySetting,
         "Hash_id" => $id_invoice,
         "Amount" => $amount . "0",
-        "CallbackURL" => "https://$domainhosts/payment/iranpay1.php"
+        "CallbackURL" => "https://$domainhosts/payment/tetrapay.php"
     ];
     curl_setopt_array($curl, array(
         CURLOPT_URL => "https://tetra98.com/api/create_order",
