@@ -2506,10 +2506,16 @@ function cubepayPayableAmount($price)
 
 function cubepay($order_id, $price)
 {
-    global $domainhosts;
+    global $domainhosts, $from_id;
     $token_cubepay = select("PaySetting", "*", "NamePay", "apicubepay", "select")['ValuePay'] ?? '';
     $amount_toman = cubepayPayableAmount($price);
     
+    $payload = json_encode([
+        'price_amount' => $amount_toman,
+        'order_id' => $order_id,
+        'callback_url' => "https://$domainhosts/payment/cubepay.php",
+    ], JSON_UNESCAPED_UNICODE);
+
     $curl = curl_init();
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
@@ -2520,41 +2526,24 @@ function cubepay($order_id, $price)
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_POSTFIELDS => $payload,
         CURLOPT_HTTPHEADER => array(
             'Content-Type: application/json',
             'Authorization: Bearer ' . trim($token_cubepay)
         ),
-        CURLOPT_POSTFIELDS => json_encode([
-            'price_amount' => $amount_toman,
-            'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/cubepay.php",
-        ], JSON_UNESCAPED_UNICODE)
     ));
 
     $response = curl_exec($curl);
-    $err = curl_error($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
 
-    // اگر cURL خطایی داشت
-    if ($err) {
-        return ['success' => false, 'message' => 'Curl Error: ' . $err];
+    // اگر کد پاسخ 200 نبود، متن خام پاسخ را چاپ یا لاگ کن تا علت دقیق مشخص شود
+    if ($http_code !== 200) {
+        return [
+            'success' => false, 
+            'message' => "HTTP Code: {$http_code}, Response: " . $response
+        ];
     }
 
-    // اگر پاسخ کلاً خالی بود
-    if (empty($response)) {
-        return ['success' => false, 'message' => 'Empty response from server'];
-    }
-
-    $decoded = json_decode($response, true);
-    
-    // اگر پاسخ JSON نبود (مثلا خطای HTML سرور بود)
-    if (!is_array($decoded)) {
-        return ['success' => false, 'message' => 'Invalid JSON response: ' . $response];
-    }
-
-    if (empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
-        $decoded['payment_link'] = $decoded['pay_page_url'];
-    }
-
-    return $decoded;
+    return json_decode($response, true);
 }
