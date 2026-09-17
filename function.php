@@ -2512,7 +2512,7 @@ function cubepay($order_id, $price)
     
     $curl = curl_init();
     curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
+        CURLOPT_URL => 'https://cubevps.ir/smspay/api/create-payment.php',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
