@@ -406,7 +406,7 @@ if ($statusabangateway == "onabangateway") {
     ];
 }
 if ($statuscubepay == "oncubepay") {
-    $cubepay_row = select("textbot", "text", "id_text", "cubepay_name", "select");
+    $cubepay_row = select("textbot", "text", "id_text", "cubepay", "select");
     $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
     
     $step_payment['inline_keyboard'][] = [

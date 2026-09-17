@@ -7218,7 +7218,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
             ]
         ]);
 
-        $cubepay_row = select("textbot", "text", "id_text", "cubepay_name", "select");
+        $cubepay_row = select("textbot", "text", "id_text", "cubepay", "select");
         $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
 
         $pricetoman = number_format($payable_amount);

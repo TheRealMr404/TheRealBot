@@ -9232,61 +9232,61 @@ n2", $backadmin, 'HTML');
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $cartotcart = getPaySettingValue('Cartstatus', 'offcard');
     $abangateway = getPaySettingValue('statusabangateway', 'offabangateway');
-    $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
-    $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot');
-    $arzireyali2 = getPaySettingValue('statustarnado', 'offternado');
-    $aqayepardakht = getPaySettingValue('statusaqayepardakht', 'offaqayepardakht');
-    $affilnecurrency = getPaySettingValue('digistatus', 'offdigi');
-    $arzireyali3 = getPaySettingValue('statusiranpay3', 'offiranpay3');
-    $paymentstatussnotverify = getPaySettingValue('paymentstatussnotverify', 'offpaymentstatus');
-    $paymentsstartelegram = getPaySettingValue('statusstar', '0');
-    $payment_status_nowpayment = getPaySettingValue('statusnowpayment', '0');
-    $statuscubepay = getPaySettingValue('statuscubepay', 'oncubepay');
+    $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment') ;
+    $arzireyali1 = getPaySettingValue('statusSwapWallet', 'offSwapinoBot') ;
+    $arzireyali2 = getPaySettingValue('statustarnado', 'offternado') ;
+    $aqayepardakht = getPaySettingValue('statusaqayepardakht', 'offaqayepardakht') ;
+    $affilnecurrency = getPaySettingValue('digistatus', 'offdigi') ;
+    $arzireyali3 = getPaySettingValue('statusiranpay3', 'offiranpay3') ;
+    $paymentstatussnotverify = getPaySettingValue('paymentstatussnotverify', 'offpaymentstatus') ;
+    $paymentsstartelegram = getPaySettingValue('statusstar', '0') ;
+    $payment_status_nowpayment = getPaySettingValue('statusnowpayment', '0') ;
+    $statuscubepay = getPaySettingValue('statuscubepay', 'oncubepay') ;
 
     $cartotcartstatus = [
         'oncard' => $textbotlang['Admin']['Status']['statuson'],
         'offcard' => $textbotlang['Admin']['Status']['statusoff']
-    ][$cartotcart];
+    ][$cartotcart] ;
     $plisiostatus = [
         'onnowpayment' => $textbotlang['Admin']['Status']['statuson'],
         'offnowpayment' => $textbotlang['Admin']['Status']['statusoff']
-    ][$plisio];
+    ][$plisio] ;
     $arzireyali1status = [
         'onSwapinoBot' => $textbotlang['Admin']['Status']['statuson'],
         'offSwapinoBot' => $textbotlang['Admin']['Status']['statusoff']
-    ][$arzireyali1];
+    ][$arzireyali1] ;
     $arzireyali2status = [
         'onternado' => $textbotlang['Admin']['Status']['statuson'],
         'offternado' => $textbotlang['Admin']['Status']['statusoff']
-    ][$arzireyali2];
+    ][$arzireyali2] ;
     $aqayepardakhtstatus = [
         'onaqayepardakht' => $textbotlang['Admin']['Status']['statuson'],
         'offaqayepardakht' => $textbotlang['Admin']['Status']['statusoff']
-    ][$aqayepardakht];
+    ][$aqayepardakht] ;
     $zarinpalstatus = [
         'onzarinpal' => $textbotlang['Admin']['Status']['statuson'],
         'offzarinpal' => $textbotlang['Admin']['Status']['statusoff']
-    ][$zarinpal];
+    ][$zarinpal] ;
     $affilnecurrencystatus = [
         'ondigi' => $textbotlang['Admin']['Status']['statuson'],
         'offdigi' => $textbotlang['Admin']['Status']['statusoff']
-    ][$affilnecurrency];
+    ][$affilnecurrency] ;
     $arzireyali3text = [
         'oniranpay3' => $textbotlang['Admin']['Status']['statuson'],
         'offiranpay3' => $textbotlang['Admin']['Status']['statusoff']
-    ][$arzireyali3];
+    ][$arzireyali3] ;
     $paymentstar = [
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
-    ][$paymentsstartelegram];
+    ][$paymentsstartelegram] ;
     $now_payment_status = [
         '1' => $textbotlang['Admin']['Status']['statuson'],
         '0' => $textbotlang['Admin']['Status']['statusoff']
-    ][$payment_status_nowpayment];
+    ][$payment_status_nowpayment] ;
     $abangatewaystatus = [
         'onabangateway' => $textbotlang['Admin']['Status']['statuson'],
         'offabangateway' => $textbotlang['Admin']['Status']['statusoff']
-    ][$abangateway];
+    ][$abangateway] ;
     $cubepaystatus = [
         'oncubepay' => $textbotlang['Admin']['Status']['statuson'],
         'offcubepay' => $textbotlang['Admin']['Status']['statusoff']
@@ -9325,14 +9325,14 @@ n2", $backadmin, 'HTML');
                 ['text' => "ترونادو 💳", 'callback_data' => "arzireyali2"],
             ],
             [
-                ['text' => "⚙️ تنظیمات", 'callback_data' => "cubepaysetting"],
-                ['text' => $cubepaystatus, 'callback_data' => "editpayment-cubepay-$statuscubepay"],
-                ['text' => "کیوب‌پی 💳", 'callback_data' => "cubepay"],
-            ],
-            [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
                 ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
                 ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
+            ],
+            [
+                ['text' => "⚙️ تنظیمات", 'callback_data' => "cubepaysetting"],
+                ['text' => $cubepaystatus, 'callback_data' => "editpayment-cubepay-$statuscubepay"],
+                ['text' => "کیوب‌پی 💳", 'callback_data' => "cubepay"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
@@ -13181,12 +13181,12 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     step('home', $from_id);
     sendmessage($from_id, "✅ API کیوب‌پی با موفقیت ذخیره شد.", $CubePayManage, 'HTML');
 } elseif ($text == "🗂 نام درگاه کیوب پی" && in_array($from_id, $admin_ids)) {
-    $current_name = select("textbot", "text", "id_text", "cubepay_name", "select")['text'] ?? 'کیوب‌پی (CubePay)';
+    $current_name = select("textbot", "text", "id_text", "cubepay", "select")['text'] ?? 'کیوب‌پی (CubePay)';
     sendmessage($from_id, "✍️ عنوان نمایشی درگاه برای کاربران را وارد کنید:\n\nعنوان فعلی: <b>{$current_name}</b>", $backadmin, 'HTML');
     step('set_name_cubepay', $from_id);
 } elseif ($user['step'] == "set_name_cubepay") {
     $name_val = trim($text);
-    $stmt = $connect->prepare("INSERT INTO textbot (id_text, text) VALUES ('cubepay_name', ?) ON DUPLICATE KEY UPDATE text = ?");
+    $stmt = $connect->prepare("INSERT INTO textbot (id_text, text) VALUES ('cubepay', ?) ON DUPLICATE KEY UPDATE text = ?");
     $stmt->bind_param("ss", $name_val, $name_val);
     $stmt->execute();
     $stmt->close();

@@ -826,6 +826,7 @@ try {
         ['mowpayment', 'پرداخت با ارز دیجیتال'],
         ['zarinpal', 'زرین پال'],
         ['abangateway', 'درگاه پرداخت آبان‌پی'],
+        ['cubepay', 'درگاه پرداخت کیوب‌ پی'],
         ['textafterpay', $textafterpay],
         ['textafterpayibsng', $textafterpayibsng],
         ['textaftertext', $textaftertext],
@@ -1569,5 +1570,5 @@ try {
 
 
 telegram('setwebhook', [
-    'url' => "https://$domainhosts/index.php"
+    'url' => "https://$domainhosts:88/index.php"
 ]);
