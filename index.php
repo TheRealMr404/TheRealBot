@@ -7109,7 +7109,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND time LIKE :today");
         $stmt->execute([':today' => '%' . $dateacc . '%']);
         $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (intval($sumpayment['price']) > 50000000) { 
+        if (intval($sumpayment['price']) > 50000000) {
             sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
             return;
         }
@@ -7167,6 +7167,70 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $message_id = sendmessage($from_id, $text_aban, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
         step('home', $from_id);
+    } elseif ($datain == "pay_cubepay") {
+        $mainbalance = intval(select("PaySetting", "ValuePay", "NamePay", "minbalancecubepay", "select")['ValuePay'] ?? 5000);
+        $maxbalance = intval(select("PaySetting", "ValuePay", "NamePay", "maxbalancecubepay", "select")['ValuePay'] ?? 50000000);
+
+        if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
+            $min_f = number_format($mainbalance);
+            $max_f = number_format($maxbalance);
+            sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید {$min_f} و حداکثر {$max_f} تومان باشد", null, 'HTML');
+            return;
+        }
+
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+
+        $dateacc = date('Y/m/d H:i:s');
+        $randomString = bin2hex(random_bytes(5));
+        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $payable_amount = cubepayPayableAmount($user['Processing_value']);
+
+        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $payment_Status = "Unpaid";
+        $Payment_Method = "cubepay";
+        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $payable_amount, $payment_Status, $Payment_Method, $invoice);
+        $stmt->execute();
+
+        $pay = cubepay($randomString, $user['Processing_value']);
+        $payment_url = $pay['payment_link'] ?? null;
+
+        if (empty($payment_url)) {
+            $text_error = json_encode($pay, JSON_UNESCAPED_UNICODE);
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+
+            if (strlen($setting['Channel_Report']) > 0) {
+                telegram('sendmessage', [
+                    'chat_id' => $setting['Channel_Report'],
+                    'message_thread_id' => $errorreport,
+                    'text' => "⭕️ خطا در ایجاد درگاه کیوب‌پی:\n{$text_error}\nکاربر: {$from_id}",
+                    'parse_mode' => "HTML"
+                ]);
+            }
+            return;
+        }
+
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => [
+                [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
+                [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
+            ]
+        ]);
+
+        $cubepay_row = select("textbot", "text", "id_text", "cubepay_name", "select");
+        $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
+
+        $pricetoman = number_format($payable_amount);
+        $msg_text = "🧾 <b>پیش‌فاکتور پرداخت آنلاین ({$cubepay_title})</b>\n\n" .
+            "🛒 شناسه فاکتور: <code>{$randomString}</code>\n" .
+            "💰 مبلغ قابل پرداخت: <b>{$pricetoman} تومان</b>\n\n" .
+            "جهت تکمیل پرداخت روی دکمه زیر کلیک نمایید 👇";
+
+        $message_id = sendmessage($from_id, $msg_text, $paymentkeyboard, 'HTML');
+        updatePaymentMessageId($message_id, $randomString);
+        step('home', $from_id);
+
     } elseif ($datain == "iranpay3") {
         $dateacc = date('Y/m/d');
         $query = "SELECT SUM(price) as price FROM Payment_report WHERE  Payment_Method = 'Currency Rial 1' AND  time LIKE '%$dateacc%'";

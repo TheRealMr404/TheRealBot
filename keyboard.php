@@ -287,6 +287,19 @@ $AbanGatewayManage = json_encode([
     ],
     'resize_keyboard' => true
 ]);
+
+$CubePayManage = json_encode([
+    'keyboard' => [
+        [['text' => "🗂 نام درگاه کیوب پی"], ['text' => "API کیوب پی"]],
+        [['text' => "وضعیت کارمزد کیوب پی"], ['text' => "درصد کارمزد کیوب پی"]],
+        [['text' => "💰 کش بک کیوب پی"]],
+        [['text' => "⬇️ حداقل مبلغ کیوب پی"], ['text' => "⬆️ حداکثر مبلغ کیوب پی"]],
+        [['text' => "📚 تنظیم آموزش کیوب پی"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
+    ],
+    'resize_keyboard' => true
+]);
+
 $setting_panel = json_encode([
     'keyboard' => [
         [['text' => "⚙️ وضعیت قابلیت ها"]],
@@ -319,6 +332,7 @@ $paymentstatussnotverify = getPaySettingValue("paymentstatussnotverify");
 $paymentsstartelegram = getPaySettingValue("statusstar");
 $payment_status_nowpayment = getPaySettingValue("statusnowpayment");
 $statusabangateway = getPaySettingValue("statusabangateway");
+$statuscubepay = getPaySettingValue("statuscubepay");
 $step_payment = [
     'inline_keyboard' => []
 ];
@@ -389,6 +403,14 @@ if ($statusabangateway == "onabangateway") {
     $aban_text_query = select("textbot", "text", "id_text", "abangateway", "select");
     $step_payment['inline_keyboard'][] = [
         ['text' => $aban_text_query['text'], 'callback_data' => "pay_abangateway", 'style' => 'primary']
+    ];
+}
+if ($statuscubepay == "oncubepay") {
+    $cubepay_row = select("textbot", "text", "id_text", "cubepay_name", "select");
+    $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
+    
+    $step_payment['inline_keyboard'][] = [
+        ['text' => $cubepay_title, 'callback_data' => "pay_cubepay", 'style' => 'primary']
     ];
 }
 $step_payment['inline_keyboard'][] = [

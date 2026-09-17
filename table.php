@@ -985,6 +985,15 @@ try {
         ['maxbalanceabangateway', $max],
         ['helpabangateway', '2'],
         ['endpointabangateway', '0'],
+        ['statuscubepay', 'offcubepay'],
+        ['apicubepay', '0'],
+        ['chashbackcubepay', '0'],
+        ['feestatuscubepay', 'offfeecubepay'],
+        ['feecubepay', '0'],
+        ['minbalancecubepay', $main],
+        ['maxbalancecubepay', $max],
+        ['helpcubepay', '2'],
+        
     ];
 
     if (!$table_exists) {

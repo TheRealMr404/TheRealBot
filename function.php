@@ -2474,3 +2474,71 @@ function getPanelCustomTitle($panel)
 
     return implode(' ', $parts);
 }
+
+
+function cubepayFeeValue()
+{
+    $val = select("PaySetting", "ValuePay", "NamePay", "feecubepay", "select")['ValuePay'] ?? 0;
+    return floatval($val);
+}
+
+function cubepayApplyFee($base, $fee)
+{
+    $base = intval($base);
+    if ($fee <= 0) {
+        return $base;
+    }
+
+    return $fee <= 100
+        ? (int) ceil($base * (1 + $fee / 100))
+        : $base + (int) round($fee);
+}
+
+function cubepayPayableAmount($price)
+{
+    $status = select("PaySetting", "ValuePay", "NamePay", "feestatuscubepay", "select")['ValuePay'] ?? 'offfeecubepay';
+    if ($status !== 'onfeecubepay') {
+        return intval($price);
+    }
+
+    return cubepayApplyFee($price, cubepayFeeValue());
+}
+
+function cubepay($order_id, $price)
+{
+    global $domainhosts;
+    $token_cubepay = select("PaySetting", "*", "NamePay", "apicubepay", "select")['ValuePay'] ?? '';
+    $amount_toman = cubepayPayableAmount($price);
+    
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_HTTPHEADER => array(
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . trim($token_cubepay)
+        ),
+        CURLOPT_POSTFIELDS => json_encode([
+            'price_amount' => $amount_toman,
+            'order_id' => $order_id,
+            'callback_url' => "https://$domainhosts/payment/cubepay.php",
+        ], JSON_UNESCAPED_UNICODE)
+    ));
+
+    $response = curl_exec($curl);
+    curl_close($curl);
+
+    $decoded = json_decode($response, true);
+    if (is_array($decoded) && empty($decoded['payment_link']) && !empty($decoded['pay_page_url'])) {
+        $decoded['payment_link'] = $decoded['pay_page_url'];
+    }
+
+    return $decoded;
+}
+

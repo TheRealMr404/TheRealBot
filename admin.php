@@ -291,7 +291,9 @@ if (in_array($text, $textadmin) || $datain == "admin") {
                 'Currency Rial 2' => $datatextbot['iranpay3'],
                 'Currency Rial 3' => $datatextbot['iranpay1'],
                 'paymentnotverify' => $datatextbot['textpaymentnotverify'],
-                'Star Telegram' => $datatextbot['text_star_telegram']
+                'Star Telegram' => $datatextbot['text_star_telegram'],
+                'cubepay' => 'کیوب‌پی',
+                'AbanGateway' => 'آبان‌پی'
 
             ][$tracepay['Payment_Method']];
             $paycount .= "
@@ -4279,6 +4281,24 @@ $text_expie_agent
             [['text' => "🔙 بازگشت", 'callback_data' => "abangatewaysetting"]]
         ]
     ]));
+}
+
+ elseif (preg_match('/^editpayment-cubepay-(.*)/', $datain, $dataget)) {
+    $current = $dataget[1];
+    $new_status = ($current == "oncubepay") ? "offcubepay" : "oncubepay";
+    
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('statuscubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $new_status, $new_status);
+    $stmt->execute();
+    $stmt->close();
+    
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id,
+        'text' => ($new_status == "oncubepay") ? "✅ درگاه کیوب‌پی روشن شد" : "❌ درگاه کیوب‌پی خاموش شد",
+        'show_alert' => false
+    ]);
+    
+    
 } elseif ($step == "set_endpointabangateway") {
     $new_endpoint = trim($message);
     if (!filter_var($new_endpoint, FILTER_VALIDATE_URL)) {
@@ -9009,6 +9029,8 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     $abangatewaystatus = ($abangateway == 'onabangateway')
         ? ($textbotlang['Admin']['Status']['statuson'] ?? '🟢 فعال')
         : ($textbotlang['Admin']['Status']['statusoff'] ?? '🔴 غیرفعال');
+    $statuscubepay = select("PaySetting", "ValuePay", "NamePay", "statuscubepay", "select")['ValuePay'] ?? 'oncubepay';
+    $cubepaystatus = ($statuscubepay == "oncubepay") ? $textbotlang['Admin']['Status']['statuson'] : $textbotlang['Admin']['Status']['statusoff'];
     $Bot_Status = json_encode([
         'inline_keyboard' => [
             [
@@ -9049,7 +9071,12 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
                 ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
-                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
+                ['text' => "آبان پی 💳", 'callback_data' => "abangateway"],
+            ],
+            [
+                ['text' => "⚙️ تنظیمات", 'callback_data' => "cubepaysetting"],
+                ['text' => $cubepaystatus, 'callback_data' => "editpayment-cubepay-$statuscubepay"],
+                ['text' => "کیوب‌پی 💳", 'callback_data' => "cubepay"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "aqayepardakhtsetting"],
@@ -13129,4 +13156,95 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     update("PaySetting", "ValuePay", $new_endpoint, "NamePay", "endpointabangateway");
     sendmessage($from_id, "✅ آدرس درگاه با موفقیت به روز شد.", $AbanGatewayManage, 'HTML');
     step("home", $from_id);
+} elseif ($datain == "cubepaysetting" && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    sendmessage($from_id, "⚙️ به منوی تنظیمات درگاه CubePay خوش آمدید:", $CubePayManage, 'HTML');
+} elseif ($text == "API کیوب پی" && in_array($from_id, $admin_ids)) {
+    $current_token = select("PaySetting", "ValuePay", "NamePay", "apicubepay", "select")['ValuePay'] ?? 'تنظیم نشده';
+    sendmessage($from_id, "🔑 توکن دریافتی از کیوب‌پی را ارسال کنید:\n\nتوکن فعلی: <code>{$current_token}</code>", $backadmin, 'HTML');
+    step('set_token_cubepay', $from_id);
+} elseif ($user['step'] == "set_token_cubepay") {
+    $token_val = trim($text);
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('apicubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $token_val, $token_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ API کیوب‌پی با موفقیت ذخیره شد.", $CubePayManage, 'HTML');
+} elseif ($text == "🗂 نام درگاه کیوب پی" && in_array($from_id, $admin_ids)) {
+    $current_name = select("textbot", "text", "id_text", "cubepay_name", "select")['text'] ?? 'کیوب‌پی (CubePay)';
+    sendmessage($from_id, "✍️ عنوان نمایشی درگاه برای کاربران را وارد کنید:\n\nعنوان فعلی: <b>{$current_name}</b>", $backadmin, 'HTML');
+    step('set_name_cubepay', $from_id);
+} elseif ($user['step'] == "set_name_cubepay") {
+    $name_val = trim($text);
+    $stmt = $connect->prepare("INSERT INTO textbot (id_text, text) VALUES ('cubepay_name', ?) ON DUPLICATE KEY UPDATE text = ?");
+    $stmt->bind_param("ss", $name_val, $name_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ نام نمایشی درگاه به‌روزرسانی شد.", $CubePayManage, 'HTML');
+} elseif ($text == "وضعیت کارمزد کیوب پی" && in_array($from_id, $admin_ids)) {
+    $status = select("PaySetting", "ValuePay", "NamePay", "feestatuscubepay", "select")['ValuePay'] ?? 'offfeecubepay';
+    $new_status = ($status === 'onfeecubepay') ? 'offfeecubepay' : 'onfeecubepay';
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('feestatuscubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $new_status, $new_status);
+    $stmt->execute();
+    $stmt->close();
+    $status_fa = ($new_status === 'onfeecubepay') ? 'روشن ✅' : 'خاموش ❌';
+    sendmessage($from_id, "⚙️ وضعیت کارمزد کیوب‌پی به {$status_fa} تغییر یافت.", $CubePayManage, 'HTML');
+} elseif ($text == "درصد کارمزد کیوب پی" && in_array($from_id, $admin_ids)) {
+    sendmessage($from_id, "📊 لطفاً مقدار کارمزد را ارسال کنید (مثلاً عدد 2 برای 2 درصد):", $backadmin, 'HTML');
+    step('set_fee_cubepay', $from_id);
+} elseif ($user['step'] == "set_fee_cubepay") {
+    $fee_val = floatval(trim($text));
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('feecubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $fee_val, $fee_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ کارمزد کیوب‌پی روی {$fee_val} ذخیره شد.", $CubePayManage, 'HTML');
+} elseif ($text == "💰 کش بک کیوب پی" && in_array($from_id, $admin_ids)) {
+    sendmessage($from_id, "🎁 درصد کش‌بک (پاداش شارژ) برای درگاه کیوب‌پی را به عدد وارد کنید (مثال: 5 برای ۵ درصد):", $backadmin, 'HTML');
+    step('set_cashback_cubepay', $from_id);
+} elseif ($user['step'] == "set_cashback_cubepay") {
+    $cb_val = floatval(trim($text));
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('cashbackcubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $cb_val, $cb_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ کش‌بک درگاه با موفقیت روی {$cb_val}% تنظیم شد.", $CubePayManage, 'HTML');
+} elseif ($text == "⬇️ حداقل مبلغ کیوب پی" && in_array($from_id, $admin_ids)) {
+    sendmessage($from_id, "📉 حداقل مبلغ واریز را به تومان وارد کنید (مثال: 5000):", $backadmin, 'HTML');
+    step('set_min_cubepay', $from_id);
+} elseif ($user['step'] == "set_min_cubepay") {
+    $min_val = intval(trim($text));
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('minbalancecubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $min_val, $min_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ حداقل مبلغ تراکنش روی " . number_format($min_val) . " تومان تنظیم شد.", $CubePayManage, 'HTML');
+} elseif ($text == "⬆️ حداکثر مبلغ کیوب پی" && in_array($from_id, $admin_ids)) {
+    sendmessage($from_id, "📈 حداکثر مبلغ واریز را به تومان وارد کنید (مثال: 50000000):", $backadmin, 'HTML');
+    step('set_max_cubepay', $from_id);
+} elseif ($user['step'] == "set_max_cubepay") {
+    $max_val = intval(trim($text));
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('maxbalancecubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $max_val, $max_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ حداکثر مبلغ تراکنش روی " . number_format($max_val) . " تومان تنظیم شد.", $CubePayManage, 'HTML');
+} elseif ($text == "📚 تنظیم آموزش کیوب پی" && in_array($from_id, $admin_ids)) {
+    sendmessage($from_id, "📌 متن آموزش پرداخت با کیوب‌پی را ارسال فرمایید (یا 0 برای غیرفعال‌سازی):", $backadmin, 'HTML');
+    step('set_help_cubepay', $from_id);
+} elseif ($user['step'] == "set_help_cubepay") {
+    $help_val = trim($text);
+    $stmt = $connect->prepare("INSERT INTO PaySetting (NamePay, ValuePay) VALUES ('helpcubepay', ?) ON DUPLICATE KEY UPDATE ValuePay = ?");
+    $stmt->bind_param("ss", $help_val, $help_val);
+    $stmt->execute();
+    $stmt->close();
+    step('home', $from_id);
+    sendmessage($from_id, "✅ متن آموزش درگاه با موفقیت ذخیره شد.", $CubePayManage, 'HTML');
 }
