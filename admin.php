@@ -9327,7 +9327,7 @@ n2", $backadmin, 'HTML');
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "abangatewaysetting"],
                 ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway"],
-                ['text' => "💳 آبان پی", 'callback_data' => "abangateway"],
+                ['text' => "آبان پی 💳", 'callback_data' => "abangateway"],
             ],
             [
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "cubepaysetting"],
