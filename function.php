@@ -2476,42 +2476,43 @@ function getPanelCustomTitle($panel)
 }
 
 
-// function cubepayFeeValue()
-// {
-//     $val = select("PaySetting", "ValuePay", "NamePay", "feecubepay", "select")['ValuePay'] ?? 0;
-//     return floatval($val);
-// }
+function cubepayFeeValue()
+{
+    $val = select("PaySetting", "ValuePay", "NamePay", "feecubepay", "select")['ValuePay'] ?? 0;
+    return floatval($val);
+}
 
-// function cubepayApplyFee($base, $fee)
-// {
-//     $base = intval($base);
-//     if ($fee <= 0) {
-//         return $base;
-//     }
+function cubepayApplyFee($base, $fee)
+{
+    $base = intval($base);
+    if ($fee <= 0) {
+        return $base;
+    }
 
-//     return $fee <= 100
-//         ? (int) ceil($base * (1 + $fee / 100))
-//         : $base + (int) round($fee);
-// }
+    return $fee <= 100
+        ? (int) ceil($base * (1 + $fee / 100))
+        : $base + (int) round($fee);
+}
 
-// function cubepayPayableAmount($price)
-// {
-//     $status = select("PaySetting", "ValuePay", "NamePay", "feestatuscubepay", "select")['ValuePay'] ?? 'offfeecubepay';
-//     if ($status !== 'onfeecubepay') {
-//         return intval($price);
-//     }
+function cubepayPayableAmount($price)
+{
+    $status = select("PaySetting", "ValuePay", "NamePay", "feestatuscubepay", "select")['ValuePay'] ?? 'offfeecubepay';
+    if ($status !== 'onfeecubepay') {
+        return intval($price);
+    }
 
-//     return cubepayApplyFee($price, cubepayFeeValue());
-// }
+    return cubepayApplyFee($price, cubepayFeeValue());
+}
 
 function cubepay($order_id, $price)
 {
     global $domainhosts;
     $token_cubepay = select("PaySetting", "*", "NamePay", "apicubepay", "select")['ValuePay'] ?? '';
+    $amount_toman = cubepayPayableAmount($price);
     
     $curl = curl_init();
     curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://cubevps.ir/smspay/api/create-payment.php',
+        CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
@@ -2524,7 +2525,7 @@ function cubepay($order_id, $price)
             'Authorization: Bearer ' . trim($token_cubepay)
         ),
         CURLOPT_POSTFIELDS => json_encode([
-            'price_amount' => intval($price),
+            'price_amount' => $amount_toman,
             'order_id' => $order_id,
             'callback_url' => "https://$domainhosts/payment/cubepay.php",
         ], JSON_UNESCAPED_UNICODE)
