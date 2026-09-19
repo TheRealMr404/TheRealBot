@@ -2553,8 +2553,11 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
 {
     global $pdo;
 
-    $start_sql = date('Y-m-d H:i:s', $start_ts);
-    $end_sql = date('Y-m-d H:i:s', $end_ts);
+    // پوشش انواع فرمت‌های ذخیره‌سازی تاریخ در دیتابیس
+    $start_dash  = date('Y-m-d H:i:s', $start_ts);
+    $end_dash    = date('Y-m-d H:i:s', $end_ts);
+    $start_slash = date('Y/m/d H:i:s', $start_ts);
+    $end_slash   = date('Y/m/d H:i:s', $end_ts);
 
     try {
         // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
@@ -2567,7 +2570,7 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $res_order = $stmt->fetch(PDO::FETCH_ASSOC);
         $count_order = (int)($res_order['count'] ?? 0);
-        $sum_order = (float)($res_order['sum'] ?? 0);
+        $sum_order   = (float)($res_order['sum'] ?? 0);
 
         // ۲. اکانت‌های تست
         $sql_test = "SELECT COUNT(*) AS count 
@@ -2578,30 +2581,52 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
-        // تابع کمکی برای خواندن از جدول service_other
-        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql) {
+        // ۳. آمار تمدید اشتراک‌ها (دقیقاً type = 'extend_user' و status = 'paid')
+        $sql_extend = "SELECT COUNT(*) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
+                       FROM service_other 
+                       WHERE type = 'extend_user' 
+                       AND LOWER(status) = 'paid'
+                       AND (
+                           (time BETWEEN :s_dash AND :e_dash)
+                           OR (time BETWEEN :s_slash AND :e_slash)
+                           OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
+                       )";
+        $stmt_ext = $pdo->prepare($sql_extend);
+        $stmt_ext->execute([
+            ':s_dash'  => $start_dash,
+            ':e_dash'  => $end_dash,
+            ':s_slash' => $start_slash,
+            ':e_slash' => $end_slash,
+            ':s_ts'    => $start_ts,
+            ':e_ts'    => $end_ts
+        ]);
+        $res_extend   = $stmt_ext->fetch(PDO::FETCH_ASSOC);
+        $count_extend = (int)($res_extend['count'] ?? 0);
+        $sum_extend   = (float)($res_extend['sum'] ?? 0);
+
+        // تابع کمکی برای سایر خدمات جدول service_other (حجم، زمان، تغییر لوکیشن)
+        $fetchServiceOther = function ($type) use ($pdo, $start_ts, $end_ts, $start_dash, $end_dash, $start_slash, $end_slash) {
             $sql = "SELECT COUNT(*) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
                     FROM service_other 
                     WHERE type = :type 
                     AND (
-                        (time BETWEEN :s_sql AND :e_sql) 
+                        (time BETWEEN :s_dash AND :e_dash)
+                        OR (time BETWEEN :s_slash AND :e_slash)
                         OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
-                    ) 
-                    {$extra_where}";
+                    )";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
-                ':type'  => $type,
-                ':s_sql' => $start_sql,
-                ':e_sql' => $end_sql,
-                ':s_ts'  => $start_ts,
-                ':e_ts'  => $end_ts
+                ':type'    => $type,
+                ':s_dash'  => $start_dash,
+                ':e_dash'  => $end_dash,
+                ':s_slash' => $start_slash,
+                ':e_slash' => $end_slash,
+                ':s_ts'    => $start_ts,
+                ':e_ts'    => $end_ts
             ]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             return [(int)($row['count'] ?? 0), (float)($row['sum'] ?? 0)];
         };
-
-        // ۳. تمدید
-        list($count_extend, $sum_extend) = $fetchServiceOther('extend_user', "AND (status = 'paid' OR status IS NULL OR status != 'unpaid')");
 
         // ۴. حجم اضافه
         list($count_extra_vol, $sum_extra_vol) = $fetchServiceOther('extra_user');
@@ -2617,26 +2642,30 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $stmt_user->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
-        // ۸. ورودی درگاه‌های پرداخت با ستون دقیق time
+        // ۸. ورودی درگاه‌های پرداخت در این بازه
         $sql_pay = "SELECT COUNT(id) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
                     FROM Payment_report 
-                    WHERE payment_Status = 'paid' 
+                    WHERE (LOWER(payment_Status) = 'paid' OR payment_Status = '1') 
                     AND (
-                        (time BETWEEN :s_sql AND :e_sql) 
+                        (time BETWEEN :s_dash AND :e_dash)
+                        OR (time BETWEEN :s_slash AND :e_slash)
                         OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
                     )
                     AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
         $stmt_pay = $pdo->prepare($sql_pay);
         $stmt_pay->execute([
-            ':s_ts'  => $start_ts,
-            ':e_ts'  => $end_ts,
-            ':s_sql' => $start_sql,
-            ':e_sql' => $end_sql
+            ':s_ts'    => $start_ts,
+            ':e_ts'    => $end_ts,
+            ':s_dash'  => $start_dash,
+            ':e_dash'  => $end_dash,
+            ':s_slash' => $start_slash,
+            ':e_slash' => $end_slash
         ]);
-        $res_pay = $stmt_pay->fetch(PDO::FETCH_ASSOC);
+        $res_pay   = $stmt_pay->fetch(PDO::FETCH_ASSOC);
         $count_pay = (int)($res_pay['count'] ?? 0);
-        $sum_pay = (float)($res_pay['sum'] ?? 0);
+        $sum_pay   = (float)($res_pay['sum'] ?? 0);
 
+        // جمع کل گردش و فروش دوره
         $total_sales = $sum_order + $sum_extend + $sum_extra_vol + $sum_extra_time + $sum_loc;
         $time_text = !empty($time_label) ? "\n⏳ بازه زمانی: <code>{$time_label}</code>\n" : "";
 
@@ -2663,9 +2692,8 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
 • اکانت‌های تست: <code>" . number_format($count_test) . "</code> عدد
 
 📥 <b>شارژ درگاه‌های آنلاین:</b>
-• تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)
-";
+• تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)";
     } catch (Exception $e) {
-        return "⚠️ <b>خطا در دیتابیس:</b>\n<code>" . $e->getMessage() . "</code>";
+        return "⚠️ <b>خطا در دریافت آمار:</b>\n<code>" . $e->getMessage() . "</code>";
     }
 }
