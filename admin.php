@@ -358,151 +358,47 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     } else {
         sendmessage($from_id, $statisticsall,$keyboard_stat, 'HTML');
     }
-}// تابع کمکی جهت دریافت یکپارچه و دقیق گزارشات زمانی
-if (!function_exists('generatePeriodicReport')) {
-    function generatePeriodicReport($pdo, $title, $start_ts, $end_ts, $time_label = '')
-    {
-        // فرمت استاندارد دیت‌تایم SQL برای ستون‌هایی که متنی یا TIMESTAMP هستند
-        $start_sql = date('Y-m-d H:i:s', $start_ts);
-        $end_sql = date('Y-m-d H:i:s', $end_ts);
-
-        // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
-        $sql_order = "SELECT COUNT(*) AS count, SUM(price_product) AS sum FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND Status != 'Unpaid' AND name_product != 'سرویس تست'";
-        $stmt = $pdo->prepare($sql_order);
-        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $res_order = $stmt->fetch(PDO::FETCH_ASSOC);
-        $count_order = (int)($res_order['count'] ?? 0);
-        $sum_order = (float)($res_order['sum'] ?? 0);
-
-        // ۲. اکانت‌های تست
-        $sql_test = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND name_product = 'سرویس تست'";
-        $stmt = $pdo->prepare($sql_test);
-        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
-
-        // تابع محلی برای جدول service_other (پوشش همزمان تایم‌استمپ عددی و دیت‌تایم متنی)
-        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql) {
-            $sql = "SELECT COUNT(*) AS count, SUM(price) AS sum FROM service_other 
-                    WHERE type = :type 
-                    AND ((time BETWEEN :s_sql AND :e_sql) OR (time BETWEEN :s_ts AND :e_ts)) 
-                    {$extra_where}";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                ':type'  => $type,
-                ':s_sql' => $start_sql,
-                ':e_sql' => $end_sql,
-                ':s_ts'  => $start_ts,
-                ':e_ts'  => $end_ts
-            ]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            return [(int)($row['count'] ?? 0), (float)($row['sum'] ?? 0)];
-        };
-
-        // ۳. تمدید
-        list($count_extend, $sum_extend) = $fetchServiceOther('extend_user', "AND (status = 'paid' OR status IS NULL OR status != 'unpaid')");
-
-        // ۴. حجم اضافه
-        list($count_extra_vol, $sum_extra_vol) = $fetchServiceOther('extra_user');
-
-        // ۵. زمان اضافه
-        list($count_extra_time, $sum_extra_time) = $fetchServiceOther('extra_time_user');
-
-        // ۶. تغییر لوکیشن
-        list($count_loc, $sum_loc) = $fetchServiceOther('change_location');
-
-        // ۷. کاربران جدید ثبت‌نامی
-        $stmt_user = $pdo->prepare("SELECT COUNT(id) AS count FROM user WHERE (register BETWEEN :s_ts AND :e_ts) AND register != 'none'");
-        $stmt_user->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
-
-        // ۸. ورودی درگاه‌های پرداخت در این بازه
-        $sql_pay = "SELECT COUNT(id) AS count, SUM(price) AS sum FROM Payment_report 
-                    WHERE payment_Status = 'paid' 
-                    AND ((dateacc BETWEEN :s_ts AND :e_ts) OR (dateacc BETWEEN :s_sql AND :e_sql))
-                    AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
-        $stmt_pay = $pdo->prepare($sql_pay);
-        $stmt_pay->execute([
-            ':s_ts'  => $start_ts,
-            ':e_ts'  => $end_ts,
-            ':s_sql' => $start_sql,
-            ':e_sql' => $end_sql
-        ]);
-        $res_pay = $stmt_pay->fetch(PDO::FETCH_ASSOC);
-        $count_pay = (int)($res_pay['count'] ?? 0);
-        $sum_pay = (float)($res_pay['sum'] ?? 0);
-
-        // جمع کل گردش و فروش
-        $total_sales = $sum_order + $sum_extend + $sum_extra_vol + $sum_extra_time + $sum_loc;
-
-        $time_text = !empty($time_label) ? "\n⏳ بازه زمانی: <code>{$time_label}</code>\n" : "";
-
-        return "📊 <b>{$title}</b>
-━━━━━━━━━━━━━━━━━━{$time_text}
-🛒 <b>خرید سرویس اولیه:</b>
-• تعداد: <code>" . number_format($count_order) . "</code> عدد
-• مبلغ: <code>" . number_format($sum_order) . "</code> تومان
-
-🔄 <b>تمدید اشتراک:</b>
-• تعداد: <code>" . number_format($count_extend) . "</code> بار
-• مبلغ: <code>" . number_format($sum_extend) . "</code> تومان
-
-📦 <b>خدمات مازاد و جانبی:</b>
-• حجم اضافه: <code>" . number_format($count_extra_vol) . "</code> بار (<code>" . number_format($sum_extra_vol) . "</code> تومان)
-• زمان اضافه: <code>" . number_format($count_extra_time) . "</code> بار (<code>" . number_format($sum_extra_time) . "</code> تومان)
-• تغییر لوکیشن: <code>" . number_format($count_loc) . "</code> بار (<code>" . number_format($sum_loc) . "</code> تومان)
-
-💰 <b>مجموع کل فروش این دوره:</b>
-• <b>" . number_format($total_sales) . " تومان</b>
-
-👥 <b>آمار کاربران:</b>
-• کاربران جدید: <code>" . number_format($count_users) . "</code> نفر
-• اکانت‌های تست: <code>" . number_format($count_test) . "</code> عدد
-
-📥 <b>شارژ درگاه‌های آنلاین:</b>
-• تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)
-";
-    }
-}
-
-// -------------------------------------------------------------
-// هندلرهای دکمه‌های آمار در ادمین
-// -------------------------------------------------------------
-
-if ($datain == "hoursago_stat") {
+}elseif ($datain == "hoursago_stat") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $start_ts = time() - 3600;
     $end_ts = time();
-    $report = generatePeriodicReport($pdo, "آمار ۱ ساعت گذشته", $start_ts, $end_ts);
+    $report = generatePeriodicReport("آمار ۱ ساعت گذشته", $start_ts, $end_ts);
     Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
 } elseif ($datain == "yesterday_stat") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $start_ts = strtotime(date('Y-m-d 00:00:00', strtotime("-1 days")));
     $end_ts = strtotime(date('Y-m-d 23:59:59', strtotime("-1 days")));
     $time_label = date('Y/m/d', $start_ts);
-    $report = generatePeriodicReport($pdo, "آمار روز گذشته", $start_ts, $end_ts, $time_label);
+    $report = generatePeriodicReport("آمار روز گذشته", $start_ts, $end_ts, $time_label);
     Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
 } elseif ($datain == "today_stat") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $start_ts = strtotime(date('Y-m-d 00:00:00'));
     $end_ts = time();
     $time_label = date('Y/m/d', $start_ts) . " تا الان";
-    $report = generatePeriodicReport($pdo, "آمار امروز تا این لحظه", $start_ts, $end_ts, $time_label);
+    $report = generatePeriodicReport("آمار امروز تا این لحظه", $start_ts, $end_ts, $time_label);
     Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
 } elseif ($datain == "month_old_stat") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $start_ts = strtotime(date('Y-m-01 00:00:00', strtotime("first day of last month")));
     $end_ts = strtotime(date('Y-m-t 23:59:59', strtotime("last day of last month")));
     $time_label = date('Y/m/d', $start_ts) . " تا " . date('Y/m/d', $end_ts);
-    $report = generatePeriodicReport($pdo, "آمار ماه گذشته میلادی", $start_ts, $end_ts, $time_label);
+    $report = generatePeriodicReport("آمار ماه گذشته میلادی", $start_ts, $end_ts, $time_label);
     Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
 } elseif ($datain == "month_current_stat") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $start_ts = strtotime(date('Y-m-01 00:00:00'));
     $end_ts = time();
     $time_label = date('Y/m/d', $start_ts) . " تا الان";
-    $report = generatePeriodicReport($pdo, "آمار ماه جاری میلادی", $start_ts, $end_ts, $time_label);
+    $report = generatePeriodicReport("آمار ماه جاری میلادی", $start_ts, $end_ts, $time_label);
     Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
 } elseif ($datain == "view_stat_time") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     sendmessage($from_id, sprintf($textbotlang['Admin']['getstats'], date('Y/m/d')), $backadmin, 'HTML');
     step("get_time_start", $from_id);
 
@@ -527,7 +423,6 @@ if ($datain == "hoursago_stat") {
     $start_raw = trim($userdata['start_time']);
     $end_raw = trim($input_clean);
 
-    // محاسبه تایم‌استمپ با فاصله صحیح بین تاریخ و ساعت
     $start_ts = strtotime(str_replace('/', '-', $start_raw) . " 00:00:00");
     $end_ts = strtotime(str_replace('/', '-', $end_raw) . " 23:59:59");
 
@@ -538,7 +433,7 @@ if ($datain == "hoursago_stat") {
     }
 
     $time_label = "{$start_raw} تا {$end_raw}";
-    $report = generatePeriodicReport($pdo, "آمار بازه زمانی انتخابی", $start_ts, $end_ts, $time_label);
+    $report = generatePeriodicReport("آمار بازه زمانی انتخابی", $start_ts, $end_ts, $time_label);
 
     step('home', $from_id);
     sendmessage($from_id, $report, $keyboardadmin, 'HTML');
