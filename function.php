@@ -2552,13 +2552,17 @@ function cubepay($order_id, $price)
 function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
 {
     global $pdo;
-    
+
     $start_sql = date('Y-m-d H:i:s', $start_ts);
     $end_sql = date('Y-m-d H:i:s', $end_ts);
 
     try {
         // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
-        $sql_order = "SELECT COUNT(*) AS count, SUM(price_product) AS sum FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND Status != 'Unpaid' AND name_product != 'سرویس تست'";
+        $sql_order = "SELECT COUNT(*) AS count, SUM(CAST(price_product AS UNSIGNED)) AS sum 
+                      FROM invoice 
+                      WHERE (CAST(time_sell AS UNSIGNED) BETWEEN :s_ts AND :e_ts) 
+                      AND Status != 'Unpaid' 
+                      AND name_product != 'سرویس تست'";
         $stmt = $pdo->prepare($sql_order);
         $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $res_order = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -2566,16 +2570,23 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $sum_order = (float)($res_order['sum'] ?? 0);
 
         // ۲. اکانت‌های تست
-        $sql_test = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND name_product = 'سرویس تست'";
+        $sql_test = "SELECT COUNT(*) AS count 
+                     FROM invoice 
+                     WHERE (CAST(time_sell AS UNSIGNED) BETWEEN :s_ts AND :e_ts) 
+                     AND name_product = 'سرویس تست'";
         $stmt = $pdo->prepare($sql_test);
         $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
-        // تابع محلی برای جدول service_other (پوشش رشته‌ای و عددی زمان)
+        // تابع کمکی برای خواندن از جدول service_other
         $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql) {
-            $sql = "SELECT COUNT(*) AS count, SUM(price) AS sum FROM service_other 
+            $sql = "SELECT COUNT(*) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
+                    FROM service_other 
                     WHERE type = :type 
-                    AND ((time BETWEEN :s_sql AND :e_sql) OR (time BETWEEN :s_ts AND :e_ts)) 
+                    AND (
+                        (time BETWEEN :s_sql AND :e_sql) 
+                        OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
+                    ) 
                     {$extra_where}";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -2601,15 +2612,19 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         // ۶. تغییر لوکیشن
         list($count_loc, $sum_loc) = $fetchServiceOther('change_location');
 
-        // ۷. کاربران جدید
-        $stmt_user = $pdo->prepare("SELECT COUNT(id) AS count FROM user WHERE (register BETWEEN :s_ts AND :e_ts) AND register != 'none'");
+        // ۷. کاربران جدید ثبت‌نامی
+        $stmt_user = $pdo->prepare("SELECT COUNT(id) AS count FROM user WHERE (CAST(register AS UNSIGNED) BETWEEN :s_ts AND :e_ts) AND register != 'none'");
         $stmt_user->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
         $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
-        // ۸. ورودی درگاه‌های پرداخت
-        $sql_pay = "SELECT COUNT(id) AS count, SUM(price) AS sum FROM Payment_report 
+        // ۸. ورودی درگاه‌های پرداخت با ستون دقیق time
+        $sql_pay = "SELECT COUNT(id) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
+                    FROM Payment_report 
                     WHERE payment_Status = 'paid' 
-                    AND ((dateacc BETWEEN :s_ts AND :e_ts) OR (dateacc BETWEEN :s_sql AND :e_sql))
+                    AND (
+                        (time BETWEEN :s_sql AND :e_sql) 
+                        OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
+                    )
                     AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
         $stmt_pay = $pdo->prepare($sql_pay);
         $stmt_pay->execute([
@@ -2651,6 +2666,6 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
 • تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)
 ";
     } catch (Exception $e) {
-        return "⚠️ <b>خطا در دیتابیس هنگام گزارش‌گیری:</b>\n<code>" . $e->getMessage() . "</code>";
+        return "⚠️ <b>خطا در دیتابیس:</b>\n<code>" . $e->getMessage() . "</code>";
     }
 }
