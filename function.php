@@ -2546,4 +2546,4 @@ function cubepay($order_id, $price)
     }
 
     return json_decode($response, true);
-}
+}ط
