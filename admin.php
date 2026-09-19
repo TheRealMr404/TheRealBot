@@ -358,496 +358,190 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     } else {
         sendmessage($from_id, $statisticsall,$keyboard_stat, 'HTML');
     }
-}elseif ($datain == "hoursago_stat") {
-    $desired_date_time_start = time() - 3600;
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND Status != 'Unpaid'  AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $time_current = time();
-    $stmt->bindParam(':requestedDate', $desired_date_time_start);
-    $stmt->bindParam(':requestedDateend', $time_current);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $desired_date_time_start);
-    $stmt->bindParam(':requestedDateend', $time_current);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  time  >= NOW() - INTERVAL 1 HOUR AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $extra_time_stat['count'];
-    $sum_change_location = number_format($extra_time_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $desired_date_time_start);
-    $stmt->bindParam(':requestedDateend', $time_current);
-    $stmt->execute();
-    $countextendday = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار ۱ ساعت گذشته</b>
+}// تابع کمکی جهت دریافت یکپارچه و دقیق گزارشات زمانی
+if (!function_exists('generatePeriodicReport')) {
+    function generatePeriodicReport($pdo, $title, $start_ts, $end_ts, $time_label = '')
+    {
+        // فرمت استاندارد دیت‌تایم SQL برای ستون‌هایی که متنی یا TIMESTAMP هستند
+        $start_sql = date('Y-m-d H:i:s', $start_ts);
+        $end_sql = date('Y-m-d H:i:s', $end_ts);
 
+        // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
+        $sql_order = "SELECT COUNT(*) AS count, SUM(price_product) AS sum FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND Status != 'Unpaid' AND name_product != 'سرویس تست'";
+        $stmt = $pdo->prepare($sql_order);
+        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
+        $res_order = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_order = (int)($res_order['count'] ?? 0);
+        $sum_order = (float)($res_order['sum'] ?? 0);
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+        // ۲. اکانت‌های تست
+        $sql_test = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :s_ts AND :e_ts) AND name_product = 'سرویس تست'";
+        $stmt = $pdo->prepare($sql_test);
+        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
+        $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+        // تابع محلی برای جدول service_other (پوشش همزمان تایم‌استمپ عددی و دیت‌تایم متنی)
+        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql) {
+            $sql = "SELECT COUNT(*) AS count, SUM(price) AS sum FROM service_other 
+                    WHERE type = :type 
+                    AND ((time BETWEEN :s_sql AND :e_sql) OR (time BETWEEN :s_ts AND :e_ts)) 
+                    {$extra_where}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':type'  => $type,
+                ':s_sql' => $start_sql,
+                ':e_sql' => $end_sql,
+                ':s_ts'  => $start_ts,
+                ':e_ts'  => $end_ts
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return [(int)($row['count'] ?? 0), (float)($row['sum'] ?? 0)];
+        };
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
+        // ۳. تمدید
+        list($count_extend, $sum_extend) = $fetchServiceOther('extend_user', "AND (status = 'paid' OR status IS NULL OR status != 'unpaid')");
 
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
+        // ۴. حجم اضافه
+        list($count_extra_vol, $sum_extra_vol) = $fetchServiceOther('extra_user');
 
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
+        // ۵. زمان اضافه
+        list($count_extra_time, $sum_extra_time) = $fetchServiceOther('extra_time_user');
 
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countextendday نفر
+        // ۶. تغییر لوکیشن
+        list($count_loc, $sum_loc) = $fetchServiceOther('change_location');
+
+        // ۷. کاربران جدید ثبت‌نامی
+        $stmt_user = $pdo->prepare("SELECT COUNT(id) AS count FROM user WHERE (register BETWEEN :s_ts AND :e_ts) AND register != 'none'");
+        $stmt_user->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
+        $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
+
+        // ۸. ورودی درگاه‌های پرداخت در این بازه
+        $sql_pay = "SELECT COUNT(id) AS count, SUM(price) AS sum FROM Payment_report 
+                    WHERE payment_Status = 'paid' 
+                    AND ((dateacc BETWEEN :s_ts AND :e_ts) OR (dateacc BETWEEN :s_sql AND :e_sql))
+                    AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
+        $stmt_pay = $pdo->prepare($sql_pay);
+        $stmt_pay->execute([
+            ':s_ts'  => $start_ts,
+            ':e_ts'  => $end_ts,
+            ':s_sql' => $start_sql,
+            ':e_sql' => $end_sql
+        ]);
+        $res_pay = $stmt_pay->fetch(PDO::FETCH_ASSOC);
+        $count_pay = (int)($res_pay['count'] ?? 0);
+        $sum_pay = (float)($res_pay['sum'] ?? 0);
+
+        // جمع کل گردش و فروش
+        $total_sales = $sum_order + $sum_extend + $sum_extra_vol + $sum_extra_time + $sum_loc;
+
+        $time_text = !empty($time_label) ? "\n⏳ بازه زمانی: <code>{$time_label}</code>\n" : "";
+
+        return "📊 <b>{$title}</b>
+━━━━━━━━━━━━━━━━━━{$time_text}
+🛒 <b>خرید سرویس اولیه:</b>
+• تعداد: <code>" . number_format($count_order) . "</code> عدد
+• مبلغ: <code>" . number_format($sum_order) . "</code> تومان
+
+🔄 <b>تمدید اشتراک:</b>
+• تعداد: <code>" . number_format($count_extend) . "</code> بار
+• مبلغ: <code>" . number_format($sum_extend) . "</code> تومان
+
+📦 <b>خدمات مازاد و جانبی:</b>
+• حجم اضافه: <code>" . number_format($count_extra_vol) . "</code> بار (<code>" . number_format($sum_extra_vol) . "</code> تومان)
+• زمان اضافه: <code>" . number_format($count_extra_time) . "</code> بار (<code>" . number_format($sum_extra_time) . "</code> تومان)
+• تغییر لوکیشن: <code>" . number_format($count_loc) . "</code> بار (<code>" . number_format($sum_loc) . "</code> تومان)
+
+💰 <b>مجموع کل فروش این دوره:</b>
+• <b>" . number_format($total_sales) . " تومان</b>
+
+👥 <b>آمار کاربران:</b>
+• کاربران جدید: <code>" . number_format($count_users) . "</code> نفر
+• اکانت‌های تست: <code>" . number_format($count_test) . "</code> عدد
+
+📥 <b>شارژ درگاه‌های آنلاین:</b>
+• تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)
 ";
-    Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
+    }
+}
+
+// -------------------------------------------------------------
+// هندلرهای دکمه‌های آمار در ادمین
+// -------------------------------------------------------------
+
+if ($datain == "hoursago_stat") {
+    $start_ts = time() - 3600;
+    $end_ts = time();
+    $report = generatePeriodicReport($pdo, "آمار ۱ ساعت گذشته", $start_ts, $end_ts);
+    Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
+
 } elseif ($datain == "yesterday_stat") {
-    $start_time = date('Y/m/d', strtotime("-1 days")) . " 00:00:00";
-    $end_time = date('Y/m/d', strtotime("-1 days")) . " 23:59:59";
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND Status != 'Unpaid'  AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار روز گذشته</b>
+    $start_ts = strtotime(date('Y-m-d 00:00:00', strtotime("-1 days")));
+    $end_ts = strtotime(date('Y-m-d 23:59:59', strtotime("-1 days")));
+    $time_label = date('Y/m/d', $start_ts);
+    $report = generatePeriodicReport($pdo, "آمار روز گذشته", $start_ts, $end_ts, $time_label);
+    Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
-⏳ بازه تایم  : $start_time تا$end_time
-
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
-
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
-
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
-
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
-
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
-
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
-";
-    Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "today_stat") {
-    $start_time = date('Y/m/d') . " 00:00:00";
-    $end_time = date('Y/m/d H:i:s');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND Status != 'Unpaid' AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار روز فعلی</b>
+    $start_ts = strtotime(date('Y-m-d 00:00:00'));
+    $end_ts = time();
+    $time_label = date('Y/m/d', $start_ts) . " تا الان";
+    $report = generatePeriodicReport($pdo, "آمار امروز تا این لحظه", $start_ts, $end_ts, $time_label);
+    Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
-⏳ بازه تایم  : $start_time تا$end_time
-
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
-
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
-
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
-
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
-
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
-
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
-";
-    Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "month_old_stat") {
-    $firstDayLastMonth = new DateTime('first day of last month');
-    $lastDayLastMonth = new DateTime('last day of last month');
-    $start_time = $firstDayLastMonth->format('Y/m/d');
-    $end_time = $lastDayLastMonth->format('Y/m/d');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND Status != 'Unpaid'  AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار ماه گذشته</b>
+    $start_ts = strtotime(date('Y-m-01 00:00:00', strtotime("first day of last month")));
+    $end_ts = strtotime(date('Y-m-t 23:59:59', strtotime("last day of last month")));
+    $time_label = date('Y/m/d', $start_ts) . " تا " . date('Y/m/d', $end_ts);
+    $report = generatePeriodicReport($pdo, "آمار ماه گذشته میلادی", $start_ts, $end_ts, $time_label);
+    Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
-⏳ بازه تایم  : $start_time تا$end_time
-
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
-
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
-
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
-
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
-
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
-
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
-";
-    Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "month_current_stat") {
-    $firstDayLastMonth = new DateTime('first day of this month');
-    $lastDayLastMonth = new DateTime('last day of this month');
-    $start_time = $firstDayLastMonth->format('Y/m/d');
-    $end_time = $lastDayLastMonth->format('Y/m/d');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND Status != 'Unpaid'  AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار ماه فعلی</b>
+    $start_ts = strtotime(date('Y-m-01 00:00:00'));
+    $end_ts = time();
+    $time_label = date('Y/m/d', $start_ts) . " تا الان";
+    $report = generatePeriodicReport($pdo, "آمار ماه جاری میلادی", $start_ts, $end_ts, $time_label);
+    Editmessagetext($from_id, $message_id, $report, $keyboard_stat, 'HTML');
 
-⏳ بازه تایم  : $start_time تا$end_time
-
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
-
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
-
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
-
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
-
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
-
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
-";
-    Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "view_stat_time") {
     sendmessage($from_id, sprintf($textbotlang['Admin']['getstats'], date('Y/m/d')), $backadmin, 'HTML');
     step("get_time_start", $from_id);
+
 } elseif ($user['step'] == "get_time_start") {
-    if (!isValidDate($text)) {
-        sendmessage($from_id, "تاریخ باید معتبر باشد", null, 'HTML');
+    $input_clean = str_replace(['-', '.'], '/', trim($text));
+    if (!isValidDate($input_clean)) {
+        sendmessage($from_id, "❌ تاریخ شروع نامعتبر است. لطفاً به فرمت <code>" . date('Y/m/d') . "</code> ارسال کنید.", null, 'HTML');
         return;
     }
-    savedata("clear", "start_time", $text);
-    sendmessage($from_id, "تاریخ پایان را ارسال کنید بطور مثال :  \n<code>2025/09/08</code>", $backadmin, 'HTML');
+    savedata("clear", "start_time", $input_clean);
+    sendmessage($from_id, "📅 تاریخ پایان را ارسال کنید. برای مثال:\n<code>" . date('Y/m/d') . "</code>", $backadmin, 'HTML');
     step("get_time_end", $from_id);
+
 } elseif ($user['step'] == "get_time_end") {
-    if (!isValidDate($text)) {
-        sendmessage($from_id, "تاریخ باید معتبر باشد", null, 'HTML');
+    $input_clean = str_replace(['-', '.'], '/', trim($text));
+    if (!isValidDate($input_clean)) {
+        sendmessage($from_id, "❌ تاریخ پایان نامعتبر است. لطفاً به فرمت <code>" . date('Y/m/d') . "</code> ارسال کنید.", null, 'HTML');
         return;
     }
+    
     $userdata = json_decode($user['Processing_value'], true);
-    $start_time = $userdata['start_time'] . "00:00:00";
-    $end_time = $text . "23:59:00";
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND  Status != 'Unpaid' AND name_product != 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status != 'unpaid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
-    $statisticsall = "
-🕐 <b>آمار تاریخ انتخابی</b>
+    $start_raw = trim($userdata['start_time']);
+    $end_raw = trim($input_clean);
 
-⏳ بازه تایم  : $start_time تا $end_time
+    // محاسبه تایم‌استمپ با فاصله صحیح بین تاریخ و ساعت
+    $start_ts = strtotime(str_replace('/', '-', $start_raw) . " 00:00:00");
+    $end_ts = strtotime(str_replace('/', '-', $end_raw) . " 23:59:59");
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+    if (!$start_ts || !$end_ts || $start_ts > $end_ts) {
+        sendmessage($from_id, "❌ بازه تاریخی نامعتبر است (تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد).", $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+    $time_label = "{$start_raw} تا {$end_raw}";
+    $report = generatePeriodicReport($pdo, "آمار بازه زمانی انتخابی", $start_ts, $end_ts, $time_label);
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
-
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
-
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
-
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
-";
     step('home', $from_id);
-    sendmessage($from_id, $statisticsall, $keyboardadmin, 'HTML');
+    sendmessage($from_id, $report, $keyboardadmin, 'HTML');
 } elseif ($datain == "settingaffiliatesf") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $affiliates, 'HTML');
 } elseif ($text == $textbotlang['Admin']['btnkeyboardadmin']['addpanel'] && $adminrulecheck['rule'] == "administrator") {
