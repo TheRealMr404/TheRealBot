@@ -283,9 +283,148 @@ function self_update_script() {
 # ── Repo / paths ─────────────────────────────────────────────
 BOT_DIR_DEFAULT="/var/www/html/mirzaprobotconfig"
 CONFIG_FILE_DEFAULT="$BOT_DIR_DEFAULT/config.php"
+BOT_ROOT="/var/www/html"
+BOT_DIR_PREFIX="mirzaprobotconfig"
 GIT_REPO="TheRealMr404/TheRealBot"
 LATEST_CACHE="/tmp/.mirza_latest_version"
 IP_CACHE="/tmp/.mirza_server_ip"
+
+MIRZA_INSTANCE_NAME="main"
+MIRZA_INSTANCE_SLUG="main"
+MIRZA_IS_DEFAULT_INSTANCE=1
+MIRZA_INSTALL_MODE="${MIRZA_INSTALL_MODE:-default}"
+MIRZA_DBNAME_DEFAULT="VpnBot"
+
+_sanitize_instance_slug() {
+    local raw="$1" slug
+    slug=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')
+    [ -z "$slug" ] && slug="bot"
+    printf '%s' "${slug:0:32}"
+}
+
+_db_name_for_slug() {
+    local slug="$1"
+    slug=$(printf '%s' "$slug" | tr '-' '_' | sed -E 's/[^A-Za-z0-9_]+/_/g')
+    printf 'VpnBot_%s' "${slug:0:48}"
+}
+
+set_install_state_file() {
+    local slug="$1"
+    STATE_DIR="/root/confmirza"
+    if [ "$slug" = "main" ] || [ "$slug" = "default" ]; then
+        STATE_FILE="$STATE_DIR/.mirza_install_state"
+    else
+        STATE_FILE="$STATE_DIR/.mirza_install_state_${slug}"
+    fi
+}
+
+set_mirza_instance() {
+    local name="${1:-main}" slug
+    slug="$(_sanitize_instance_slug "$name")"
+    MIRZA_INSTANCE_NAME="$name"
+    MIRZA_INSTANCE_SLUG="$slug"
+    if [ "$slug" = "main" ] || [ "$slug" = "default" ]; then
+        MIRZA_INSTANCE_NAME="main"
+        MIRZA_INSTANCE_SLUG="main"
+        MIRZA_IS_DEFAULT_INSTANCE=1
+        BOT_DIR="$BOT_DIR_DEFAULT"
+        CONFIG_FILE="$CONFIG_FILE_DEFAULT"
+        MIRZA_DBNAME_DEFAULT="VpnBot"
+    else
+        MIRZA_IS_DEFAULT_INSTANCE=0
+        BOT_DIR="$BOT_ROOT/${BOT_DIR_PREFIX}-${slug}"
+        CONFIG_FILE="$BOT_DIR/config.php"
+        MIRZA_DBNAME_DEFAULT="$(_db_name_for_slug "$slug")"
+    fi
+    set_install_state_file "$MIRZA_INSTANCE_SLUG"
+}
+
+_config_value() {
+    local cfg="$1" key="$2"
+    [ -f "$cfg" ] || return 0
+    grep -E "^\\\$$key" "$cfg" 2>/dev/null | head -1 | cut -d"'" -f2
+}
+
+list_installed_bot_configs() {
+    find "$BOT_ROOT" -maxdepth 2 -type f -path "$BOT_ROOT/${BOT_DIR_PREFIX}*/config.php" 2>/dev/null | sort
+}
+
+installed_bot_count() {
+    list_installed_bot_configs | wc -l | tr -d ' '
+}
+
+select_installed_bot() {
+    local prompt="${1:-Select bot}" configs=() i cfg dir domain username dbname
+    mapfile -t configs < <(list_installed_bot_configs)
+    if [ "${#configs[@]}" -eq 0 ]; then
+        echo -e "  ${C_BAD}●${CR} ${C_BAD}No installed Mirza bot was found.${CR}"
+        sleep 2
+        return 1
+    fi
+    _sec "$prompt"
+    i=1
+    for cfg in "${configs[@]}"; do
+        dir=$(dirname "$cfg")
+        domain="$(_config_value "$cfg" domainhosts)"
+        username="$(_config_value "$cfg" usernamebot)"
+        dbname="$(_config_value "$cfg" dbname)"
+        [ -z "$domain" ] && domain="unknown-domain"
+        [ -z "$username" ] && username="$(basename "$dir")"
+        printf "    ${C_KEY}[%s]${CR} ${C_TXT}%s${CR} ${C_DIM}(%s, db: %s)${CR}\n" "$i" "$username" "$domain" "${dbname:-unknown}"
+        i=$((i + 1))
+    done
+    _mi "0" "Back to menu"
+    echo ""
+    printf "  ${C_PROMPT}❯${CR} Select bot ${C_DIM}[0-%s]${CR}: " "${#configs[@]}"
+    local choice
+    read -r choice
+    [ "$choice" = "0" ] && return 2
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#configs[@]}" ]; then
+        echo -e "  ${C_BAD}Invalid selection.${CR}"
+        sleep 1
+        return 1
+    fi
+    SELECTED_CONFIG="${configs[$((choice - 1))]}"
+    SELECTED_BOT_DIR="$(dirname "$SELECTED_CONFIG")"
+    SELECTED_DOMAIN="$(_config_value "$SELECTED_CONFIG" domainhosts | cut -d'/' -f1)"
+    SELECTED_DBNAME="$(_config_value "$SELECTED_CONFIG" dbname)"
+    SELECTED_DBUSER="$(_config_value "$SELECTED_CONFIG" usernamedb)"
+    SELECTED_TOKEN="$(_config_value "$SELECTED_CONFIG" APIKEY)"
+    SELECTED_USERNAME="$(_config_value "$SELECTED_CONFIG" usernamebot)"
+    return 0
+}
+
+prepare_install_instance() {
+    if [ "$MIRZA_INSTALL_MODE" = "additional" ]; then
+        clear
+        banner
+        _sec "Additional bot"
+        printf "    ${C_DIM}Each bot needs its own domain, Telegram token, database, and folder.${CR}\n"
+        echo ""
+        local name slug target
+        while true; do
+            printf "  ${C_PROMPT}❯${CR} Instance name ${C_DIM}(example: bot2)${CR}: "
+            read -r name
+            slug="$(_sanitize_instance_slug "$name")"
+            target="$BOT_ROOT/${BOT_DIR_PREFIX}-${slug}"
+            if [ -z "$name" ]; then
+                echo -e "  ${C_BAD}Name cannot be empty.${CR}"
+            elif [ "$slug" = "main" ] || [ "$slug" = "default" ]; then
+                echo -e "  ${C_BAD}Use the normal install option for the main bot.${CR}"
+            else
+                set_install_state_file "$slug"
+                if [ -e "$target" ] && ! has_resumable_state; then
+                    echo -e "  ${C_BAD}This instance already exists: $target${CR}"
+                    continue
+                fi
+                break
+            fi
+        done
+        set_mirza_instance "$slug"
+    else
+        set_mirza_instance "main"
+    fi
+}
 
 
 # ── Telegram panel auto-updater ──────────────────────────────
@@ -619,8 +758,9 @@ _kv()  { printf "    ${C_DIM}%-11s${CR}${C_BORDER}:${CR} %b${CR}\n" "$1" "$2"; }
 
 # Read the installed version from the source 'version' file
 get_installed_version() {
-    if [ -f "$BOT_DIR_DEFAULT/version" ]; then
-        tr -d ' \t\r\n' < "$BOT_DIR_DEFAULT/version"
+    local dir="${1:-$BOT_DIR_DEFAULT}"
+    if [ -f "$dir/version" ]; then
+        tr -d ' \t\r\n' < "$dir/version"
     else
         echo ""
     fi
@@ -782,14 +922,29 @@ version_section() {
 }
 
 bot_section() {
+    local configs=() cfg dir domain username count shown
     SSL_DOMAIN=""
     _sec "Bot Status"
-    if [ ! -f "$CONFIG_FILE_DEFAULT" ]; then
+    mapfile -t configs < <(list_installed_bot_configs)
+    if [ "${#configs[@]}" -eq 0 ]; then
         _kv "State" "$(_dot bad) ${C_BAD}not installed${CR}"
         return
     fi
-    _kv "State" "$(_dot ok) ${C_OK}installed${CR}"
-    SSL_DOMAIN=$(grep '^\$domainhosts' "$CONFIG_FILE_DEFAULT" | cut -d"'" -f2 | cut -d'/' -f1)
+    _kv "State" "$(_dot ok) ${C_OK}${#configs[@]} bot(s) installed${CR}"
+    shown=0
+    for cfg in "${configs[@]}"; do
+        dir=$(dirname "$cfg")
+        domain="$(_config_value "$cfg" domainhosts | cut -d'/' -f1)"
+        username="$(_config_value "$cfg" usernamebot)"
+        [ -z "$username" ] && username="$(basename "$dir")"
+        [ -z "$domain" ] && domain="unknown-domain"
+        _kv "$username" "${C_DIM}https://${domain}${CR}"
+        shown=$((shown + 1))
+        [ "$shown" -ge 4 ] && break
+    done
+    count=${#configs[@]}
+    [ "$count" -gt "$shown" ] && _kv "More" "${C_DIM}$((count - shown)) more bot(s)${CR}"
+    SSL_DOMAIN="$(_config_value "${configs[0]}" domainhosts | cut -d'/' -f1)"
     if [ -n "$SSL_DOMAIN" ] && [ -f "/etc/letsencrypt/live/$SSL_DOMAIN/cert.pem" ]; then
         local expiry days
         expiry=$(openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$SSL_DOMAIN/cert.pem" 2>/dev/null | cut -d= -f2)
@@ -804,22 +959,23 @@ bot_section() {
     else
         _kv "SSL" "$(_dot warn) ${C_WARN}certificate not found${CR}"
     fi
-    if [ -n "$SSL_DOMAIN" ]; then
-        _kv "Domain" "${C_DIM}https://${SSL_DOMAIN}${CR}"
-        _kv "phpMyAdmin" "${C_DIM}https://${SSL_DOMAIN}/phpmyadmin${CR}"
-    fi
+    [ -n "$SSL_DOMAIN" ] && _kv "phpMyAdmin" "${C_DIM}https://${SSL_DOMAIN}/phpmyadmin${CR}"
 }
 
 # Read the Telegram webhook using the bot token from config.php.
 # Prints webhook URL / pending count, and surfaces any error message.
 webhook_section() {
     _sec "Webhook"
-    if [ ! -f "$CONFIG_FILE_DEFAULT" ]; then
+    local webhook_cfg="$CONFIG_FILE_DEFAULT"
+    if [ ! -f "$webhook_cfg" ]; then
+        webhook_cfg="$(list_installed_bot_configs | head -1)"
+    fi
+    if [ -z "$webhook_cfg" ] || [ ! -f "$webhook_cfg" ]; then
         _kv "Status" "$(_dot warn) ${C_DIM}n/a (bot not installed)${CR}"
         return
     fi
     local token info ok url pending err errdate apierr when
-    token=$(grep '^\$APIKEY' "$CONFIG_FILE_DEFAULT" | cut -d"'" -f2)
+    token=$(grep '^\$APIKEY' "$webhook_cfg" | cut -d"'" -f2)
     if [ -z "$token" ]; then
         _kv "Status" "$(_dot bad) ${C_BAD}token not found in config.php${CR}"
         return
@@ -919,12 +1075,15 @@ function renew_ssl() {
     banner
     _sec "Renew SSL certificate"
 
-    # 1) Detect the bot domain: prefer config.php, then saved install state
-    local cfg="/var/www/html/mirzaprobotconfig/config.php"
-    local domain=""
-    if [ -f "$cfg" ]; then
-        domain=$(grep -E "\\\$domainhosts" "$cfg" 2>/dev/null | head -1 | cut -d"'" -f2)
+    # 1) Select the bot domain from installed instances
+    select_installed_bot "Renew SSL for bot"
+    local _sel_rc=$?
+    if [ "$_sel_rc" -ne 0 ]; then
+        [ "$_sel_rc" -eq 2 ] && { show_menu; return 0; }
+        show_menu
+        return 1
     fi
+    local domain="$SELECTED_DOMAIN"
     [ -z "$domain" ] && domain="$(state_get DOMAIN)"
     if [ -z "$domain" ]; then
         printf "  ${C_PROMPT}❯${CR} Enter the bot domain: "
@@ -980,28 +1139,35 @@ function renew_ssl() {
     show_menu
 }
 
+function install_additional_bot() {
+    MIRZA_INSTALL_MODE="additional"
+    install_bot
+}
+
 function show_menu() {
     show_logo
     _sec "Menu"
-    _mi "1" "Install Mirza"
-    _mi "2" "Update Mirza"
-    _mi "3" "Remove Mirza"
-    _mi "4" "Migrate: Free -> Pro (Beta)"
-    _mi "5" "Renew SSL certificate"
-    _mi "6" "Help & Parameters"
-    _mi "7" "Exit"
+    _mi "1" "Install main Mirza bot"
+    _mi "2" "Install additional bot"
+    _mi "3" "Update a bot"
+    _mi "4" "Remove a bot"
+    _mi "5" "Migrate: Free -> Pro (Beta)"
+    _mi "6" "Renew SSL certificate"
+    _mi "7" "Help & Parameters"
+    _mi "8" "Exit"
     _rule
     echo ""
-    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-7]${CR}: "
+    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-8]${CR}: "
     read -r option
     case $option in
         1) install_bot ;;
-        2) update_bot ;;
-        3) remove_bot ;;
-        4) migrate_to_pro ;;
-        5) renew_ssl ;;
-        6) show_help_screen ;;
-        7) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
+        2) install_additional_bot ;;
+        3) update_bot ;;
+        4) remove_bot ;;
+        5) migrate_to_pro ;;
+        6) renew_ssl ;;
+        7) show_help_screen ;;
+        8) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
         *) echo -e "\n${C_BAD}Invalid option. Please try again.${CR}"; sleep 1; show_menu ;;
     esac
 }
@@ -1012,9 +1178,9 @@ function show_help_screen() {
     banner
 
     _sec "Commands"
-    _kv "install" "${C_DIM}Install Mirza${CR}"
-    _kv "update" "${C_DIM}Update Mirza (choose channel / version)${CR}"
-    _kv "remove" "${C_DIM}Remove Mirza and its services${CR}"
+    _kv "install" "${C_DIM}Install the main Mirza bot${CR}"
+    _kv "update" "${C_DIM}Update one installed bot (choose bot + channel/version)${CR}"
+    _kv "remove" "${C_DIM}Remove one selected bot safely${CR}"
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
     _kv "menu" "${C_DIM}Open this interactive panel (default)${CR}"
@@ -1039,6 +1205,7 @@ function show_help_screen() {
     printf "    ${C_KEY}mirza update --version 0.1.6${CR}\n"
     printf "    ${C_KEY}mirza update --channel release${CR}\n"
     printf "    ${C_KEY}mirza remove${CR}\n"
+    printf "    ${C_DIM}Use menu option 2 to install extra bots on the same server.${CR}\n"
 
     echo ""
     _rule
@@ -1198,18 +1365,18 @@ preflight() {
 }
 
 function install_bot() {
-    BOT_DIR="/var/www/html/mirzaprobotconfig"
+    prepare_install_instance || { show_menu; return 1; }
 
     # ── Guard: only block when a PREVIOUS install fully COMPLETED ──
-    if [ -f "$CONFIG_FILE_DEFAULT" ] && ! has_resumable_state; then
+    if [ -f "$CONFIG_FILE" ] && ! has_resumable_state; then
         clear
         banner
         _sec "Install blocked"
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is already installed on this server.${CR}\n"
-        printf "    ${C_DIM}Path:${CR} %s\n" "$BOT_DIR_DEFAULT"
+        printf "    ${C_BAD}●${CR} ${C_BAD}This Mirza instance is already installed.${CR}\n"
+        printf "    ${C_DIM}Path:${CR} %s\n" "$BOT_DIR"
         echo ""
-        printf "    ${C_DIM}To upgrade, use option ${CR}${C_KEY}2 (Update)${CR}${C_DIM}.${CR}\n"
-        printf "    ${C_DIM}To reinstall, first remove it with option ${CR}${C_KEY}3 (Remove)${CR}${C_DIM}.${CR}\n"
+        printf "    ${C_DIM}To upgrade, use option ${CR}${C_KEY}3 (Update)${CR}${C_DIM}.${CR}\n"
+        printf "    ${C_DIM}To reinstall, first remove it with option ${CR}${C_KEY}4 (Remove)${CR}${C_DIM}.${CR}\n"
         echo ""
         printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "
         read -r _
@@ -1217,7 +1384,7 @@ function install_bot() {
         return 1
     fi
     # ── Fresh-server requirement (only on a brand-new install) ──
-    if ! has_resumable_state && [ ! -f "$CONFIG_FILE_DEFAULT" ]; then
+    if [ "$MIRZA_IS_DEFAULT_INSTANCE" -eq 1 ] && ! has_resumable_state && [ ! -f "$CONFIG_FILE" ]; then
         if ! precheck_fresh_server; then
             echo ""
             printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "
@@ -1254,6 +1421,10 @@ function install_bot() {
         esac
     fi
     state_init
+    if [ "$MIRZA_IS_DEFAULT_INSTANCE" -eq 0 ] && [ -f "/root/confmirza/dbrootmirza.txt" ]; then
+        mark_phase DEPS
+        mark_phase DBROOT
+    fi
     state_set STARTED 1   # mark install as in-progress -> future re-runs resume (skip fresh-check)
     plan_eta   # count pending steps + estimate total time left
 
@@ -1366,6 +1537,19 @@ function install_bot() {
         echo -e "  ${C_OK}●${CR} ${C_DIM}Dependencies already installed - skipping.${CR}"
     fi
     # ╰─────────────────────────────────────────────────────────────╯
+
+    if ! phase_done FILES && [ -z "$(state_get SRC_ZIP_URL)" ]; then
+        echo ""
+        choose_source
+        local _src_rc=$?
+        if [ "$_src_rc" -eq 2 ]; then show_menu; return 0; fi
+        if [ "$_src_rc" -ne 0 ]; then sleep 2; show_menu; return 1; fi
+        state_set SRC_ZIP_URL "$SRC_ZIP_URL"
+        state_set SRC_LABEL "$SRC_LABEL"
+        echo ""
+        echo -e "  ${C_DIM}Install target:${CR} ${C_KEY}${SRC_LABEL}${CR}"
+        sleep 1
+    fi
 
     # ╭──────────────────────── PHASE: FILES ───────────────────────╮
     if ! phase_done FILES; then
@@ -1614,7 +1798,7 @@ EOF
 
     randomdbpass=$(openssl rand -base64 10 | tr -dc 'a-zA-Z0-9' | cut -c1-8)
     randomdbdb=$(openssl rand -base64 10 | tr -dc 'a-zA-Z' | cut -c1-8)
-    dbname="VpnBot"
+    dbname="$MIRZA_DBNAME_DEFAULT"
 
     # ╭──────────────────────── PHASE: DB ──────────────────────────╮
     if ! phase_done DB; then
@@ -1673,7 +1857,7 @@ EOF
     if ! phase_done CONFIG; then
         wait
         sleep 1
-        file_path="/var/www/html/mirzaprobotconfig/config.php"
+        file_path="$CONFIG_FILE"
         if [ -f "$file_path" ]; then
             rm "$file_path" || {
                 echo -e "\e[91mError: Failed to delete old config.php.\033[0m"
@@ -1686,7 +1870,7 @@ EOF
             secrettoken=$(openssl rand -base64 10 | tr -dc 'a-zA-Z0-9' | cut -c1-8)
             state_set SECRET "$secrettoken"
         fi
-        cat <<EOF > /var/www/html/mirzaprobotconfig/config.php
+        cat <<EOF > "$CONFIG_FILE"
 <?php
 // This variable added for high load panels which their response time is long and bot can't communicate with online panel!
 // null for default settings
@@ -1707,7 +1891,7 @@ try { \$pdo = new PDO(\$dsn, \$usernamedb, \$passworddb, \$options); } catch (\P
 \$usernamebot = '${YOUR_BOTNAME}';
 ?>
 EOF
-        sudo chown www-data:www-data /var/www/html/mirzaprobotconfig/config.php 2>/dev/null
+        sudo chown www-data:www-data "$CONFIG_FILE" 2>/dev/null
         mark_phase CONFIG
     else
         secrettoken="$(state_get SECRET)"
@@ -1734,9 +1918,11 @@ EOF
     fi
     # ╰─────────────────────────────────────────────────────────────╯
 
-    # Install the admin-panel GitHub auto-updater.
-    run_step "Installing bot auto-updater" "install_bot_auto_updater" \
-        || { show_step_error; install_pause "Installing bot auto-updater"; }
+    # Install the admin-panel GitHub auto-updater only for the main instance.
+    if [ "$MIRZA_IS_DEFAULT_INSTANCE" -eq 1 ]; then
+        run_step "Installing bot auto-updater" "install_bot_auto_updater" \
+            || { show_step_error; install_pause "Installing bot auto-updater"; }
+    fi
 
     # ── Done ──
     mark_phase COMPLETE
@@ -1758,30 +1944,32 @@ EOF
 
     _sec "Manage"
     _kv "Command" "${C_DIM}run ${CR}${C_KEY}mirza${CR}${C_DIM} anytime to open this panel${CR}"
+    _kv "Instance" "${C_KEY}${MIRZA_INSTANCE_NAME}${CR}"
     echo ""
     _rule
     echo ""
 
     chmod +x /root/install.sh
     ln -sf /root/install.sh /usr/local/bin/mirza
-    self_update_script
+    echo -e "\e[92mMirza command is linked. Custom multi-bot installer preserved.\033[0m"
 }
 function update_bot() {
     clear
     banner
-    BOT_DIR="/var/www/html/mirzaprobotconfig"
-    if [ ! -d "$BOT_DIR" ]; then
-        _sec "Update"
-        printf "    ${C_BAD}●${CR} ${C_BAD}Mirza is not installed. Install it first.${CR}\n"
-        sleep 2
+    select_installed_bot "Update bot"
+    local _sel_rc=$?
+    if [ "$_sel_rc" -ne 0 ]; then
+        [ "$_sel_rc" -eq 2 ] && { show_menu; return 0; }
         show_menu
         return 1
     fi
+    BOT_DIR="$SELECTED_BOT_DIR"
 
     # ── Show current version + choose source (has Back option) ──
     local current
-    current=$(get_installed_version); [ -z "$current" ] && current="unknown"
+    current=$(get_installed_version "$BOT_DIR"); [ -z "$current" ] && current="unknown"
     _sec "Update"
+    printf "    ${C_DIM}Selected bot:${CR} ${C_KEY}%s${CR} ${C_DIM}(%s)${CR}\n" "${SELECTED_USERNAME:-$(basename "$BOT_DIR")}" "${SELECTED_DOMAIN:-unknown-domain}"
     printf "    ${C_DIM}Currently installed:${CR} ${C_OK}%s${CR}\n" "$current"
     if ! ensure_connectivity; then
         printf "    ${C_BAD}●${CR} ${C_BAD}No internet connection (even after DNS reset). Try again later.${CR}\n"
@@ -1811,7 +1999,7 @@ function update_bot() {
         rm -rf "$TEMP_DIR"; sleep 2; show_menu; return 1
     fi
     CONFIG_PATH="$BOT_DIR/config.php"
-    TEMP_CONFIG="/root/mirzapro_config_backup.php"
+    TEMP_CONFIG="/root/mirzapro_config_backup_$(basename "$BOT_DIR").php"
     if [ -f "$CONFIG_PATH" ]; then
         cp "$CONFIG_PATH" "$TEMP_CONFIG" || {
             echo -e "\e[91mConfig file backup failed!\033[0m"
@@ -1838,9 +2026,7 @@ function update_bot() {
     if [ -f "$BOT_DIR/install.sh" ]; then
         sed -i 's/\r$//' "$BOT_DIR/install.sh"
         if bash -n "$BOT_DIR/install.sh" 2>/dev/null; then
-            sudo cp "$BOT_DIR/install.sh" /root/install.sh
-            sudo sed -i 's/\r$//' /root/install.sh
-            echo -e "\n\e[92mCopied latest install.sh to /root/install.sh.\033[0m"
+            echo -e "\n\e[92mDownloaded install.sh is valid; keeping the custom multi-bot manager in /root/install.sh.\033[0m"
         else
             echo -e "\n\e[91mWarning: downloaded install.sh failed syntax check; keeping the existing /root/install.sh.\033[0m"
         fi
@@ -1850,9 +2036,11 @@ function update_bot() {
     sudo chown -R www-data:www-data "$BOT_DIR"
     sudo chmod -R 755 "$BOT_DIR"
 
-    # Recreate/refresh the updater after every CLI update as well.
-    if ! install_bot_auto_updater; then
-        echo -e "\e[91mWarning: failed to install the Telegram auto-updater.\033[0m"
+    # Recreate/refresh the panel updater only for the main instance.
+    if [ "$BOT_DIR" = "$BOT_DIR_DEFAULT" ]; then
+        if ! install_bot_auto_updater; then
+            echo -e "\e[91mWarning: failed to install the Telegram auto-updater.\033[0m"
+        fi
     fi
 
     DOMAIN_NAME=""
@@ -1938,24 +2126,49 @@ EOF
     fi
 }
 function remove_bot() {
+    clear
+    banner
     echo -e "\e[33mStarting Mirza Bot removal process...\033[0m"
     LOG_FILE="/var/log/remove_bot.log"
     echo "Log file: $LOG_FILE" > "$LOG_FILE"
-    BOT_DIR="/var/www/html/mirzaprobotconfig"
-    rm -f /usr/local/sbin/therealbot-update /etc/sudoers.d/therealbot-update 2>/dev/null || true
-    if [ ! -d "$BOT_DIR" ]; then
-        echo -e "\e[31m[ERROR]\033[0m Mirza Bot is not installed (/var/www/html/mirzaprobotconfig not found)." | tee -a "$LOG_FILE"
-        echo -e "\e[33mNothing to remove. Exiting...\033[0m" | tee -a "$LOG_FILE"
-        sleep 2
-        exit 1
+    select_installed_bot "Remove bot"
+    local _sel_rc=$?
+    if [ "$_sel_rc" -ne 0 ]; then
+        [ "$_sel_rc" -eq 2 ] && { show_menu; return 0; }
+        show_menu
+        return 1
     fi
-    read -p "Are you sure you want to remove Mirza Bot and its dependencies? (y/n): " choice
+
+    BOT_DIR="$SELECTED_BOT_DIR"
+    CONFIG_PATH="$SELECTED_CONFIG"
+    local DOMAIN_NAME="$SELECTED_DOMAIN"
+    local DB_NAME="$SELECTED_DBNAME"
+    local DB_USER="$SELECTED_DBUSER"
+    local BOT_TOKEN="$SELECTED_TOKEN"
+    local INSTANCE_SLUG
+    if [ "$BOT_DIR" = "$BOT_DIR_DEFAULT" ]; then
+        INSTANCE_SLUG="main"
+    else
+        INSTANCE_SLUG="$(basename "$BOT_DIR" | sed "s/^${BOT_DIR_PREFIX}-//")"
+    fi
+
+    echo ""
+    _kv "Bot" "${C_KEY}${SELECTED_USERNAME:-$(basename "$BOT_DIR")}${CR}"
+    _kv "Path" "${C_DIM}${BOT_DIR}${CR}"
+    _kv "Domain" "${C_DIM}${DOMAIN_NAME:-unknown}${CR}"
+    _kv "Database" "${C_DIM}${DB_NAME:-unknown}${CR}"
+    echo ""
+    read -p "Remove only this Mirza bot instance? (y/n): " choice
     if [[ ! "$choice" =~ ^[Yy]$ ]]; then
         echo "Aborting..." | tee -a "$LOG_FILE"
-        exit 0
+        show_menu
+        return 0
     fi
-    echo "Removing Mirza Bot..." | tee -a "$LOG_FILE"
-    CONFIG_PATH="/var/www/html/mirzaprobotconfig/config.php"
+
+    echo "Removing selected Mirza Bot..." | tee -a "$LOG_FILE"
+    if [ -n "$BOT_TOKEN" ]; then
+        curl -s "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook" >/dev/null 2>&1 || true
+    fi
     if [ -f "$CONFIG_PATH" ]; then
         sudo shred -u -n 5 "$CONFIG_PATH" && echo -e "\e[92mConfig file securely removed: $CONFIG_PATH\033[0m" | tee -a "$LOG_FILE" || {
             echo -e "\e[91mFailed to securely remove config file: $CONFIG_PATH\033[0m" | tee -a "$LOG_FILE"
@@ -1967,55 +2180,39 @@ function remove_bot() {
             exit 1
         }
     fi
-    echo -e "\e[33mRemoving MySQL and database...\033[0m" | tee -a "$LOG_FILE"
-    sudo systemctl stop mysql
-    sudo systemctl disable mysql
-    sudo systemctl daemon-reload
-    sudo apt --fix-broken install -y
-    sudo apt-get purge -y mysql-server mysql-client mysql-common mysql-server-core-* mysql-client-core-*
-    sudo rm -rf /etc/mysql /var/lib/mysql /var/log/mysql /var/log/mysql.* /usr/lib/mysql /usr/include/mysql /usr/share/mysql
-    sudo rm /lib/systemd/system/mysql.service
-    sudo rm /etc/init.d/mysql
-    sudo dpkg --remove --force-remove-reinstreq mysql-server mysql-server-8.0
-    sudo find /etc/systemd /lib/systemd /usr/lib/systemd -name "*mysql*" -exec rm -f {} \;
-    sudo apt-get purge -y mysql-server mysql-server-8.0 mysql-client mysql-client-8.0
-    sudo apt-get purge -y mysql-client-core-8.0 mysql-server-core-8.0 mysql-common php-mysql php8.2-mysql php8.3-mysql php-mariadb-mysql-kbs
-    sudo apt-get autoremove --purge -y
-    sudo apt-get clean
-    sudo apt-get update
-    echo -e "\e[92mMySQL has been completely removed.\033[0m" | tee -a "$LOG_FILE"
-    echo -e "\e[33mRemoving PHPMyAdmin...\033[0m" | tee -a "$LOG_FILE"
-    if dpkg -s phpmyadmin &>/dev/null; then
-        sudo apt-get purge -y phpmyadmin && echo -e "\e[92mPHPMyAdmin removed.\033[0m" | tee -a "$LOG_FILE"
-        sudo apt-get autoremove -y && sudo apt-get autoclean -y
-    else
-        echo -e "\e[93mPHPMyAdmin is not installed.\033[0m" | tee -a "$LOG_FILE"
+
+    if [ -n "$DOMAIN_NAME" ]; then
+        sudo a2dissite "${DOMAIN_NAME}.conf" 2>/dev/null || true
+        sudo a2dissite "${DOMAIN_NAME}-ssl.conf" 2>/dev/null || true
+        sudo rm -f "/etc/apache2/sites-available/${DOMAIN_NAME}.conf" "/etc/apache2/sites-available/${DOMAIN_NAME}-ssl.conf" 2>/dev/null || true
+        sudo rm -f "/etc/apache2/sites-enabled/${DOMAIN_NAME}.conf" "/etc/apache2/sites-enabled/${DOMAIN_NAME}-ssl.conf" 2>/dev/null || true
     fi
-    echo -e "\e[33mRemoving Apache...\033[0m" | tee -a "$LOG_FILE"
-    sudo systemctl stop apache2 || {
-        echo -e "\e[91mFailed to stop Apache. Continuing anyway...\033[0m" | tee -a "$LOG_FILE"
-    }
-    sudo systemctl disable apache2 || {
-        echo -e "\e[91mFailed to disable Apache. Continuing anyway...\033[0m" | tee -a "$LOG_FILE"
-    }
-    sudo apt-get purge -y apache2 apache2-utils apache2-bin apache2-data libapache2-mod-php* || {
-        echo -e "\e[91mFailed to purge Apache packages.\033[0m" | tee -a "$LOG_FILE"
-    }
-    sudo apt-get autoremove --purge -y
-    sudo apt-get autoclean -y
-    sudo rm -rf /etc/apache2 /var/www/html
-    echo -e "\e[33mRemoving Apache and PHP configurations...\033[0m" | tee -a "$LOG_FILE"
-    sudo a2disconf phpmyadmin.conf &>/dev/null
-    sudo rm -f /etc/apache2/conf-available/phpmyadmin.conf
-    echo -e "\e[33mRemoving additional packages...\033[0m" | tee -a "$LOG_FILE"
-    sudo apt-get remove -y php-soap php-ssh2 libssh2-1-dev libssh2-1 \
-        && echo -e "\e[92mRemoved additional PHP packages.\033[0m" | tee -a "$LOG_FILE" || echo -e "\e[93mSome additional PHP packages may not be installed.\033[0m" | tee -a "$LOG_FILE"
-    echo -e "\e[33mResetting firewall rules (except SSL)...\033[0m" | tee -a "$LOG_FILE"
-    sudo ufw delete allow 'Apache' 2>/dev/null
-    sudo ufw reload 2>/dev/null
-    # Clear Mirza install state so a fresh install is allowed afterwards
-    sudo rm -rf /root/confmirza
-    echo -e "\e[92mMirza Bot, MySQL, and their dependencies have been completely removed.\033[0m" | tee -a "$LOG_FILE"
+
+    ROOT_PASSWORD=$(grep '$pass' /root/confmirza/dbrootmirza.txt 2>/dev/null | cut -d"'" -f2)
+    if [ -n "$ROOT_PASSWORD" ]; then
+        if [ -n "$DB_NAME" ] && valid_db_ident "$DB_NAME"; then
+            mysql -u root -p"$ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null \
+                && echo -e "\e[92mDatabase removed: $DB_NAME\033[0m" | tee -a "$LOG_FILE" \
+                || echo -e "\e[93mWarning: could not remove database $DB_NAME.\033[0m" | tee -a "$LOG_FILE"
+        fi
+        if [ -n "$DB_USER" ] && valid_db_ident "$DB_USER"; then
+            mysql -u root -p"$ROOT_PASSWORD" -e "DROP USER IF EXISTS '$DB_USER'@'localhost'; DROP USER IF EXISTS '$DB_USER'@'%'; FLUSH PRIVILEGES;" 2>/dev/null \
+                && echo -e "\e[92mDatabase user removed: $DB_USER\033[0m" | tee -a "$LOG_FILE" \
+                || echo -e "\e[93mWarning: could not remove database user $DB_USER.\033[0m" | tee -a "$LOG_FILE"
+        fi
+    else
+        echo -e "\e[93mWarning: MySQL root password not found; database cleanup skipped.\033[0m" | tee -a "$LOG_FILE"
+    fi
+
+    [ "$INSTANCE_SLUG" = "main" ] && rm -f /usr/local/sbin/therealbot-update /etc/sudoers.d/therealbot-update 2>/dev/null || true
+    set_install_state_file "$INSTANCE_SLUG"
+    state_clear
+    sudo systemctl reload apache2 2>/dev/null || sudo systemctl restart apache2 2>/dev/null || true
+    echo -e "\e[92mSelected Mirza Bot instance has been removed. Shared Apache/MySQL packages were kept for other bots.\033[0m" | tee -a "$LOG_FILE"
+    echo ""
+    printf "  ${C_PROMPT}❯${CR} Press Enter to return to the menu... "
+    read -r _
+    show_menu
 }
 
 function migrate_to_pro() {
@@ -2250,9 +2447,9 @@ print_usage() {
     mirza [command] [options]
 
   Commands:
-    install            Install Mirza
-    update             Update Mirza
-    remove             Remove Mirza
+    install            Install the main Mirza bot
+    update             Update one installed Mirza bot
+    remove             Remove one installed Mirza bot
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
     menu               Show interactive menu (default)
@@ -2271,8 +2468,8 @@ print_usage() {
   Examples:
     mirza install --channel auto
     mirza install --name myvpnbot --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
-    mirza update --channel release
-    mirza update --version 0.1.6
+    mirza update --channel release      # asks which installed bot to update
+    mirza remove                        # asks which installed bot to remove
 
 USAGE
 }
