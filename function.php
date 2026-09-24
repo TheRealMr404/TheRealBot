@@ -1559,16 +1559,14 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $discountPercent = max(0, min(100, (int)$discountPercent));
     $total = $subtotal - (($subtotal * $discountPercent) / 100);
     $total = max(0, round($total));
-
-    $text = "🛍 <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
-    $text .= "🔶 <b>حجم:</b> {$volume} گیگابایت\n\n";
-    $text .= "🔷 <b>زمان:</b> {$days} روز\n\n";
-    $text .= "⚙️ <b>تعداد سفارش:</b> {$count} عدد\n\n";
+$text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
+    $text .= "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم:</b> {$volume} گیگابایت\n\n";
+    $text .= "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان:</b> {$days} روز\n\n";
+    $text .= "<tg-emoji emoji-id=\"5348421451135336104\">⚙️</tg-emoji> <b>تعداد سفارش:</b> {$count} عدد\n\n";
     if ($discountPercent > 0) {
-        $text .= "🏷 <b>تخفیف:</b> {$discountPercent} درصد\n\n";
+        $text .= "<tg-emoji emoji-id=\"5348470692935384957\">🏷</tg-emoji> <b>تخفیف:</b> {$discountPercent} درصد\n\n";
     }
-    $text .= "🪙 <b>مبلغ:</b> " . number_format($total) . " تومان";
-
+    $text .= "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ:</b> " . number_format($total) . " تومان";
     $keyboard = [
         'inline_keyboard' => [
             [
@@ -1577,20 +1575,20 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
                 ['text' => 'افزایش', 'callback_data' => 'csi_v_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_d_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
+                ['text' => 'کاهش', 'callback_data' => 'csi_d_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$days} روز", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_d_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
+                ['text' => 'افزایش', 'callback_data' => 'csi_d_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_c_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
+                ['text' => 'کاهش', 'callback_data' => 'csi_c_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$count} عدد", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_c_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
+                ['text' => 'افزایش', 'callback_data' => 'csi_c_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'تأیید و پرداخت  ✅', 'callback_data' => 'confirmandgetservice', 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
+                ['text' => 'تأیید و پرداخت', 'callback_data' => 'confirmandgetservice', 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
             ],
             [
-                ['text' => 'بازگشت  ↪️', 'callback_data' => 'backuser', 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
+                ['text' => 'بازگشت', 'callback_data' => 'backuser', 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
             ],
         ],
     ];
