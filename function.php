@@ -1572,9 +1572,9 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $keyboard = [
         'inline_keyboard' => [
             [
-                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_v_dec'],
+                ['text' => 'کاهش', 'callback_data' => 'csi_v_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$volume} گیگابایت", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_v_inc'],
+                ['text' => 'افزایش', 'callback_data' => 'csi_v_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
                 ['text' => 'کاهش  ➖', 'callback_data' => 'csi_d_dec'],
