@@ -128,12 +128,12 @@ function virtualServicesAdminCategories()
         ORDER BY c.sort_order, c.id")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($categories as $category) {
         $status = (int) $category['is_active'] === 1 ? 'فعال' : 'غیرفعال';
-        $rows[] = [[telegramProductsStyledButton(
+        $rows[] = [telegramProductsStyledButton(
             $category['title'] . ' | ' . $category['product_count'] . ' محصول | ' . $status,
             'vsa_cat_' . $category['id'],
             $category['button_style'],
             $category['button_emoji_id']
-        )]];
+        )];
     }
     $rows[] = [['text' => 'افزودن دسته جدید', 'callback_data' => 'vsa_cat_add']];
     $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_home']];
@@ -192,12 +192,12 @@ function virtualServicesAdminProducts()
     $rows = [];
     foreach ($products as $product) {
         $status = (int) $product['is_active'] === 1 ? 'فعال' : 'غیرفعال';
-        $rows[] = [[telegramProductsStyledButton(
+        $rows[] = [telegramProductsStyledButton(
             '#' . $product['id'] . ' ' . $product['title'] . ' | ' . telegramProductsMoney($product['price']) . ' | ' . $status,
             'vsa_product_' . $product['id'],
             $product['button_style'],
             $product['button_emoji_id']
-        )]];
+        )];
     }
     $rows[] = [['text' => 'افزودن محصول', 'callback_data' => 'vsa_product_add']];
     $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_home']];

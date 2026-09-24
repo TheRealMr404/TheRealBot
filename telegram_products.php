@@ -373,12 +373,12 @@ function telegramProductsShowHome()
 
     $rows = [];
     foreach ($categories as $category) {
-        $rows[] = [[telegramProductsStyledButton(
+        $rows[] = [telegramProductsStyledButton(
             $category['title'] . ' (' . $category['product_count'] . ')',
             'tgp_cat_' . $category['id'],
             $category['button_style'],
             $category['button_emoji_id']
-        )]];
+        )];
     }
     $rows[] = [['text' => 'سفارش‌های من', 'callback_data' => 'tgp_orders', 'style' => 'primary']];
     $rows[] = [['text' => 'بازگشت به منوی اصلی', 'callback_data' => 'tgp_main', 'style' => 'danger']];
@@ -418,12 +418,12 @@ function telegramProductsShowCategory($categoryId)
         if ($product['delivery_type'] === 'auto' && (int) $product['stock_count'] === 0) {
             continue;
         }
-        $rows[] = [[telegramProductsStyledButton(
+        $rows[] = [telegramProductsStyledButton(
             $product['title'] . ' - ' . telegramProductsMoney($product['price']),
             'tgp_view_' . $product['id'],
             $product['button_style'],
             $product['button_emoji_id']
-        )]];
+        )];
     }
     $rows[] = [['text' => 'بازگشت', 'callback_data' => 'tgp_home', 'style' => 'danger']];
 
