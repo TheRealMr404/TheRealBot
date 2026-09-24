@@ -6393,7 +6393,11 @@ elseif ($datain == "confirm_pay_tun_custom") {
     if (empty($info_product['price_product']) || empty($info_product['price_product']))
         return;
     $priceproduct = $info_product['price_product'] * $user['Processing_value_four'];
-    Editmessagetext($from_id, $message_id, $text_inline, null);
+    telegram('editMessageReplyMarkup', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'reply_markup' => json_encode(['inline_keyboard' => []]),
+    ]);
     $username_ac = $user['Processing_value_tow'];
     $date = time();
     if (intval($user['pricediscount']) != 0) {
