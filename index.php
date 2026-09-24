@@ -491,6 +491,17 @@ if ($user['joinchannel'] != "active") {
         }
     }
 }
+$isVirtualServicesAdminRequest = in_array((string) $from_id, array_map('strval', (array) $admin_ids), true)
+    && (
+        $text === 'مدیریت خدمات مجازی'
+        || strpos((string) $datain, 'vsa_') === 0
+        || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
+            && !in_array($text, ['/start', 'start', 'panel', '/panel'], true))
+    );
+if ($isVirtualServicesAdminRequest && telegramProductsAdminPanelHandleRequest()) {
+    return;
+}
+
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sendmessage($from_id, '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>', null, "HTML");

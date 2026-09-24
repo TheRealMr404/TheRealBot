@@ -53,13 +53,8 @@ function virtualServicesAdminKeyboard($rows)
 
 function virtualServicesAdminReply($text, $rows = [], $edit = true)
 {
-    global $from_id, $message_id, $datain;
-
     $keyboard = virtualServicesAdminKeyboard($rows);
-    if ($edit && $datain !== '' && intval($message_id) > 0) {
-        return Editmessagetext($from_id, $message_id, $text, $keyboard, 'HTML');
-    }
-    return sendmessage($from_id, $text, $keyboard, 'HTML');
+    return telegramProductsReply($text, $keyboard, $edit);
 }
 
 function virtualServicesAdminSetState($state, array $data = [])
@@ -1065,8 +1060,15 @@ function telegramProductsAdminPanelHandleRequest()
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        error_log('Virtual services admin error: ' . $e->getMessage());
-        sendmessage($from_id, 'خطایی در مدیریت خدمات مجازی رخ داد. جزئیات در error_log ثبت شد.', null, 'HTML');
+        error_log('Virtual services admin error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در اجرای بخش خدمات مجازی',
+                'show_alert' => true,
+            ]);
+        }
+        sendmessage($from_id, "خطایی در مدیریت خدمات مجازی رخ داد.\n\n<code>" . telegramProductsEscape($e->getMessage()) . '</code>', null, 'HTML');
         return true;
     }
 

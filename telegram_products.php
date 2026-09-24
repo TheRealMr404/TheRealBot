@@ -207,6 +207,32 @@ function telegramProductsIsAdmin($userId)
     return in_array((string) $userId, $adminIds, true);
 }
 
+function telegramProductsApiSucceeded($response)
+{
+    return is_array($response) && !empty($response['ok']);
+}
+
+function telegramProductsCompatibleMarkup($replyMarkup)
+{
+    if ($replyMarkup === null || $replyMarkup === '') {
+        return $replyMarkup;
+    }
+    $markup = is_string($replyMarkup) ? json_decode($replyMarkup, true) : $replyMarkup;
+    if (!is_array($markup)) {
+        return $replyMarkup;
+    }
+    foreach (($markup['inline_keyboard'] ?? []) as $rowIndex => $row) {
+        foreach ((array) $row as $buttonIndex => $button) {
+            if (!is_array($button)) {
+                continue;
+            }
+            unset($button['style'], $button['icon_custom_emoji_id']);
+            $markup['inline_keyboard'][$rowIndex][$buttonIndex] = $button;
+        }
+    }
+    return json_encode($markup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
 function telegramProductsEnsureReportTopic($reportKey, $topicName, $force = false)
 {
     global $pdo, $setting;
@@ -282,10 +308,33 @@ function telegramProductsReply($text, $replyMarkup = null, $preferEdit = true)
     global $from_id, $message_id, $datain;
 
     if ($preferEdit && $datain !== '' && intval($message_id) > 0) {
-        return Editmessagetext($from_id, $message_id, $text, $replyMarkup, 'HTML');
+        $response = Editmessagetext($from_id, $message_id, $text, $replyMarkup, 'HTML');
+        if (telegramProductsApiSucceeded($response)) {
+            return $response;
+        }
+        $compatibleMarkup = telegramProductsCompatibleMarkup($replyMarkup);
+        if ($compatibleMarkup !== $replyMarkup) {
+            $response = Editmessagetext($from_id, $message_id, $text, $compatibleMarkup, 'HTML');
+            if (telegramProductsApiSucceeded($response)) {
+                return $response;
+            }
+        }
+        $description = is_array($response) ? (string) ($response['description'] ?? '') : '';
+        if (stripos($description, 'message is not modified') !== false) {
+            return $response;
+        }
+        return sendmessage($from_id, $text, $compatibleMarkup ?? $replyMarkup, 'HTML');
     }
 
-    return sendmessage($from_id, $text, $replyMarkup, 'HTML');
+    $response = sendmessage($from_id, $text, $replyMarkup, 'HTML');
+    if (telegramProductsApiSucceeded($response)) {
+        return $response;
+    }
+    $compatibleMarkup = telegramProductsCompatibleMarkup($replyMarkup);
+    if ($compatibleMarkup !== $replyMarkup) {
+        return sendmessage($from_id, $text, $compatibleMarkup, 'HTML');
+    }
+    return $response;
 }
 
 function telegramProductsShowHome()
@@ -774,6 +823,29 @@ function telegramProductsAdminCommand($text)
 }
 
 function telegramProductsHandleRequest()
+{
+    global $from_id, $callback_query_id;
+
+    try {
+        return telegramProductsHandleRequestInternal();
+    } catch (Throwable $e) {
+        error_log('Virtual services user handler error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+        if ($callback_query_id) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'خطا در بارگذاری خدمات مجازی. دوباره تلاش کنید.',
+                'show_alert' => true,
+            ]);
+        }
+        $details = telegramProductsIsAdmin($from_id)
+            ? "\n\n<code>" . telegramProductsEscape($e->getMessage()) . '</code>'
+            : '';
+        sendmessage($from_id, 'خطایی در بارگذاری خدمات مجازی رخ داد.' . $details, null, 'HTML');
+        return true;
+    }
+}
+
+function telegramProductsHandleRequestInternal()
 {
     global $text, $datain, $from_id, $callback_query_id, $keyboard, $user, $setting;
 
