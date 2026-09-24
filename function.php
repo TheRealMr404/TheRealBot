@@ -910,7 +910,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? $dataoutput['subscription_url'] : "";
         $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
         $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-        $datatextbot['textafterpay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
+        $datatextbot['textafterpay'] = in_array($marzban_list_get['type'], ["ibsng", "mikrotik", "pasarguard_reseller"], true) ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
         if (intval($get_invoice['Service_time']) == 0)
             $get_invoice['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
         $textcreatuser = str_replace('{username}', $dataoutput['username'], $datatextbot['textafterpay']);
@@ -921,9 +921,12 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links}', $config, $textcreatuser);
         $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
-        if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
+        if (in_array($marzban_list_get['type'], ["Manualsale", "ibsng", "mikrotik", "pasarguard_reseller"], true)) {
             $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
             update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
+        }
+        if ($marzban_list_get['type'] == "pasarguard_reseller") {
+            $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
         }
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
         $partsdic = explode("_", $Balance_id['Processing_value_four'], $get_invoice['id_user']);
@@ -1712,7 +1715,7 @@ function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype
 }
 function outtypepanel($typepanel, $message)
 {
-    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel;
+    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguardReseller;
     
     if ($typepanel == "marzban") {
         sendmessage($from_id, $message, $optionMarzban, 'HTML');
@@ -1734,6 +1737,8 @@ function outtypepanel($typepanel, $message)
         sendmessage($from_id, $message, $option_mikrotik, 'HTML');
     } elseif ($typepanel == "x-ui_tunnel") {
         sendmessage($from_id, $message, $optionX_ui_tunnel, 'HTML');
+    } elseif ($typepanel == "pasarguard_reseller") {
+        sendmessage($from_id, $message, $optionPasarguardReseller, 'HTML');
     }
 }
 

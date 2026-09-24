@@ -5671,7 +5671,7 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
     $Shoppinginfo = json_encode($Shoppinginfo);
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-    $datatextbot['textafterpay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
+    $datatextbot['textafterpay'] = in_array($marzban_list_get['type'], ["ibsng", "mikrotik", "pasarguard_reseller"], true) ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Volume_constraint']) == 0)
@@ -5687,9 +5687,12 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
     if (intval($info_product['Volume_constraint']) == 0) {
         $textcreatuser = str_replace('گیگابایت', "", $textcreatuser);
     }
-    if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
+    if (in_array($marzban_list_get['type'], ["Manualsale", "ibsng", "mikrotik", "pasarguard_reseller"], true)) {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
+    }
+    if ($marzban_list_get['type'] == "pasarguard_reseller") {
+        $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
@@ -6539,6 +6542,10 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links}', "<code>{$config}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
+        if ($marzban_list_get['type'] == "pasarguard_reseller") {
+            $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
+            update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
+        }
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');

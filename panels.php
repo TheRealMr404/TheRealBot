@@ -10,6 +10,7 @@ require_once __DIR__ . '/WGDashboard.php';
 require_once __DIR__ . '/s_ui.php';
 require_once __DIR__ . '/ibsng.php';
 require_once __DIR__ . '/mikrotik.php';
+require_once __DIR__ . '/pasarguard.php';
 
 class ManagePanel
 {
@@ -369,6 +370,36 @@ class ManagePanel
                 $Output['username'] = $usernameC;
                 $Output['subscription_url'] = $password;
                 $Output['configs'] = [];
+            }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
+            if ($code_product == "usertest") {
+                return [
+                    'status' => 'Unsuccessful',
+                    'msg' => 'ساخت اکانت تست برای نمایندگی پاسارگارد پشتیبانی نمی‌شود.'
+                ];
+            }
+            $settings = pasarguardProductSettings($Get_Data_Product, $Get_Data_Panel);
+            $password = 'Pg@' . bin2hex(random_bytes(7));
+            $create = pasarguardCreateAdmin(
+                $Get_Data_Panel,
+                $usernameC,
+                $password,
+                $settings['role_id'],
+                $data_limit,
+                $settings['max_users'],
+                $note
+            );
+            if (!$create['ok']) {
+                $Output['status'] = 'Unsuccessful';
+                $Output['msg'] = $create['msg'];
+            } else {
+                $Output['status'] = 'successful';
+                $Output['username'] = $usernameC;
+                $Output['subscription_url'] = $password;
+                $Output['configs'] = [];
+                $Output['role_id'] = $settings['role_id'];
+                $Output['max_users'] = $settings['max_users'];
+                $Output['panel_url'] = pasarguardNormalizeUrl($Get_Data_Panel['url_panel']);
             }
         } else {
             $Output['status'] = 'Unsuccessful';
@@ -889,6 +920,53 @@ class ManagePanel
                     'sub_last_user_agent' => null,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
+            $adminResponse = pasarguardFindAdmin($Get_Data_Panel, $username);
+            if (!$adminResponse['ok']) {
+                $Output = [
+                    'status' => 'Unsuccessful',
+                    'msg' => $adminResponse['msg'],
+                ];
+            } else {
+                $admin = $adminResponse['data'];
+                $invoice = select("invoice", "*", "username", $username, "select");
+                $expire = 0;
+                $password = '';
+                if (is_array($invoice)) {
+                    $expire = (int) $invoice['Service_time'] === 0
+                        ? 0
+                        : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * 86400);
+                    $password = (string) ($invoice['user_info'] ?? '');
+                }
+                $status = strtolower((string) ($admin['status'] ?? 'active'));
+                if ($expire > 0 && $expire <= time()) {
+                    if ($status !== 'disabled') {
+                        pasarguardModifyAdmin($Get_Data_Panel, $username, ['status' => 'disabled']);
+                    }
+                    $status = 'expired';
+                } elseif ($status === 'enabled') {
+                    $status = 'active';
+                }
+                $dataLimit = (int) ($admin['data_limit'] ?? 0);
+                $usedTraffic = (int) ($admin['used_traffic'] ?? $admin['usage'] ?? 0);
+                if ($dataLimit > 0 && $usedTraffic >= $dataLimit && $status === 'active') {
+                    $status = 'limited';
+                }
+                $Output = [
+                    'status' => $status,
+                    'username' => (string) ($admin['username'] ?? $username),
+                    'data_limit' => $dataLimit,
+                    'expire' => $expire,
+                    'online_at' => $admin['last_login'] ?? null,
+                    'used_traffic' => $usedTraffic,
+                    'links' => [],
+                    'subscription_url' => $password,
+                    'sub_updated_at' => null,
+                    'sub_last_user_agent' => null,
+                    'uuid' => null,
+                    'data_limit_reset' => 'no_reset',
+                ];
+            }
         } else {
             $Output = array(
                 'status' => 'Unsuccessful',
@@ -1247,6 +1325,19 @@ class ManagePanel
                     'username' => $username,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
+            $remove = pasarguardDeleteAdmin($Get_Data_Panel, $username);
+            if (!$remove['ok']) {
+                $Output = [
+                    'status' => 'Unsuccessful',
+                    'msg' => $remove['msg'],
+                ];
+            } else {
+                $Output = [
+                    'status' => 'successful',
+                    'username' => $username,
+                ];
+            }
         } else {
             $Output = array(
                 'status' => 'Unsuccessful',
@@ -1507,6 +1598,19 @@ class ManagePanel
                 'status' => true,
                 'data' => $modify
             );
+        } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
+            if (array_key_exists('enable', $config)) {
+                $config['status'] = $config['enable'] ? 'active' : 'disabled';
+            }
+            $allowed = ['status', 'password', 'data_limit', 'role_id', 'permission_overrides', 'note'];
+            $payload = array_intersect_key($config, array_flip($allowed));
+            if (empty($payload)) {
+                return ['status' => false, 'msg' => 'اطلاعاتی برای ویرایش نمایندگی ارسال نشده است.'];
+            }
+            $modify = pasarguardModifyAdmin($Get_Data_Panel, $username, $payload);
+            return $modify['ok']
+                ? ['status' => true, 'data' => $modify['data']]
+                : ['status' => false, 'msg' => $modify['msg']];
         }
     }
     function Change_status($username, $name_panel)
@@ -1607,6 +1711,12 @@ class ManagePanel
                 'status' => 'successful',
                 'msg' => null
             );
+        } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
+            $status = $DataUserOut['status'] == 'active' ? 'disabled' : 'active';
+            $changed = $ManagePanel->Modifyuser($username, $name_panel, ['status' => $status]);
+            $Output = $changed['status']
+                ? ['status' => 'successful', 'msg' => null]
+                : ['status' => 'Unsuccessful', 'msg' => $changed['msg'] ?? 'خطا در تغییر وضعیت نمایندگی'];
         }
 
         return $Output;
@@ -1745,6 +1855,11 @@ class ManagePanel
             return array(
                 'status' => true
             );
+        } elseif ($panel['type'] == "pasarguard_reseller") {
+            $reset = pasarguardResetAdminUsage($panel, $username);
+            return $reset['ok']
+                ? ['status' => true, 'data' => $reset['data']]
+                : ['status' => false, 'msg' => $reset['msg']];
         }
     }
     function extend($Method_extend, $new_limit, $time_day, $username, $code_product, $name_panel)
@@ -1784,7 +1899,7 @@ class ManagePanel
         $inbound_id = isset($panel['inboundid']) ? $panel['inboundid'] : 1;
         $inbounds = is_string($panel['inbounds']) ? json_decode($panel['inbounds']) : "{}";
         $inbounds = $product['inbounds'] != null ? json_decode($product['inbounds']) : $inbounds;
-        if ($panel['type'] != "WGDashboard") {
+        if (!in_array($panel['type'], ["WGDashboard", "pasarguard_reseller"], true)) {
             update("invoice", 'user_info', null, "username", $username);
         }
         update("invoice", 'uuid', null, "username", $username);
@@ -1934,6 +2049,16 @@ class ManagePanel
                 "volume" => $data_limit_new,
                 "expiry" => $time_new
             );
+        } elseif ($panel['type'] == "pasarguard_reseller") {
+            $settings = pasarguardProductSettings($product, $panel);
+            $data = [
+                'status' => 'active',
+                'data_limit' => $data_limit_new > 0 ? $data_limit_new : null,
+                'role_id' => $settings['role_id'],
+                'permission_overrides' => $settings['max_users'] > 0
+                    ? ['max_users' => $settings['max_users']]
+                    : null,
+            ];
         }
         $extend = $this->Modifyuser($username, $panel['name_panel'], $data);
         if ($extend['status'] == false) {

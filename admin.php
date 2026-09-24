@@ -532,6 +532,10 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         sendmessage($from_id, "🔐 <b>ربات چگونه به پنل متصل شود؟</b>\n\nاستفاده از <b>API Token</b> پیشنهاد می‌شود؛ راه‌اندازی آن ساده‌تر و اتصال آن پایدارتر است. اگر ورود دومرحله‌ای پنل فعال است، حتماً همین گزینه را انتخاب کنید.", $authKeyboard, 'HTML');
         step('xui_add_auth_choice', $from_id);
         return;
+    } elseif ($userdata['type'] == 'pasarguard_reseller') {
+        sendmessage($from_id, "👤 <b>نام کاربری مالک پنل پاسارگارد را ارسال کنید</b>\n\nاین حساب باید اجازه ساخت و مدیریت ادمین‌ها را داشته باشد.", $backadmin, 'HTML');
+        step('add_username_panel', $from_id);
+        return;
     }
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
     step('add_username_panel', $from_id);
@@ -564,13 +568,60 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
-    sendmessage($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+    $userdata = json_decode($user['Processing_value'], true);
+    if (($userdata['type'] ?? '') === 'pasarguard_reseller') {
+        sendmessage($from_id, "🔐 <b>رمز عبور حساب مالک پاسارگارد را ارسال کنید</b>\n\nرمز فقط برای دریافت توکن API و ساخت خودکار نمایندگی استفاده می‌شود.", $backadmin, 'HTML');
+    } else {
+        sendmessage($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+    }
     step('add_password_panel', $from_id);
     savedata("save", "username", $text);
 } elseif ($user['step'] == "add_password_panel") {
+    $userdata = json_decode($user['Processing_value'], true);
+    if (($userdata['type'] ?? '') === 'pasarguard_reseller') {
+        savedata("save", "password", $text);
+        sendmessage($from_id, "🧩 <b>شناسه نقش پیش‌فرض نمایندگی را ارسال کنید</b>\n\nاین شناسه در بخش نقش‌های پنل PasarGuard نمایش داده می‌شود و بعداً از منوی مدیریت پنل قابل تغییر است.", $backadmin, 'HTML');
+        step('add_pasarguard_role', $from_id);
+        return;
+    }
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
     savedata("save", "password", $text);
+} elseif ($user['step'] == "add_pasarguard_role") {
+    if (!ctype_digit($text) || (int) $text < 1) {
+        sendmessage($from_id, "❌ شناسه نقش باید یک عدد صحیح بزرگ‌تر از صفر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $temporaryPanel = [
+        'url_panel' => $userdata['url_panel'] ?? '',
+        'username_panel' => $userdata['username'] ?? '',
+        'password_panel' => $userdata['password'] ?? '',
+    ];
+    $roles = pasarguardGetRoles($temporaryPanel);
+    if (!$roles['ok']) {
+        $reason = htmlspecialchars((string) $roles['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "❌ اتصال یا دریافت نقش‌ها ناموفق بود.\nعلت: <code>{$reason}</code>\n\nآدرس و اطلاعات ورود را بررسی کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $selectedRole = null;
+    foreach ($roles['items'] as $role) {
+        if (is_array($role) && (string) ($role['id'] ?? '') === (string) (int) $text) {
+            $selectedRole = $role;
+            break;
+        }
+    }
+    if (!$selectedRole) {
+        sendmessage($from_id, "❌ این شناسه نقش در پنل پیدا نشد. شناسه صحیح یک نقش غیرمالک را ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    if (!empty($selectedRole['is_owner'])) {
+        sendmessage($from_id, "❌ نقش مالک برای فروش نمایندگی مجاز نیست. یک نقش غیرمالک انتخاب کنید.", $backadmin, 'HTML');
+        return;
+    }
+    savedata('save', 'pasarguard_role_id', (int) $text);
+    sendmessage($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "getlimitedpanel") {
     savedata("save", "limitpanel", $text);
     $userdata = json_decode($user['Processing_value'], true);
@@ -595,12 +646,14 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $configstatus = "offconfig";
     $MethodUsername = "آیدی عددی + حروف و عدد رندوم";
     $status = "active";
-    $ONTestAccount = "ONTestAccount";
+    $ONTestAccount = ($userdata['type'] ?? '') === 'pasarguard_reseller' ? "OFFTestAccount" : "ONTestAccount";
     $extendtextadd = "ریست حجم و زمان";
     $namecustoms = "none";
     $type = "marzban";
     $conecton = "offconecton";
-    $inboundid = 1;
+    $inboundid = ($userdata['type'] ?? '') === 'pasarguard_reseller'
+        ? (int) ($userdata['pasarguard_role_id'] ?? 1)
+        : 1;
     $agent = "all";
     $time = "1";
     $valume = "100";
@@ -705,6 +758,15 @@ if (in_array($text, $textadmin) || $datain == "admin") {
 1 - از مسیر مدیریت پنل > تنظیم ⚙️ تنظیم پروتکل و اینباند یک نام کاربری کانفیگ را ارسال نمایید.", null, 'HTML');
     } elseif ($userdata['type'] == "x-ui_tunnel") {
         sendmessage($from_id, "✅ <b>پنل تانل سنایی با موفقیت اضافه شد.</b>\n\n⚙️ <b>نکته مهم:</b>\nمطمئن شوید فایروال سرور ایران پورت‌های مورد نظر را باز نگه داشته باشد تا اتصالات کاربران بدون اختلال برقرار شود.", null, 'HTML');
+    } elseif ($userdata['type'] == "pasarguard_reseller") {
+        $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
+        $connection = pasarguardCheckConnection($savedPanel);
+        if ($connection['ok']) {
+            sendmessage($from_id, "✅ اتصال به PasarGuard برقرار شد و پنل برای فروش نمایندگی آماده است.\n\nاز بخش محصولات، پلن نمایندگی بسازید و نقش و سقف کاربران آن را مشخص کنید.", null, 'HTML');
+        } else {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "⚠️ پنل ذخیره شد اما اتصال API برقرار نشد.\n\nعلت: <code>{$reason}</code>\nاطلاعات ورود را از مدیریت پنل بررسی کنید.", null, 'HTML');
+        }
     }
 }
 //_____________________[ message ]____________________________//
@@ -2995,7 +3057,10 @@ $caption";
         step('gettimereset', $from_id);
         return;
     }
-    sendmessage($from_id, $textbotlang['Admin']['Product']['GetLimit'], $backadmin, 'HTML');
+    $volumePrompt = $panel['type'] == 'pasarguard_reseller'
+        ? "💾 سقف ترافیک کل نمایندگی را به گیگابایت ارسال کنید.\nبرای حجم نامحدود عدد <code>0</code> را بفرستید."
+        : $textbotlang['Admin']['Product']['GetLimit'];
+    sendmessage($from_id, $volumePrompt, $backadmin, 'HTML');
     step('get_time', $from_id);
 } elseif ($user['step'] == "getcategory") {
     $category = select("category", "*", "remark", $text, "count");
@@ -3013,7 +3078,10 @@ $caption";
         step('gettimereset', $from_id);
         return;
     }
-    sendmessage($from_id, $textbotlang['Admin']['Product']['GetLimit'], $backadmin, 'HTML');
+    $volumePrompt = $panel['type'] == 'pasarguard_reseller'
+        ? "💾 سقف ترافیک کل نمایندگی را به گیگابایت ارسال کنید.\nبرای حجم نامحدود عدد <code>0</code> را بفرستید."
+        : $textbotlang['Admin']['Product']['GetLimit'];
+    sendmessage($from_id, $volumePrompt, $backadmin, 'HTML');
     step('get_time', $from_id);
 } elseif ($user['step'] == "get_time") {
     if (!ctype_digit($text)) {
@@ -3021,7 +3089,12 @@ $caption";
         return;
     }
     savedata("save", "Volume_constraint", $text);
-    sendmessage($from_id, $textbotlang['Admin']['Product']['GettIime'], $backadmin, 'HTML');
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel = select('marzban_panel', '*', 'name_panel', $userdata['Location'] ?? '', 'select');
+    $timePrompt = is_array($panel) && $panel['type'] == 'pasarguard_reseller'
+        ? "⏳ مدت اعتبار نمایندگی را به روز ارسال کنید.\nپس از پایان این مدت، دسترسی ادمین به‌صورت خودکار غیرفعال می‌شود. برای اعتبار نامحدود عدد <code>0</code> را بفرستید."
+        : $textbotlang['Admin']['Product']['GettIime'];
+    sendmessage($from_id, $timePrompt, $backadmin, 'HTML');
     step('get_price', $from_id);
 } elseif ($user['step'] == "get_price") {
     if (!ctype_digit($text)) {
@@ -3044,8 +3117,63 @@ $caption";
         step('getnote', $from_id);
         return;
     }
+    if ($panel['type'] == 'pasarguard_reseller') {
+        sendmessage($from_id, "👥 حداکثر تعداد کاربری که این نماینده می‌تواند بسازد را ارسال کنید.\nبرای استفاده از محدودیت خود نقش، عدد <code>0</code> را بفرستید.", $backadmin, 'HTML');
+        step('get_pasarguard_max_users', $from_id);
+        return;
+    }
     savedata("save", "data_limit_reset", "no_reset");
     sendmessage($from_id, " 🗒 یادداشت را برای محصول ارسال کنید. این یادداشت در پیش فاکتور کاربر نشان داده می شود.", $backadmin, 'HTML');
+    step('endstep', $from_id);
+} elseif ($user['step'] == "get_pasarguard_max_users") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ سقف کاربران باید یک عدد صحیح صفر یا بزرگ‌تر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    savedata('save', 'pasarguard_max_users', (int) $text);
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel = select('marzban_panel', '*', 'name_panel', $userdata['Location'] ?? '', 'select');
+    $defaultRole = (int) ($panel['inboundid'] ?? 1);
+    sendmessage($from_id, "🧩 شناسه نقش این پلن را ارسال کنید.\nبرای استفاده از نقش پیش‌فرض پنل (<code>{$defaultRole}</code>) عدد <code>0</code> را بفرستید.", $backadmin, 'HTML');
+    step('get_pasarguard_product_role', $from_id);
+} elseif ($user['step'] == "get_pasarguard_product_role") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ شناسه نقش باید یک عدد صحیح صفر یا بزرگ‌تر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $panel = select('marzban_panel', '*', 'name_panel', $userdata['Location'] ?? '', 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ اطلاعات پنل پاسارگارد پیدا نشد. ساخت محصول را دوباره انجام دهید.", $shopkeyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $roleId = (int) $text === 0 ? (int) $panel['inboundid'] : (int) $text;
+    $roles = pasarguardGetRoles($panel);
+    if (!$roles['ok']) {
+        sendmessage($from_id, "❌ امکان بررسی نقش وجود ندارد. اتصال پنل را بررسی و دوباره تلاش کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $exists = false;
+    $ownerRole = false;
+    foreach ($roles['items'] as $role) {
+        if (is_array($role) && (string) ($role['id'] ?? '') === (string) $roleId) {
+            $ownerRole = !empty($role['is_owner']);
+            $exists = !$ownerRole;
+            break;
+        }
+    }
+    if ($ownerRole) {
+        sendmessage($from_id, "❌ نقش مالک را نمی‌توان به عنوان پلن نمایندگی فروخت. یک نقش غیرمالک انتخاب کنید.", $backadmin, 'HTML');
+        return;
+    }
+    if (!$exists) {
+        sendmessage($from_id, "❌ نقش با شناسه <code>{$roleId}</code> در پنل پیدا نشد.", $backadmin, 'HTML');
+        return;
+    }
+    savedata('save', 'pasarguard_role_id', $roleId);
+    savedata('save', 'data_limit_reset', 'no_reset');
+    sendmessage($from_id, "🗒 یادداشت پلن را ارسال کنید. این متن در پیش‌فاکتور کاربر نمایش داده می‌شود.", $backadmin, 'HTML');
     step('endstep', $from_id);
 } elseif ($user['step'] == "getnote") {
     savedata("save", "data_limit_reset", $text);
@@ -3055,9 +3183,18 @@ $caption";
     $userdata = json_decode($user['Processing_value'], true);
     $randomString = bin2hex(random_bytes(2));
     $varhide_panel = "{}";
+    $panel = select('marzban_panel', '*', 'name_panel', $userdata['Location'] ?? '', 'select');
+    $productInbounds = null;
+    if (is_array($panel) && $panel['type'] === 'pasarguard_reseller') {
+        $productInbounds = json_encode([
+            'provider' => 'pasarguard',
+            'role_id' => (int) ($userdata['pasarguard_role_id'] ?? $panel['inboundid'] ?? 1),
+            'max_users' => (int) ($userdata['pasarguard_max_users'] ?? 0),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
     if (!isset($userdata['category']))
         $userdata['category'] = null;
-    $stmt = $pdo->prepare("INSERT IGNORE INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,one_buy_status) VALUES (:name_product,:code_product,:price_product,:Volume_constraint,:Service_time,:Location,:agent,:data_limit_reset,:note,:category,:hide_panel,'0')");
+    $stmt = $pdo->prepare("INSERT IGNORE INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,inbounds,one_buy_status) VALUES (:name_product,:code_product,:price_product,:Volume_constraint,:Service_time,:Location,:agent,:data_limit_reset,:note,:category,:hide_panel,:inbounds,'0')");
     $stmt->bindParam(':name_product', $userdata['name_product']);
     $stmt->bindParam(':code_product', $randomString);
     $stmt->bindParam(':price_product', $userdata['price_product']);
@@ -3069,6 +3206,7 @@ $caption";
     $stmt->bindParam(':category', $userdata['category'], PDO::PARAM_STR);
     $stmt->bindParam(':note', $text, PDO::PARAM_STR);
     $stmt->bindParam(':hide_panel', $varhide_panel, PDO::PARAM_STR);
+    $stmt->bindParam(':inbounds', $productInbounds, PDO::PARAM_STR);
     $stmt->execute();
     sendmessage($from_id, $textbotlang['Admin']['Product']['SaveProduct'], $shopkeyboard, 'HTML');
     step('home', $from_id);
@@ -3300,6 +3438,28 @@ $caption";
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
     $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE id = '$id_product'  AND agent = '{$user['Processing_value_tow']}' AND (Location = '{$panel['name_panel']}' OR Location = '/all') LIMIT 1"));
     $count_invoice = select("invoice", "*", "name_product", $info_product['name_product'], "count");
+    $productKeyboard = $change_product;
+    $resellerDetails = '';
+    if (is_array($panel) && $panel['type'] === 'pasarguard_reseller') {
+        $resellerSettings = pasarguardProductSettings($info_product, $panel);
+        $resellerDetails = "\nنقش نمایندگی : {$resellerSettings['role_id']}\nحداکثر کاربران نمایندگی : "
+            . ($resellerSettings['max_users'] > 0 ? $resellerSettings['max_users'] : 'مطابق نقش');
+        $decodedKeyboard = json_decode($change_product, true);
+        if (is_array($decodedKeyboard) && isset($decodedKeyboard['keyboard'])) {
+            foreach ($decodedKeyboard['keyboard'] as &$row) {
+                $row = array_values(array_filter($row, function ($button) {
+                    return ($button['text'] ?? '') !== '🎛 تنظیم اینباند';
+                }));
+            }
+            unset($row);
+            $decodedKeyboard['keyboard'] = array_values(array_filter($decodedKeyboard['keyboard']));
+            array_splice($decodedKeyboard['keyboard'], -1, 0, [[
+                ['text' => '🧩 نقش نمایندگی'],
+                ['text' => '👥 تعداد کاربران نمایندگی'],
+            ]]);
+            $productKeyboard = json_encode($decodedKeyboard, JSON_UNESCAPED_UNICODE);
+        }
+    }
     $infoproduct = "
 📌 اطلاعات محصول در حال ویرایش:
 نام محصول :  {$info_product['name_product']}
@@ -3312,8 +3472,84 @@ $caption";
 یادداشت محصول : {$info_product['note']}
 دسته بندی محصول : {$info_product['category']}
 تعداد محصول فروخته شده : $count_invoice عدد
+{$resellerDetails}
     ";
-    sendmessage($from_id, $infoproduct, $change_product, 'HTML');
+    sendmessage($from_id, $infoproduct, $productKeyboard, 'HTML');
+    step('home', $from_id);
+} elseif ($text == "👥 تعداد کاربران نمایندگی" && $adminrulecheck['rule'] == "administrator") {
+    $product = select('product', '*', 'id', $user['Processing_value'], 'select');
+    $panel = select('marzban_panel', '*', 'name_panel', $product['Location'] ?? '', 'select');
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ این گزینه فقط برای پلن نمایندگی پاسارگارد قابل استفاده است.", $shopkeyboard, 'HTML');
+        return;
+    }
+    sendmessage($from_id, "👥 سقف جدید کاربران نمایندگی را ارسال کنید.\nعدد <code>0</code> یعنی استفاده از محدودیت نقش.", $backadmin, 'HTML');
+    step('change_pasarguard_max_users', $from_id);
+} elseif ($user['step'] == "change_pasarguard_max_users") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ سقف کاربران باید یک عدد صحیح صفر یا بزرگ‌تر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    $product = select('product', '*', 'id', $user['Processing_value'], 'select');
+    $panel = select('marzban_panel', '*', 'name_panel', $product['Location'] ?? '', 'select');
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ اطلاعات پلن پیدا نشد.", $shopkeyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $settings = pasarguardProductSettings($product, $panel);
+    $settings['provider'] = 'pasarguard';
+    $settings['max_users'] = (int) $text;
+    update('product', 'inbounds', json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'id', $product['id']);
+    sendmessage($from_id, "✅ سقف کاربران نمایندگی به‌روزرسانی شد.", $shopkeyboard, 'HTML');
+    step('home', $from_id);
+} elseif ($text == "🧩 نقش نمایندگی" && $adminrulecheck['rule'] == "administrator") {
+    $product = select('product', '*', 'id', $user['Processing_value'], 'select');
+    $panel = select('marzban_panel', '*', 'name_panel', $product['Location'] ?? '', 'select');
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ این گزینه فقط برای پلن نمایندگی پاسارگارد قابل استفاده است.", $shopkeyboard, 'HTML');
+        return;
+    }
+    sendmessage($from_id, "🧩 شناسه نقش جدید این پلن را ارسال کنید.\nعدد <code>0</code> یعنی نقش پیش‌فرض پنل (<code>{$panel['inboundid']}</code>).", $backadmin, 'HTML');
+    step('change_pasarguard_product_role', $from_id);
+} elseif ($user['step'] == "change_pasarguard_product_role") {
+    if (!ctype_digit($text)) {
+        sendmessage($from_id, "❌ شناسه نقش باید یک عدد صحیح صفر یا بزرگ‌تر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    $product = select('product', '*', 'id', $user['Processing_value'], 'select');
+    $panel = select('marzban_panel', '*', 'name_panel', $product['Location'] ?? '', 'select');
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ اطلاعات پلن پیدا نشد.", $shopkeyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $roleId = (int) $text === 0 ? (int) $panel['inboundid'] : (int) $text;
+    $roles = pasarguardGetRoles($panel);
+    $exists = false;
+    $ownerRole = false;
+    if ($roles['ok']) {
+        foreach ($roles['items'] as $role) {
+            if (is_array($role) && (string) ($role['id'] ?? '') === (string) $roleId) {
+                $ownerRole = !empty($role['is_owner']);
+                $exists = !$ownerRole;
+                break;
+            }
+        }
+    }
+    if ($ownerRole) {
+        sendmessage($from_id, "❌ نقش مالک برای فروش نمایندگی مجاز نیست. یک نقش غیرمالک انتخاب کنید.", $backadmin, 'HTML');
+        return;
+    }
+    if (!$exists) {
+        sendmessage($from_id, "❌ نقش انتخاب‌شده در پنل پیدا نشد یا اتصال API در دسترس نیست.", $backadmin, 'HTML');
+        return;
+    }
+    $settings = pasarguardProductSettings($product, $panel);
+    $settings['provider'] = 'pasarguard';
+    $settings['role_id'] = $roleId;
+    update('product', 'inbounds', json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'id', $product['id']);
+    sendmessage($from_id, "✅ نقش پلن نمایندگی به‌روزرسانی شد.", $shopkeyboard, 'HTML');
     step('home', $from_id);
 } elseif ($text == "قیمت" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "قیمت جدید را ارسال کنید", $backadmin, 'HTML');
@@ -3425,6 +3661,12 @@ $caption";
     }
     $product = select("product", "*", "name_product", $user['Processing_value']);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
+    $targetPanel = select('marzban_panel', '*', 'name_panel', $text, 'select');
+    if ($panel && $targetPanel && (($panel['type'] === 'pasarguard_reseller') !== ($targetPanel['type'] === 'pasarguard_reseller'))) {
+        sendmessage($from_id, "❌ انتقال محصول بین پنل پاسارگارد و پنل VPN مجاز نیست؛ چون ساختار تحویل این دو محصول متفاوت است.", $shopkeyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
     $stmt = $pdo->prepare("UPDATE product SET Location = :Location2 WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':Location2', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
@@ -4260,6 +4502,19 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
             $text_marzban = $textbotlang['Admin']['managepanel']['errorstateuspanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
+    } elseif ($marzban_list_get['type'] == "pasarguard_reseller") {
+        $connection = pasarguardCheckConnection($marzban_list_get);
+        if ($connection['ok']) {
+            $roles = pasarguardGetRoles($marzban_list_get);
+            $roleCount = $roles['ok'] ? count($roles['items']) : 0;
+            $salesCount = select('invoice', '*', 'Service_location', $marzban_list_get['name_panel'], 'count');
+            $owner = htmlspecialchars((string) ($connection['data']['username'] ?? $marzban_list_get['username_panel']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $panelName = htmlspecialchars((string) $marzban_list_get['name_panel'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "✅ <b>پنل PasarGuard متصل است</b>\n\n🖥 <b>نام پنل:</b> {$panelName}\n👤 <b>حساب متصل:</b> <code>{$owner}</code>\n🧩 <b>نقش پیش‌فرض:</b> <code>{$marzban_list_get['inboundid']}</code>\n📋 <b>تعداد نقش‌ها:</b> {$roleCount}\n🛍 <b>تعداد فاکتورها:</b> {$salesCount}\n\nیکی از گزینه‌های مدیریت را انتخاب کنید.", $optionPasarguardReseller, 'HTML');
+        } else {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "❌ اتصال به پنل PasarGuard برقرار نشد.\n\nعلت: <code>{$reason}</code>", $optionPasarguardReseller, 'HTML');
+        }
     } elseif ($marzban_list_get['type'] == "WGDashboard") {
         sendmessage($from_id, $textbotlang['users']['selectoption'], $optionwg, 'HTML');
     } elseif ($marzban_list_get['type'] == "s_ui") {
@@ -4319,6 +4574,87 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
         sendmessage($from_id, "یک گزینه را انتخاب نمایید", $optionMarzban, 'HTML');
     }
     update("user", "Processing_value", $text, "id", $from_id);
+    step('home', $from_id);
+} elseif ($text == "🔌 بررسی اتصال" && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $connection = pasarguardCheckConnection($panel);
+    if ($connection['ok']) {
+        $account = htmlspecialchars((string) ($connection['data']['username'] ?? $panel['username_panel']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "✅ اتصال API برقرار است.\nحساب متصل: <code>{$account}</code>", $optionPasarguardReseller, 'HTML');
+    } else {
+        $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "❌ اتصال API برقرار نشد.\nعلت: <code>{$reason}</code>", $optionPasarguardReseller, 'HTML');
+    }
+} elseif ($text == "📋 نقش‌های پاسارگارد" && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $response = pasarguardGetRoles($panel);
+    if (!$response['ok']) {
+        $reason = htmlspecialchars((string) $response['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "❌ دریافت نقش‌ها ناموفق بود.\nعلت: <code>{$reason}</code>", $optionPasarguardReseller, 'HTML');
+        return;
+    }
+    $lines = [];
+    foreach ($response['items'] as $role) {
+        if (!is_array($role)) {
+            continue;
+        }
+        $roleId = htmlspecialchars((string) ($role['id'] ?? '-'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $roleName = htmlspecialchars((string) ($role['name'] ?? $role['title'] ?? 'بدون نام'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $lines[] = "• <b>{$roleName}</b> | شناسه: <code>{$roleId}</code>";
+    }
+    $roleText = $lines ? implode("\n", $lines) : 'نقشی برای نمایش دریافت نشد.';
+    sendmessage($from_id, "📋 <b>نقش‌های قابل استفاده در PasarGuard</b>\n\n{$roleText}\n\nنقش پیش‌فرض فعلی: <code>{$panel['inboundid']}</code>", $optionPasarguardReseller, 'HTML');
+} elseif ($text == "🧩 نقش پیش‌فرض" && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    sendmessage($from_id, "🧩 شناسه عددی نقش پیش‌فرض جدید را ارسال کنید.\nبرای دیدن شناسه‌ها از گزینه «نقش‌های پاسارگارد» استفاده کنید.", $backadmin, 'HTML');
+    step('set_pasarguard_default_role', $from_id);
+} elseif ($user['step'] == "set_pasarguard_default_role") {
+    if (!ctype_digit($text) || (int) $text < 1) {
+        sendmessage($from_id, "❌ شناسه نقش باید یک عدد صحیح بزرگ‌تر از صفر باشد.", $backadmin, 'HTML');
+        return;
+    }
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ اطلاعات پنل پیدا نشد.", $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $roles = pasarguardGetRoles($panel);
+    if (!$roles['ok']) {
+        sendmessage($from_id, "❌ امکان بررسی نقش در پنل وجود ندارد. لطفاً اتصال را بررسی کنید.", $optionPasarguardReseller, 'HTML');
+        return;
+    }
+    $exists = false;
+    $ownerRole = false;
+    foreach ($roles['items'] as $role) {
+        if (is_array($role) && (string) ($role['id'] ?? '') === (string) (int) $text) {
+            $ownerRole = !empty($role['is_owner']);
+            $exists = !$ownerRole;
+            break;
+        }
+    }
+    if ($ownerRole) {
+        sendmessage($from_id, "❌ نقش مالک نمی‌تواند نقش پیش‌فرض فروش باشد. یک نقش غیرمالک انتخاب کنید.", $backadmin, 'HTML');
+        return;
+    }
+    if (!$exists) {
+        sendmessage($from_id, "❌ چنین نقشی در پنل پیدا نشد. شناسه را از فهرست نقش‌ها بررسی کنید.", $backadmin, 'HTML');
+        return;
+    }
+    update('marzban_panel', 'inboundid', (int) $text, 'name_panel', $panel['name_panel']);
+    sendmessage($from_id, "✅ نقش پیش‌فرض نمایندگی روی <code>" . (int) $text . "</code> تنظیم شد.", $optionPasarguardReseller, 'HTML');
     step('home', $from_id);
 } elseif ($text == "✍️ نام پنل" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['GetNameNew'], $backadmin, 'HTML');
@@ -7468,7 +7804,7 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     ]);
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-    $datatextbot['textafterpay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
+    $datatextbot['textafterpay'] = in_array($marzban_list_get['type'], ["ibsng", "mikrotik", "pasarguard_reseller"], true) ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Volume_constraint']) == 0)
@@ -7484,9 +7820,12 @@ elseif ($datain == "back_to_admin_general" && in_array($from_id, $admin_ids)) {
     if (intval($info_product['Volume_constraint']) == 0) {
         $textcreatuser = str_replace('گیگابایت', "", $textcreatuser);
     }
-    if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
+    if (in_array($marzban_list_get['type'], ["Manualsale", "ibsng", "mikrotik", "pasarguard_reseller"], true)) {
         $textcreatuser = str_replace('{password}', $DataUserOut['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $DataUserOut['subscription_url'], "id_invoice", $randomString);
+    }
+    if ($marzban_list_get['type'] == "pasarguard_reseller") {
+        $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $DataUserOut, $info_product);
     }
     sendMessageService($marzban_list_get, $DataUserOut['configs'], $output_config_link, $DataUserOut['username'], $Shoppinginfo, $textcreatuser, $randomString, $user['Processing_value']);
     sendmessage($from_id, $textbotlang['Admin']['addorder']['fivestep'], $keyboardadmin, 'HTML');

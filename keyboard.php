@@ -1073,6 +1073,20 @@ $change_product = json_encode([
     'resize_keyboard' => true
 ]);
 
+$optionPasarguardReseller = json_encode([
+    'keyboard' => [
+        [['text' => "🔌 بررسی اتصال"], ['text' => "📋 نقش‌های پاسارگارد"]],
+        [['text' => "🧩 نقش پیش‌فرض"], ['text' => "💡 روش ساخت نام کاربری"]],
+        [['text' => "✍️ نام پنل"], ['text' => "❌ حذف پنل"]],
+        [['text' => "🔐 ویرایش رمز عبور"], ['text' => "👤 ویرایش نام کاربری"]],
+        [['text' => "🔗 ویرایش آدرس پنل"], ['text' => "🚨 محدودیت ساخت اکانت"]],
+        [['text' => "📍 تغییر گروه کاربری"]],
+        [['text' => "🎨 تنظیم رنگ پنل"], ['text' => "⭐ تنظیم ایموجی پرمیوم"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]],
+    ],
+    'resize_keyboard' => true,
+], JSON_UNESCAPED_UNICODE);
+
 $keyboardprotocol = json_encode([
     'keyboard' => [
         [['text' => "vless"], ['text' => "vmess"], ['text' => "trojan"]],
@@ -1431,6 +1445,9 @@ $keyboardtypepanel = json_encode([
 
         [
             ['text' => "فروش پورت (سنایی)", 'callback_data' => 'typepanel#x-ui_tunnel']
+        ],
+        [
+            ['text' => "فروش نمایندگی پاسارگاد", 'callback_data' => 'typepanel#pasarguard_reseller']
         ],
 
         [
