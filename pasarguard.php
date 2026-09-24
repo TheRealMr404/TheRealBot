@@ -30,6 +30,34 @@ function pasarguardDecodeJwtExpiry($token)
     return isset($decoded['exp']) ? (int) $decoded['exp'] : time() + 300;
 }
 
+function pasarguardGeneratePassword($username = '')
+{
+    $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    $lower = 'abcdefghijkmnopqrstuvwxyz';
+    $digits = '23456789';
+    $special = '!@#$%*-_+';
+    $all = $upper . $lower . $digits . $special;
+
+    for ($attempt = 0; $attempt < 10; $attempt++) {
+        $characters = [];
+        foreach ([[$upper, 2], [$lower, 2], [$digits, 2], [$special, 2], [$all, 10]] as $group) {
+            for ($i = 0; $i < $group[1]; $i++) {
+                $characters[] = $group[0][random_int(0, strlen($group[0]) - 1)];
+            }
+        }
+        for ($i = count($characters) - 1; $i > 0; $i--) {
+            $swap = random_int(0, $i);
+            [$characters[$i], $characters[$swap]] = [$characters[$swap], $characters[$i]];
+        }
+        $password = implode('', $characters);
+        if ($username === '' || stripos($password, (string) $username) === false) {
+            return $password;
+        }
+    }
+
+    return 'PG@az19' . bin2hex(random_bytes(6));
+}
+
 function pasarguardHttpRequest($panel, $method, $path, $payload = null, $token = null, $form = false)
 {
     $url = pasarguardNormalizeUrl($panel['url_panel'] ?? '') . '/api/' . ltrim($path, '/');

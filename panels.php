@@ -379,7 +379,7 @@ class ManagePanel
                 ];
             }
             $settings = pasarguardProductSettings($Get_Data_Product, $Get_Data_Panel);
-            $password = 'Pg@' . bin2hex(random_bytes(7));
+            $password = pasarguardGeneratePassword($usernameC);
             $create = pasarguardCreateAdmin(
                 $Get_Data_Panel,
                 $usernameC,
