@@ -4887,7 +4887,7 @@ $textinvite
         if ($newVolume == $volume) {
             $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
         }
-        $volume = $newVolume;
+        // $volume = $newVolume;
     } elseif ($customInvoiceAction[1] == 'd') {
         $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
         if ($newDays == $days) {
