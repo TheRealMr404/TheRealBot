@@ -1313,6 +1313,8 @@ try {
         $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','reportnight')");
         $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','reportcron')");
         $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','backupfile')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','virtualservices')");
+        $connect->query("INSERT INTO topicid (idreport,report) VALUES ('0','virtualservices_error')");
     } else {
         $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','buyreport')");
         $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','otherservice')");
@@ -1324,6 +1326,8 @@ try {
         $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','reportnight')");
         $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','reportcron')");
         $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','backupfile')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','virtualservices')");
+        $connect->query("INSERT IGNORE INTO topicid (idreport,report) VALUES ('0','virtualservices_error')");
 
 
 

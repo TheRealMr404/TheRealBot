@@ -1,5 +1,51 @@
 <?php
 
+function virtualServicesAdminCustomText()
+{
+    global $update, $text;
+
+    $value = function_exists('convertCustomEmojiToHTML') && isset($update['message'])
+        ? convertCustomEmojiToHTML($update['message'])
+        : (string) $text;
+    return trim((string) $value);
+}
+
+function virtualServicesAdminEmojiId()
+{
+    global $update, $text;
+
+    $value = trim((string) $text);
+    if (in_array(mb_strtolower($value, 'UTF-8'), ['-', '0', 'none', 'حذف'], true)) {
+        return '';
+    }
+    if (preg_match('/^\d{5,30}$/', $value)) {
+        return $value;
+    }
+    if (function_exists('convertCustomEmojiToHTML') && isset($update['message'])) {
+        $html = convertCustomEmojiToHTML($update['message']);
+        if (preg_match('/emoji-id="(\d{5,30})"/', $html, $match)) {
+            return $match[1];
+        }
+    }
+    return null;
+}
+
+function virtualServicesAdminStyleLabel($style)
+{
+    return ['primary' => 'آبی', 'success' => 'سبز', 'danger' => 'قرمز', 'none' => 'ساده'][$style] ?? 'ساده';
+}
+
+function virtualServicesAdminStyleRows($prefix, $id = null)
+{
+    $suffix = $id === null ? '' : '_' . (int) $id;
+    return [[
+        ['text' => 'آبی', 'callback_data' => $prefix . $suffix . '_primary', 'style' => 'primary'],
+        ['text' => 'سبز', 'callback_data' => $prefix . $suffix . '_success', 'style' => 'success'],
+        ['text' => 'قرمز', 'callback_data' => $prefix . $suffix . '_danger', 'style' => 'danger'],
+        ['text' => 'ساده', 'callback_data' => $prefix . $suffix . '_none'],
+    ]];
+}
+
 function virtualServicesAdminKeyboard($rows)
 {
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -87,10 +133,12 @@ function virtualServicesAdminCategories()
         GROUP BY c.id ORDER BY c.sort_order, c.id")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($categories as $category) {
         $status = (int) $category['is_active'] === 1 ? 'فعال' : 'غیرفعال';
-        $rows[] = [[
-            'text' => $category['title'] . ' | ' . $category['product_count'] . ' محصول | ' . $status,
-            'callback_data' => 'vsa_cat_' . $category['id'],
-        ]];
+        $rows[] = [[telegramProductsStyledButton(
+            $category['title'] . ' | ' . $category['product_count'] . ' محصول | ' . $status,
+            'vsa_cat_' . $category['id'],
+            $category['button_style'],
+            $category['button_emoji_id']
+        )]];
     }
     $rows[] = [['text' => 'افزودن دسته جدید', 'callback_data' => 'vsa_cat_add']];
     $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_home']];
@@ -114,7 +162,9 @@ function virtualServicesAdminCategory($categoryId)
     }
     $status = (int) $category['is_active'] === 1 ? 'فعال' : 'غیرفعال';
     $text = '<b>' . telegramProductsEscape($category['title']) . "</b>\n\n";
-    $text .= "شناسه: <code>{$category['id']}</code>\nوضعیت: {$status}\nتعداد محصولات: {$category['product_count']}";
+    $text .= "شناسه: <code>{$category['id']}</code>\nوضعیت: {$status}\nتعداد محصولات: {$category['product_count']}\n";
+    $text .= 'رنگ دکمه: ' . virtualServicesAdminStyleLabel($category['button_style']) . "\n";
+    $text .= 'ایموجی دکمه: ' . (!empty($category['button_emoji_id']) ? '<code>' . telegramProductsEscape($category['button_emoji_id']) . '</code>' : 'ندارد');
     $rows = [
         [
             ['text' => 'تغییر نام', 'callback_data' => 'vsa_cat_edit_' . $category['id']],
@@ -123,6 +173,10 @@ function virtualServicesAdminCategory($categoryId)
         [
             ['text' => 'انتقال به بالاتر', 'callback_data' => 'vsa_cat_up_' . $category['id']],
             ['text' => 'انتقال به پایین‌تر', 'callback_data' => 'vsa_cat_down_' . $category['id']],
+        ],
+        [
+            ['text' => 'رنگ دکمه', 'callback_data' => 'vsa_cat_style_' . $category['id']],
+            ['text' => 'ایموجی دکمه', 'callback_data' => 'vsa_cat_emoji_' . $category['id']],
         ],
         [['text' => 'حذف دسته خالی', 'callback_data' => 'vsa_cat_delete_' . $category['id']]],
         [['text' => 'بازگشت', 'callback_data' => 'vsa_categories']],
@@ -141,10 +195,12 @@ function virtualServicesAdminProducts()
     $rows = [];
     foreach ($products as $product) {
         $status = (int) $product['is_active'] === 1 ? 'فعال' : 'غیرفعال';
-        $rows[] = [[
-            'text' => '#' . $product['id'] . ' ' . $product['title'] . ' | ' . telegramProductsMoney($product['price']) . ' | ' . $status,
-            'callback_data' => 'vsa_product_' . $product['id'],
-        ]];
+        $rows[] = [[telegramProductsStyledButton(
+            '#' . $product['id'] . ' ' . $product['title'] . ' | ' . telegramProductsMoney($product['price']) . ' | ' . $status,
+            'vsa_product_' . $product['id'],
+            $product['button_style'],
+            $product['button_emoji_id']
+        )]];
     }
     $rows[] = [['text' => 'افزودن محصول', 'callback_data' => 'vsa_product_add']];
     $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_home']];
@@ -177,9 +233,11 @@ function virtualServicesAdminProduct($productId)
     $text .= 'قیمت: ' . telegramProductsMoney($product['price']) . "\n";
     $text .= "تحویل: {$delivery} | وضعیت: {$status}\n";
     $text .= 'نمایش برای: ' . ($scopeLabels[$product['agent_scope']] ?? telegramProductsEscape($product['agent_scope'])) . "\n";
-    $text .= 'اطلاعات درخواستی: ' . telegramProductsEscape($product['input_label'] ?: 'ندارد') . "\n";
+    $text .= 'اطلاعات درخواستی: ' . telegramProductsSafeCustomText($product['input_label'] ?: 'ندارد') . "\n";
+    $text .= 'رنگ دکمه: ' . virtualServicesAdminStyleLabel($product['button_style']) . ' | ایموجی: ' . (!empty($product['button_emoji_id']) ? '<code>' . telegramProductsEscape($product['button_emoji_id']) . '</code>' : 'ندارد') . "\n";
+    $text .= 'هشدار موجودی: ' . (int) $product['low_stock_threshold'] . ' | سقف خرید هر کاربر: ' . ((int) $product['max_per_user'] ?: 'نامحدود') . "\n";
     $text .= "موجودی خودکار: {$product['stock_count']} | فروش: {$product['order_count']}\n\n";
-    $text .= telegramProductsEscape($product['description']);
+    $text .= telegramProductsSafeCustomText($product['description']);
 
     $rows = [
         [
@@ -194,6 +252,14 @@ function virtualServicesAdminProduct($productId)
         [
             ['text' => 'نوع تحویل: ' . $delivery, 'callback_data' => 'vsa_pdelivery_' . $product['id']],
             ['text' => 'سطح کاربران', 'callback_data' => 'vsa_pscope_' . $product['id']],
+        ],
+        [
+            ['text' => 'رنگ دکمه', 'callback_data' => 'vsa_pstyle_' . $product['id']],
+            ['text' => 'ایموجی دکمه', 'callback_data' => 'vsa_pemoji_' . $product['id']],
+        ],
+        [
+            ['text' => 'هشدار موجودی', 'callback_data' => 'vsa_plowstock_' . $product['id']],
+            ['text' => 'سقف خرید', 'callback_data' => 'vsa_pmax_' . $product['id']],
         ],
         [
             ['text' => 'انتقال به بالاتر', 'callback_data' => 'vsa_product_up_' . $product['id']],
@@ -297,15 +363,26 @@ function virtualServicesAdminOrder($orderId)
 
 function virtualServicesAdminSettings()
 {
+    global $pdo;
+
     $enabled = telegramProductsSetting('enabled', '1') === '1';
+    $topics = $pdo->query("SELECT report, idreport FROM topicid WHERE report IN ('virtualservices', 'virtualservices_error')")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $topicsReady = (int) ($topics['virtualservices'] ?? 0) > 0 && (int) ($topics['virtualservices_error'] ?? 0) > 0;
     $text = "<b>متن‌ها و تنظیمات خدمات مجازی</b>\n\n";
     $text .= 'نام دکمه: ' . telegramProductsEscape(telegramProductsButtonText()) . "\n";
-    $text .= 'وضعیت بخش: ' . ($enabled ? 'فعال' : 'غیرفعال');
+    $text .= 'وضعیت بخش: ' . ($enabled ? 'فعال' : 'غیرفعال') . "\n";
+    $text .= 'تاپیک‌های گزارش: ' . ($topicsReady ? 'آماده' : 'در انتظار ساخت');
     $rows = [
         [['text' => 'تغییر نام دکمه اصلی', 'callback_data' => 'vsa_text_button']],
+        [['text' => 'عنوان فروشگاه', 'callback_data' => 'vsa_text_title']],
         [['text' => 'متن صفحه نخست', 'callback_data' => 'vsa_text_home']],
+        [['text' => 'متن صفحه دسته', 'callback_data' => 'vsa_text_category']],
+        [['text' => 'متن تأیید خرید', 'callback_data' => 'vsa_text_checkout']],
         [['text' => 'پیام سفارش دستی', 'callback_data' => 'vsa_text_pending']],
         [['text' => 'پیام تحویل خودکار', 'callback_data' => 'vsa_text_auto']],
+        [['text' => 'پیام اتمام موجودی', 'callback_data' => 'vsa_text_stockout']],
+        [['text' => 'پیام غیرفعال بودن', 'callback_data' => 'vsa_text_disabled']],
+        [['text' => 'ساخت یا بازسازی تاپیک‌های گزارش', 'callback_data' => 'vsa_topics_rebuild']],
         [['text' => $enabled ? 'غیرفعال‌سازی کل بخش' : 'فعال‌سازی کل بخش', 'callback_data' => 'vsa_toggle']],
         [['text' => 'بازگشت', 'callback_data' => 'vsa_home']],
     ];
@@ -354,6 +431,7 @@ function virtualServicesAdminRefund($orderId)
             clearSelectCache('user');
         }
         sendmessage($order['user_id'], 'سفارش <code>#' . $order['id'] . '</code> لغو شد و مبلغ ' . telegramProductsMoney($order['price']) . ' به کیف پول شما بازگشت.', null, 'HTML');
+        telegramProductsReport('refund', "<b>بازپرداخت سفارش خدمات مجازی</b>\n\n<b>سفارش:</b> <code>#{$order['id']}</code>\n<b>کاربر:</b> <code>" . telegramProductsEscape($order['user_id']) . "</code>\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']) . "\n<b>مبلغ:</b> " . telegramProductsMoney($order['price']));
         return true;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -388,7 +466,7 @@ function virtualServicesAdminHandleState()
             return true;
         }
         $stmt = $pdo->prepare('INSERT INTO telegram_product_categories (title) VALUES (?)');
-        $stmt->execute([$value]);
+        $stmt->execute([telegramProductsPlainText($value)]);
         virtualServicesAdminClearState();
         sendmessage($from_id, 'دسته جدید ساخته شد.', null, 'HTML');
         virtualServicesAdminCategories();
@@ -400,7 +478,7 @@ function virtualServicesAdminHandleState()
             return true;
         }
         $stmt = $pdo->prepare('UPDATE telegram_product_categories SET title = ? WHERE id = ?');
-        $stmt->execute([$value, (int) ($data['id'] ?? 0)]);
+        $stmt->execute([telegramProductsPlainText($value), (int) ($data['id'] ?? 0)]);
         virtualServicesAdminClearState();
         sendmessage($from_id, 'نام دسته بروزرسانی شد.', null, 'HTML');
         virtualServicesAdminCategory($data['id'] ?? 0);
@@ -411,7 +489,7 @@ function virtualServicesAdminHandleState()
             sendmessage($from_id, 'نام محصول حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
             return true;
         }
-        $data['title'] = $value;
+        $data['title'] = telegramProductsPlainText($value);
         virtualServicesAdminSetState('vsa_add_price', $data);
         sendmessage($from_id, 'قیمت محصول را به تومان و فقط به‌صورت عدد ارسال کنید.', null, 'HTML');
         return true;
@@ -422,22 +500,38 @@ function virtualServicesAdminHandleState()
             return true;
         }
         $data['price'] = (int) $value;
-        virtualServicesAdminSetState('vsa_add_delivery_wait', $data);
-        virtualServicesAdminReply('نوع تحویل محصول را انتخاب کنید.', [
-            [['text' => 'تحویل خودکار از موجودی', 'callback_data' => 'vsa_add_delivery_auto']],
-            [['text' => 'تحویل دستی توسط ادمین', 'callback_data' => 'vsa_add_delivery_manual']],
-            [['text' => 'انصراف', 'callback_data' => 'vsa_products']],
-        ], false);
+        virtualServicesAdminSetState('vsa_add_description', $data);
+        sendmessage($from_id, "<b>مرحله توضیحات</b>\n\nتوضیحات محصول را ارسال کنید. می‌توانید از ایموجی معمولی یا پریمیوم استفاده کنید. برای توضیح خالی <code>-</code> بفرستید.", null, 'HTML');
         return true;
     }
     if ($state === 'vsa_add_description') {
-        $data['description'] = $value === '-' ? '' : $value;
-        virtualServicesAdminSetState('vsa_add_input', $data);
-        sendmessage($from_id, "عنوان اطلاعاتی که باید از مشتری بگیریم را ارسال کنید؛ مثل <code>یوزرنیم تلگرام</code>.\nاگر لازم نیست، یک خط تیره <code>-</code> بفرستید.", null, 'HTML');
+        $data['description'] = $value === '-' ? '' : virtualServicesAdminCustomText();
+        if (($data['delivery_type'] ?? 'manual') === 'manual') {
+            virtualServicesAdminSetState('vsa_add_input', $data);
+            sendmessage($from_id, "<b>اطلاعات سفارش دستی</b>\n\nعنوان اطلاعاتی که باید از مشتری بگیریم را ارسال کنید؛ مثل <code>یوزرنیم تلگرام</code>. اگر لازم نیست <code>-</code> بفرستید.", null, 'HTML');
+            return true;
+        }
+        $data['input_label'] = null;
+        virtualServicesAdminSetState('vsa_add_scope_wait', $data);
+        virtualServicesAdminReply('<b>محدوده نمایش</b>\n\nمحصول خودکار برای کدام سطح کاربران نمایش داده شود؟', [
+            [['text' => 'همه کاربران', 'callback_data' => 'vsa_add_scope_all']],
+            [['text' => 'کاربر عادی', 'callback_data' => 'vsa_add_scope_f']],
+            [['text' => 'نماینده', 'callback_data' => 'vsa_add_scope_n']],
+            [['text' => 'نماینده پیشرفته', 'callback_data' => 'vsa_add_scope_n2']],
+        ], false);
         return true;
     }
     if ($state === 'vsa_add_input') {
-        $data['input_label'] = $value === '-' ? null : $value;
+        if ($value !== '-' && mb_strlen($value, 'UTF-8') > 100) {
+            sendmessage($from_id, 'عنوان اطلاعات مشتری حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
+            return true;
+        }
+        $inputLabel = $value === '-' ? null : virtualServicesAdminCustomText();
+        if ($inputLabel !== null && mb_strlen($inputLabel, 'UTF-8') > 190) {
+            sendmessage($from_id, 'به دلیل تعداد زیاد ایموجی‌های پریمیوم، متن ذخیره‌شده طولانی است. عنوان کوتاه‌تری ارسال کنید.', null, 'HTML');
+            return true;
+        }
+        $data['input_label'] = $inputLabel;
         virtualServicesAdminSetState('vsa_add_scope_wait', $data);
         virtualServicesAdminReply('محصول برای کدام سطح کاربران نمایش داده شود؟', [
             [['text' => 'همه کاربران', 'callback_data' => 'vsa_add_scope_all']],
@@ -445,6 +539,37 @@ function virtualServicesAdminHandleState()
             [['text' => 'نماینده', 'callback_data' => 'vsa_add_scope_n']],
             [['text' => 'نماینده پیشرفته', 'callback_data' => 'vsa_add_scope_n2']],
         ], false);
+        return true;
+    }
+    if ($state === 'vsa_add_emoji') {
+        $emojiId = virtualServicesAdminEmojiId();
+        if ($emojiId === null) {
+            sendmessage($from_id, 'یک ایموجی پریمیوم، شناسه عددی آن، یا <code>-</code> برای بدون ایموجی ارسال کنید.', null, 'HTML');
+            return true;
+        }
+        $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, title, description, price, delivery_type, input_label, agent_scope, button_style, button_emoji_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt->execute([
+            (int) ($data['category_id'] ?? 0),
+            $data['title'] ?? '',
+            $data['description'] ?? '',
+            (int) ($data['price'] ?? 0),
+            $data['delivery_type'] ?? 'manual',
+            $data['input_label'] ?? null,
+            $data['agent_scope'] ?? 'all',
+            $data['button_style'] ?? 'success',
+            $emojiId === '' ? null : $emojiId,
+        ]);
+        $productId = (int) $pdo->lastInsertId();
+        virtualServicesAdminClearState();
+        sendmessage($from_id, 'محصول با موفقیت ساخته شد.', null, 'HTML');
+        if (($data['delivery_type'] ?? 'manual') === 'auto') {
+            virtualServicesAdminReply('محصول خودکار ساخته شد. برای فعال‌شدن فروش، موجودی کد یا لینک آن را اضافه کنید.', [
+                [['text' => 'افزودن موجودی', 'callback_data' => 'vsa_stock_add_' . $productId, 'style' => 'success']],
+                [['text' => 'مشاهده محصول', 'callback_data' => 'vsa_product_' . $productId]],
+            ], false);
+            return true;
+        }
+        virtualServicesAdminProduct($productId);
         return true;
     }
     if ($state === 'vsa_stock_add') {
@@ -485,23 +610,32 @@ function virtualServicesAdminHandleState()
         $message = "سفارش شما تحویل شد.\n\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']);
         $message .= "\n<b>اطلاعات تحویل:</b>\n<code>" . telegramProductsEscape($value) . '</code>';
         sendmessage($order['user_id'], $message, null, 'HTML');
+        telegramProductsReport('delivery', "<b>تحویل سفارش دستی خدمات مجازی</b>\n\n<b>سفارش:</b> <code>#{$orderId}</code>\n<b>کاربر:</b> <code>" . telegramProductsEscape($order['user_id']) . "</code>\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']));
         sendmessage($from_id, 'سفارش با موفقیت تحویل شد.', null, 'HTML');
         virtualServicesAdminOrder($orderId);
         return true;
     }
-    if (strpos($state, 'vsa_edit_') === 0) {
+    if (in_array($state, ['vsa_edit_title', 'vsa_edit_price', 'vsa_edit_desc', 'vsa_edit_input'], true)) {
         $productId = (int) ($data['id'] ?? 0);
         $fieldMap = [
-            'vsa_edit_title' => ['title', $value],
+            'vsa_edit_title' => ['title', telegramProductsPlainText($value)],
             'vsa_edit_price' => ['price', $value],
-            'vsa_edit_desc' => ['description', $value === '-' ? '' : $value],
-            'vsa_edit_input' => ['input_label', $value === '-' ? null : $value],
+            'vsa_edit_desc' => ['description', $value === '-' ? '' : virtualServicesAdminCustomText()],
+            'vsa_edit_input' => ['input_label', $value === '-' ? null : virtualServicesAdminCustomText()],
         ];
         if (!isset($fieldMap[$state])) {
             return false;
         }
         if ($state === 'vsa_edit_title' && mb_strlen($value, 'UTF-8') > 100) {
             sendmessage($from_id, 'نام محصول حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
+            return true;
+        }
+        if ($state === 'vsa_edit_input' && $value !== '-' && mb_strlen($value, 'UTF-8') > 100) {
+            sendmessage($from_id, 'عنوان اطلاعات مشتری حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
+            return true;
+        }
+        if ($state === 'vsa_edit_input' && $fieldMap[$state][1] !== null && mb_strlen($fieldMap[$state][1], 'UTF-8') > 190) {
+            sendmessage($from_id, 'به دلیل تعداد زیاد ایموجی‌های پریمیوم، متن ذخیره‌شده طولانی است. عنوان کوتاه‌تری ارسال کنید.', null, 'HTML');
             return true;
         }
         if ($state === 'vsa_edit_price' && (!ctype_digit($value) || (float) $value > 1000000000000)) {
@@ -516,6 +650,33 @@ function virtualServicesAdminHandleState()
         virtualServicesAdminProduct($productId);
         return true;
     }
+    if (in_array($state, ['vsa_cat_emoji_edit', 'vsa_product_emoji_edit'], true)) {
+        $emojiId = virtualServicesAdminEmojiId();
+        if ($emojiId === null) {
+            sendmessage($from_id, 'یک ایموجی پریمیوم، شناسه عددی آن، یا <code>-</code> برای حذف ارسال کنید.', null, 'HTML');
+            return true;
+        }
+        $table = $state === 'vsa_cat_emoji_edit' ? 'telegram_product_categories' : 'telegram_products';
+        $stmt = $pdo->prepare("UPDATE {$table} SET button_emoji_id = ? WHERE id = ?");
+        $stmt->execute([$emojiId === '' ? null : $emojiId, (int) ($data['id'] ?? 0)]);
+        $id = (int) ($data['id'] ?? 0);
+        virtualServicesAdminClearState();
+        $state === 'vsa_cat_emoji_edit' ? virtualServicesAdminCategory($id) : virtualServicesAdminProduct($id);
+        return true;
+    }
+    if (in_array($state, ['vsa_edit_lowstock', 'vsa_edit_max'], true)) {
+        if (!ctype_digit($value) || (int) $value > 1000000) {
+            sendmessage($from_id, 'مقدار باید یک عدد صحیح بین صفر تا ۱۰۰۰۰۰۰ باشد.', null, 'HTML');
+            return true;
+        }
+        $field = $state === 'vsa_edit_lowstock' ? 'low_stock_threshold' : 'max_per_user';
+        $stmt = $pdo->prepare("UPDATE telegram_products SET {$field} = ? WHERE id = ?");
+        $stmt->execute([(int) $value, (int) ($data['id'] ?? 0)]);
+        $id = (int) ($data['id'] ?? 0);
+        virtualServicesAdminClearState();
+        virtualServicesAdminProduct($id);
+        return true;
+    }
     if (strpos($state, 'vsa_text_') === 0) {
         if ($state === 'vsa_text_button_edit') {
             if (mb_strlen($value, 'UTF-8') > 40) {
@@ -523,21 +684,27 @@ function virtualServicesAdminHandleState()
                 return true;
             }
             $stmt = $pdo->prepare("INSERT INTO textbot (id_text, text) VALUES ('text_virtual_services', ?) ON DUPLICATE KEY UPDATE text = VALUES(text)");
-            $stmt->execute([$value]);
-            $datatextbot['text_virtual_services'] = $value;
+            $buttonText = telegramProductsPlainText($value);
+            $stmt->execute([$buttonText]);
+            $datatextbot['text_virtual_services'] = $buttonText;
             if (function_exists('clearSelectCache')) {
                 clearSelectCache('textbot');
             }
         } else {
             $keyMap = [
+                'vsa_text_title_edit' => 'store_title',
                 'vsa_text_home_edit' => 'home_text',
+                'vsa_text_category_edit' => 'category_text',
+                'vsa_text_checkout_edit' => 'checkout_text',
                 'vsa_text_pending_edit' => 'manual_pending_text',
                 'vsa_text_auto_edit' => 'auto_success_text',
+                'vsa_text_stockout_edit' => 'out_of_stock_text',
+                'vsa_text_disabled_edit' => 'disabled_text',
             ];
             if (!isset($keyMap[$state])) {
                 return false;
             }
-            telegramProductsSetSetting($keyMap[$state], $value);
+            telegramProductsSetSetting($keyMap[$state], virtualServicesAdminCustomText());
         }
         virtualServicesAdminClearState();
         sendmessage($from_id, 'متن با موفقیت ذخیره شد.', null, 'HTML');
@@ -570,7 +737,7 @@ function telegramProductsAdminPanelHandleRequest()
         if ($callback_query_id) {
             telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
         }
-        $isStateContinuation = preg_match('/^vsa_add_(delivery|scope)_/', $datain) === 1;
+        $isStateContinuation = preg_match('/^vsa_(begin|addcat_|add_(delivery|scope|style)_)/', $datain) === 1;
         if ($datain !== '' && strpos((string) ($user['step'] ?? ''), 'vsa_') === 0 && !$isStateContinuation) {
             virtualServicesAdminClearState();
         }
@@ -619,6 +786,23 @@ function telegramProductsAdminPanelHandleRequest()
             virtualServicesAdminCategory($match[1]);
             return true;
         }
+        if (preg_match('/^vsa_cat_style_(\d+)$/', $datain, $match)) {
+            $rows = virtualServicesAdminStyleRows('vsa_set_cat_style', (int) $match[1]);
+            $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_cat_' . $match[1]]];
+            virtualServicesAdminReply('رنگ دکمه این دسته را انتخاب کنید.', $rows);
+            return true;
+        }
+        if (preg_match('/^vsa_set_cat_style_(\d+)_(primary|success|danger|none)$/', $datain, $match)) {
+            $stmt = $pdo->prepare('UPDATE telegram_product_categories SET button_style = ? WHERE id = ?');
+            $stmt->execute([$match[2], (int) $match[1]]);
+            virtualServicesAdminCategory($match[1]);
+            return true;
+        }
+        if (preg_match('/^vsa_cat_emoji_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_cat_emoji_edit', ['id' => (int) $match[1]]);
+            virtualServicesAdminReply("یک ایموجی پریمیوم یا شناسه عددی آن را ارسال کنید. برای حذف ایموجی <code>-</code> بفرستید.", [[['text' => 'انصراف', 'callback_data' => 'vsa_cat_' . $match[1]]]]);
+            return true;
+        }
         if (preg_match('/^vsa_cat_(up|down)_(\d+)$/', $datain, $match)) {
             $delta = $match[1] === 'up' ? -1 : 1;
             $stmt = $pdo->prepare('UPDATE telegram_product_categories SET sort_order = sort_order + ? WHERE id = ?');
@@ -643,18 +827,37 @@ function telegramProductsAdminPanelHandleRequest()
             return true;
         }
         if ($datain === 'vsa_product_add') {
+            virtualServicesAdminClearState();
+            virtualServicesAdminReply("<b>ساخت محصول جدید</b>\n\nابتدا نوع فروش محصول را مشخص کنید تا فقط اطلاعات مرتبط با همان روش پرسیده شود.", [
+                [['text' => 'فروش خودکار', 'callback_data' => 'vsa_begin_auto', 'style' => 'success']],
+                [['text' => 'فروش دستی', 'callback_data' => 'vsa_begin_manual', 'style' => 'primary']],
+                [['text' => 'انصراف', 'callback_data' => 'vsa_products']],
+            ]);
+            return true;
+        }
+        if (preg_match('/^vsa_begin_(auto|manual)$/', $datain, $match)) {
             $categories = $pdo->query('SELECT id, title FROM telegram_product_categories WHERE is_active = 1 ORDER BY sort_order, id')->fetchAll(PDO::FETCH_ASSOC);
+            if (!$categories) {
+                virtualServicesAdminReply('برای ساخت محصول ابتدا یک دسته فعال بسازید.', [
+                    [['text' => 'ساخت دسته', 'callback_data' => 'vsa_cat_add']],
+                    [['text' => 'بازگشت', 'callback_data' => 'vsa_products']],
+                ]);
+                return true;
+            }
+            virtualServicesAdminSetState('vsa_add_category_wait', ['delivery_type' => $match[1]]);
             $rows = [];
             foreach ($categories as $category) {
-                $rows[] = [['text' => $category['title'], 'callback_data' => 'vsa_addcat_' . $category['id']]];
+                $rows[] = [['text' => telegramProductsPlainText($category['title']), 'callback_data' => 'vsa_addcat_' . $category['id']]];
             }
             $rows[] = [['text' => 'انصراف', 'callback_data' => 'vsa_products']];
-            virtualServicesAdminReply('ابتدا دسته محصول را انتخاب کنید.', $rows);
+            virtualServicesAdminReply('<b>مرحله ۲: دسته‌بندی</b>\n\nدسته محصول را انتخاب کنید.', $rows);
             return true;
         }
         if (preg_match('/^vsa_addcat_(\d+)$/', $datain, $match)) {
-            virtualServicesAdminSetState('vsa_add_title', ['category_id' => (int) $match[1]]);
-            virtualServicesAdminReply('نام محصول را ارسال کنید.', [[['text' => 'انصراف', 'callback_data' => 'vsa_products']]]);
+            $data = virtualServicesAdminStateData();
+            $data['category_id'] = (int) $match[1];
+            virtualServicesAdminSetState('vsa_add_title', $data);
+            virtualServicesAdminReply('<b>مرحله ۳: نام محصول</b>\n\nنامی کوتاه و واضح برای محصول ارسال کنید.', [[['text' => 'انصراف', 'callback_data' => 'vsa_products']]]);
             return true;
         }
         if (preg_match('/^vsa_add_delivery_(auto|manual)$/', $datain, $match)) {
@@ -666,11 +869,18 @@ function telegramProductsAdminPanelHandleRequest()
         }
         if (preg_match('/^vsa_add_scope_(all|f|n|n2)$/', $datain, $match)) {
             $data = virtualServicesAdminStateData();
-            $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, title, description, price, delivery_type, input_label, agent_scope) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([(int) $data['category_id'], $data['title'], $data['description'], (int) $data['price'], $data['delivery_type'], $data['input_label'], $match[1]]);
-            $productId = $pdo->lastInsertId();
-            virtualServicesAdminClearState();
-            virtualServicesAdminProduct($productId);
+            $data['agent_scope'] = $match[1];
+            virtualServicesAdminSetState('vsa_add_style_wait', $data);
+            $rows = virtualServicesAdminStyleRows('vsa_add_style');
+            $rows[] = [['text' => 'انصراف', 'callback_data' => 'vsa_products']];
+            virtualServicesAdminReply('<b>ظاهر دکمه محصول</b>\n\nرنگ دکمه را انتخاب کنید.', $rows);
+            return true;
+        }
+        if (preg_match('/^vsa_add_style_(primary|success|danger|none)$/', $datain, $match)) {
+            $data = virtualServicesAdminStateData();
+            $data['button_style'] = $match[1];
+            virtualServicesAdminSetState('vsa_add_emoji', $data);
+            virtualServicesAdminReply("<b>ایموجی دکمه محصول</b>\n\nیک ایموجی پریمیوم بفرستید تا شناسه آن خودکار استخراج شود؛ می‌توانید شناسه عددی را هم ارسال کنید. برای نداشتن ایموجی <code>-</code> بفرستید.", [[['text' => 'انصراف', 'callback_data' => 'vsa_products']]]);
             return true;
         }
         if (preg_match('/^vsa_product_(\d+)$/', $datain, $match)) {
@@ -687,6 +897,33 @@ function telegramProductsAdminPanelHandleRequest()
             $stmt = $pdo->prepare('UPDATE telegram_products SET is_active = 1 - is_active WHERE id = ?');
             $stmt->execute([(int) $match[1]]);
             virtualServicesAdminProduct($match[1]);
+            return true;
+        }
+        if (preg_match('/^vsa_pstyle_(\d+)$/', $datain, $match)) {
+            $rows = virtualServicesAdminStyleRows('vsa_set_product_style', (int) $match[1]);
+            $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_product_' . $match[1]]];
+            virtualServicesAdminReply('رنگ دکمه این محصول را انتخاب کنید.', $rows);
+            return true;
+        }
+        if (preg_match('/^vsa_set_product_style_(\d+)_(primary|success|danger|none)$/', $datain, $match)) {
+            $stmt = $pdo->prepare('UPDATE telegram_products SET button_style = ? WHERE id = ?');
+            $stmt->execute([$match[2], (int) $match[1]]);
+            virtualServicesAdminProduct($match[1]);
+            return true;
+        }
+        if (preg_match('/^vsa_pemoji_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_product_emoji_edit', ['id' => (int) $match[1]]);
+            virtualServicesAdminReply("یک ایموجی پریمیوم یا شناسه عددی آن را ارسال کنید. برای حذف ایموجی <code>-</code> بفرستید.", [[['text' => 'انصراف', 'callback_data' => 'vsa_product_' . $match[1]]]]);
+            return true;
+        }
+        if (preg_match('/^vsa_plowstock_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_edit_lowstock', ['id' => (int) $match[1]]);
+            virtualServicesAdminReply('وقتی موجودی به این عدد یا کمتر رسید هشدار ارسال شود. عدد <code>0</code> یعنی فقط هنگام اتمام موجودی.', [[['text' => 'انصراف', 'callback_data' => 'vsa_product_' . $match[1]]]]);
+            return true;
+        }
+        if (preg_match('/^vsa_pmax_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_edit_max', ['id' => (int) $match[1]]);
+            virtualServicesAdminReply('حداکثر تعداد خرید این محصول برای هر کاربر را ارسال کنید. عدد <code>0</code> یعنی نامحدود.', [[['text' => 'انصراف', 'callback_data' => 'vsa_product_' . $match[1]]]]);
             return true;
         }
         if (preg_match('/^vsa_product_(up|down)_(\d+)$/', $datain, $match)) {
@@ -794,11 +1031,26 @@ function telegramProductsAdminPanelHandleRequest()
             virtualServicesAdminSettings();
             return true;
         }
+        if ($datain === 'vsa_topics_rebuild') {
+            $salesTopic = telegramProductsEnsureReportTopic('virtualservices', 'خدمات مجازی', true);
+            $errorTopic = telegramProductsEnsureReportTopic('virtualservices_error', 'خطاهای خدمات مجازی', true);
+            if ($salesTopic > 0 && $errorTopic > 0) {
+                virtualServicesAdminReply('هر دو تاپیک گزارش با موفقیت ساخته شدند.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_settings']]]);
+            } else {
+                virtualServicesAdminReply('ساخت تاپیک کامل نشد. گروه گزارش باید سوپرگروه انجمنی باشد و ربات دسترسی مدیریت تاپیک‌ها را داشته باشد.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_settings']]]);
+            }
+            return true;
+        }
         $textStateMap = [
             'vsa_text_button' => ['vsa_text_button_edit', 'نام جدید دکمه اصلی را ارسال کنید.'],
-            'vsa_text_home' => ['vsa_text_home_edit', 'متن صفحه نخست خدمات مجازی را ارسال کنید.'],
+            'vsa_text_title' => ['vsa_text_title_edit', 'عنوان بالای فروشگاه را ارسال کنید. ایموجی معمولی و پریمیوم پشتیبانی می‌شود.'],
+            'vsa_text_home' => ['vsa_text_home_edit', 'متن صفحه نخست خدمات مجازی را ارسال کنید. ایموجی معمولی و پریمیوم پشتیبانی می‌شود.'],
+            'vsa_text_category' => ['vsa_text_category_edit', 'متن راهنمای صفحه دسته‌بندی را ارسال کنید.'],
+            'vsa_text_checkout' => ['vsa_text_checkout_edit', 'متن راهنمای تأیید خرید را ارسال کنید.'],
             'vsa_text_pending' => ['vsa_text_pending_edit', 'پیام ثبت سفارش دستی را ارسال کنید.'],
             'vsa_text_auto' => ['vsa_text_auto_edit', 'پیام تحویل خودکار را ارسال کنید.'],
+            'vsa_text_stockout' => ['vsa_text_stockout_edit', 'پیام اتمام موجودی محصول را ارسال کنید.'],
+            'vsa_text_disabled' => ['vsa_text_disabled_edit', 'پیام غیرفعال بودن بخش را ارسال کنید.'],
         ];
         if (isset($textStateMap[$datain])) {
             virtualServicesAdminSetState($textStateMap[$datain][0]);
