@@ -84,7 +84,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         return;
     }
     step('home', $from_id);
-    if (in_array($user['step'], ["updatetime", "val_usertest", "getlimitnew", "GetusernameNew", "GeturlNew", "protocolset", "updatemethodusername", "GetNameNew", "getprotocol", "getprotocolremove", "GetpaawordNew", "updateextendmethod", "setpricechangelocation"])) {
+    if (in_array($user['step'], ["updatetime", "val_usertest", "getlimitnew", "GetusernameNew", "GeturlNew", "protocolset", "updatemethodusername", "GetNameNew", "getprotocol", "getprotocolremove", "GetpaawordNew", "updateextendmethod", "setpricechangelocation", "set_xui_api_token"])) {
         $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
         outtypepanel($typepanel['type'], $textbotlang['Admin']['Back-menu']);
     } elseif (in_array($user['step'], ["selectloc", "get_limit", "selectlocedite", "GetPriceExtra", "GetPriceexstratime", "GetPricecustomtime", "GetPricecustomvolume", "get_code", "get_codesell", "minbalancebulk"])) {
@@ -441,12 +441,45 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     sendmessage($from_id, $textbotlang['users']['selectoption'], $affiliates, 'HTML');
 } elseif ($text == $textbotlang['Admin']['btnkeyboardadmin']['addpanel'] && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['Inbound']['gettypepanel'], $keyboardtypepanel, 'HTML');
-} elseif (preg_match('/typepanel#(.*)/', $datain, $dataget)) {
+} elseif (preg_match('/typepanel#(.*)/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
     $typepanel = $dataget[1];
+    savedata("clear", "type", $typepanel);
+    if (in_array($typepanel, ['x-ui_single', 'x-ui_tunnel'], true)) {
+        xuiEnsurePanelSchema();
+        $xuiVersionKeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => 'نسخه ۳ و بالاتر', 'callback_data' => 'xuiaddver#v3', 'style' => 'success'],
+                ],
+                [
+                    ['text' => 'نسخه ۲.۹.۴ و پایین‌تر', 'callback_data' => 'xuiaddver#legacy'],
+                ],
+                [
+                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin', 'style' => 'danger'],
+                ],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+        Editmessagetext($from_id, $message_id, "🧩 <b>نسخه پنل سنایی را انتخاب کنید</b>\n\nنسخه ۳ ساختار جدید Client API دارد؛ نسخه‌های قدیمی با همان API قبلی متصل می‌شوند.", $xuiVersionKeyboard, 'HTML');
+        step('xui_add_version', $from_id);
+        return;
+    }
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $backadmin, 'HTML');
     step("add_name_panel", $from_id);
     deletemessage($from_id, $message_id);
-    savedata("clear", "type", $typepanel);
+} elseif (preg_match('/^xuiaddver#(legacy|v3)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
+    $userdata = json_decode($user['Processing_value'], true);
+    if (!in_array($userdata['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true)) {
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, "❌ نشست افزودن پنل معتبر نیست؛ دوباره تلاش کنید.", $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    savedata('save', 'xui_version', $dataget[1]);
+    savedata('save', 'xui_auth_mode', 'session');
+    savedata('save', 'xui_api_token', '');
+    deletemessage($from_id, $message_id);
+    sendmessage($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $backadmin, 'HTML');
+    step('add_name_panel', $from_id);
 } elseif ($user['step'] == "add_name_panel") {
     if (in_array($text, $marzban_list)) {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['Repeatpanel'], $backadmin, 'HTML');
@@ -482,9 +515,54 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         step('add_password_panel', $from_id);
         savedata("save", "username", "null");
         return;
+    } elseif (in_array($userdata['type'], ['x-ui_single', 'x-ui_tunnel'], true) && ($userdata['xui_version'] ?? 'legacy') === 'v3') {
+        $authKeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => 'API Token (پیشنهادی)', 'callback_data' => 'xuiaddauth#token', 'style' => 'success'],
+                ],
+                [
+                    ['text' => 'نام کاربری و رمز عبور', 'callback_data' => 'xuiaddauth#session'],
+                ],
+                [
+                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin', 'style' => 'danger'],
+                ],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+        sendmessage($from_id, "🔐 <b>روش اتصال به API نسخه ۳ را انتخاب کنید</b>\n\nتوکن را از مسیر <code>Settings → Security → API Token</code> پنل دریافت کنید. اگر ورود دومرحله‌ای پنل فعال است، حتماً از توکن استفاده کنید.", $authKeyboard, 'HTML');
+        step('xui_add_auth_choice', $from_id);
+        return;
     }
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
     step('add_username_panel', $from_id);
+} elseif (preg_match('/^xuiaddauth#(token|session)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
+    $userdata = json_decode($user['Processing_value'], true);
+    if (!in_array($userdata['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true) || ($userdata['xui_version'] ?? '') !== 'v3') {
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, "❌ نشست افزودن پنل معتبر نیست؛ دوباره تلاش کنید.", $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    savedata('save', 'xui_auth_mode', $dataget[1]);
+    deletemessage($from_id, $message_id);
+    if ($dataget[1] === 'token') {
+        sendmessage($from_id, "🔑 توکن API پنل سنایی را ارسال کنید:\n\nتوکن فقط برای ارتباط با پنل ذخیره می‌شود.", $backadmin, 'HTML');
+        step('add_xui_token_panel', $from_id);
+    } else {
+        sendmessage($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        step('add_username_panel', $from_id);
+    }
+} elseif ($user['step'] == 'add_xui_token_panel') {
+    $token = trim($text);
+    if (strlen($token) < 16 || preg_match('/\s/', $token)) {
+        sendmessage($from_id, "❌ توکن API معتبر نیست؛ توکن کامل را بدون فاصله ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    savedata('save', 'xui_api_token', $token);
+    savedata('save', 'username', 'api_token');
+    savedata('save', 'password', 'null');
+    sendmessage($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
     step('add_password_panel', $from_id);
@@ -588,6 +666,12 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $stmt->bindParam(':customvolume', $VALUE);
     $stmt->bindParam(':on_hold_test', $stauts_on_holed);
     $stmt->execute();
+    if (in_array($userdata['type'], ['x-ui_single', 'x-ui_tunnel'], true)) {
+        xuiEnsurePanelSchema();
+        update('marzban_panel', 'xui_version', $userdata['xui_version'] ?? 'legacy', 'code_panel', $randomString);
+        update('marzban_panel', 'xui_auth_mode', $userdata['xui_auth_mode'] ?? 'session', 'code_panel', $randomString);
+        update('marzban_panel', 'xui_api_token', $userdata['xui_api_token'] ?? '', 'code_panel', $randomString);
+    }
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['addedpanel'], $keyboardadmin, 'HTML');
     sendmessage($from_id, "🥳", $keyboardadmin, 'HTML');
     step("home", $from_id);
@@ -4643,6 +4727,91 @@ elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_
 } elseif ($user['step'] == "getinboundiid") {
     sendmessage($from_id, "✅ شناسه اینباند با موفقیت ذخیره گردید", $optionX_ui_single, 'HTML');
     update("marzban_panel", "inboundid", $text, "name_panel", $user['Processing_value']);
+    step('home', $from_id);
+} elseif ($text == "🧩 نسخه API سنایی" && $adminrulecheck['rule'] == "administrator") {
+    xuiEnsurePanelSchema();
+    $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel || !in_array($panel['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true)) {
+        sendmessage($from_id, "❌ پنل سنایی معتبری انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $currentVersion = xuiIsV3Panel($panel) ? 'نسخه ۳ و بالاتر' : 'نسخه ۲.۹.۴ و پایین‌تر';
+    $versionKeyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => 'نسخه ۳ و بالاتر', 'callback_data' => 'xuipanelver#v3', 'style' => 'success']],
+            [['text' => 'نسخه ۲.۹.۴ و پایین‌تر', 'callback_data' => 'xuipanelver#legacy']],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    sendmessage($from_id, "🧩 <b>نسخه API پنل سنایی</b>\n\nنسخه فعلی: <b>{$currentVersion}</b>", $versionKeyboard, 'HTML');
+} elseif (preg_match('/^xuipanelver#(legacy|v3)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
+    xuiEnsurePanelSchema();
+    $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel || !in_array($panel['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true)) {
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, "❌ پنل سنایی معتبری انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    update("marzban_panel", "xui_version", $dataget[1], "name_panel", $panel['name_panel']);
+    update("marzban_panel", "datelogin", null, "name_panel", $panel['name_panel']);
+    if ($dataget[1] === 'legacy') {
+        update("marzban_panel", "xui_auth_mode", 'session', "name_panel", $panel['name_panel']);
+        update("marzban_panel", "xui_api_token", '', "name_panel", $panel['name_panel']);
+        deletemessage($from_id, $message_id);
+        outtypepanel($panel['type'], "✅ نسخه API روی <b>۲.۹.۴ و پایین‌تر</b> تنظیم شد.");
+        step('home', $from_id);
+        return;
+    }
+    $authKeyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => 'API Token (پیشنهادی)', 'callback_data' => 'xuipanelauth#token', 'style' => 'success']],
+            [['text' => 'نام کاربری و رمز عبور', 'callback_data' => 'xuipanelauth#session']],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, "🔐 <b>روش اتصال API نسخه ۳ را انتخاب کنید</b>", $authKeyboard, 'HTML');
+} elseif (preg_match('/^xuipanelauth#(token|session)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
+    xuiEnsurePanelSchema();
+    $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel || !xuiIsV3Panel($panel)) {
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, "❌ ابتدا نسخه API پنل را روی نسخه ۳ قرار دهید.", $keyboardadmin, 'HTML');
+        return;
+    }
+    update("marzban_panel", "xui_auth_mode", $dataget[1], "name_panel", $panel['name_panel']);
+    update("marzban_panel", "datelogin", null, "name_panel", $panel['name_panel']);
+    deletemessage($from_id, $message_id);
+    if ($dataget[1] === 'token') {
+        sendmessage($from_id, "🔑 توکن API جدید را ارسال کنید:\n\nتوکن را از <code>Settings → Security → API Token</code> بردارید.", $backadmin, 'HTML');
+        step('set_xui_api_token', $from_id);
+    } else {
+        update("marzban_panel", "xui_api_token", '', "name_panel", $panel['name_panel']);
+        outtypepanel($panel['type'], "✅ اتصال سشن فعال شد. نام کاربری و رمز عبور را با دکمه‌های مربوط ویرایش کنید.");
+        step('home', $from_id);
+    }
+} elseif ($text == "🔑 ویرایش توکن API" && $adminrulecheck['rule'] == "administrator") {
+    xuiEnsurePanelSchema();
+    $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel || !xuiIsV3Panel($panel)) {
+        sendmessage($from_id, "❌ این گزینه فقط برای پنل سنایی نسخه ۳ و بالاتر فعال است.", $backadmin, 'HTML');
+        return;
+    }
+    sendmessage($from_id, "🔑 توکن API جدید را ارسال کنید:\n\nتوکن در پیام‌های ربات نمایش داده نمی‌شود.", $backadmin, 'HTML');
+    step('set_xui_api_token', $from_id);
+} elseif ($user['step'] == 'set_xui_api_token') {
+    $token = trim($text);
+    if (strlen($token) < 16 || preg_match('/\s/', $token)) {
+        sendmessage($from_id, "❌ توکن API معتبر نیست؛ توکن کامل را بدون فاصله ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel || !in_array($panel['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true)) {
+        sendmessage($from_id, "❌ پنل سنایی معتبری انتخاب نشده است.", $keyboardadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    update("marzban_panel", "xui_api_token", $token, "name_panel", $panel['name_panel']);
+    update("marzban_panel", "xui_auth_mode", 'token', "name_panel", $panel['name_panel']);
+    update("marzban_panel", "datelogin", null, "name_panel", $panel['name_panel']);
+    outtypepanel($panel['type'], "✅ توکن API ذخیره شد و اتصال پنل روی حالت توکن قرار گرفت.");
     step('home', $from_id);
 } elseif ($text == "👤 ویرایش نام کاربری" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['managepanel']['getusernamenew'], $backadmin, 'HTML');

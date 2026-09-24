@@ -348,6 +348,9 @@ try {
         version_panel varchar(60) NOT NULL,
         customvolume TEXT NULL,
         hide_user TEXT NULL,
+        xui_version varchar(20) NULL DEFAULT 'legacy',
+        xui_auth_mode varchar(20) NULL DEFAULT 'session',
+        xui_api_token TEXT NULL,
         panel_color varchar(200) NULL,
         panel_emoji varchar(200) NULL)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -418,6 +421,9 @@ try {
         addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
+        addFieldToTable("marzban_panel", "xui_version", "legacy", "VARCHAR(20)");
+        addFieldToTable("marzban_panel", "xui_auth_mode", "session", "VARCHAR(20)");
+        addFieldToTable("marzban_panel", "xui_api_token", null, "TEXT");
         addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();

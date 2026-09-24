@@ -166,11 +166,14 @@ class ManagePanel
                     $Output['status'] = 'Unsuccessful';
                     $Output['msg'] = $data_Output['msg'];
                 } else {
-                    $links_user = outputlink($Get_Data_Panel['linksubx'] . "/{$subId}");
-                    if (isBase64($links_user)) {
-                        $links_user = base64_decode($links_user);
+                    $links_user = xuiIsV3Panel($Get_Data_Panel) ? xuiGetClientLinks($Get_Data_Panel['name_panel'], $usernameC) : [];
+                    if (!$links_user) {
+                        $links_user = outputlink($Get_Data_Panel['linksubx'] . "/{$subId}");
+                        if (isBase64($links_user)) {
+                            $links_user = base64_decode($links_user);
+                        }
+                        $links_user = explode("\n", trim((string)$links_user));
                     }
-                    $links_user = explode("\n", trim($links_user));
                     $Output['status'] = 'successful';
                     $Output['username'] = $usernameC;
                     $Output['subscription_url'] = $Get_Data_Panel['linksubx'] . "/{$subId}";
@@ -580,10 +583,13 @@ class ManagePanel
                 $expire = 0;
             }
             $linksub = $Get_Data_Panel['linksubx'] . "/{$user_data['subId']}";
-            $links_user = outputlink($Get_Data_Panel['linksubx'] . "/{$user_data['subId']}");
-            if (isBase64($links_user))
-                $links_user = base64_decode($links_user);
-            $links_user = explode("\n", trim($links_user));
+            $links_user = xuiIsV3Panel($Get_Data_Panel) ? xuiGetClientLinks($Get_Data_Panel['name_panel'], $username) : [];
+            if (!$links_user) {
+                $links_user = outputlink($Get_Data_Panel['linksubx'] . "/{$user_data['subId']}");
+                if (isBase64($links_user))
+                    $links_user = base64_decode($links_user);
+                $links_user = explode("\n", trim((string)$links_user));
+            }
             if ($inoice != false)
                 $linksub = "https://$domainhosts/sub/" . $inoice['id_invoice'];
             $user_data['lastOnline'] = $user_data['lastOnline'] == 0 ? "offline" : (new DateTime('@' . ($user_data['lastOnline'] / 1000)))->format('Y-m-d H:i:s');
@@ -954,9 +960,12 @@ class ManagePanel
                     'msg' => 'Unsuccessful'
                 );
             } else {
+                $configs = xuiIsV3Panel($Get_Data_Panel)
+                    ? xuiGetClientLinks($Get_Data_Panel['name_panel'], $username)
+                    : [outputlink($Get_Data_Panel['linksubx'] . "/{$subId}")];
                 $Output = array(
                     'status' => 'successful',
-                    'configs' => [outputlink($Get_Data_Panel['linksubx'] . "/{$subId}")],
+                    'configs' => $configs,
                     'subscription_url' => $Get_Data_Panel['linksubx'] . "/{$subId}",
                 );
             }
@@ -1338,7 +1347,7 @@ class ManagePanel
                         'clients' => array(
                             array(
                                 "id" => $clients['uuid'],
-                                "flow" => "",
+                                "flow" => $clients['flow'] ?? "",
                                 "email" => $clients['email'],
                                 "totalGB" => $clients['total'],
                                 "expiryTime" => $clients['expiryTime'],
