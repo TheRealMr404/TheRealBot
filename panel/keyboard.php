@@ -66,7 +66,7 @@ if ($method == "POST") {
 
 $action = filter_input(INPUT_GET, 'action');
 if ($action === "reaset") {
-    $default_keyboard = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
+    $default_keyboard = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_virtual_services"}],[{"text":"text_support"},{"text":"text_help"}]]}';
     update("setting", "keyboardmain", $default_keyboard, null, null);
     header('Location: keyboard.php');
     exit;

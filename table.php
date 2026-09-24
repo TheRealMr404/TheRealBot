@@ -134,7 +134,7 @@ try {
         'uptime_node' => false,
         'uptime_panel' => false,
     ));
-    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_virtual_services"}],[{"text":"text_support"},{"text":"text_help"}]]}';
     $tableExists = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$tableExists) {
         $stmt = $pdo->prepare("CREATE TABLE $tableName (
@@ -197,6 +197,7 @@ try {
     } else {
         addFieldToTable("setting", "cron_status", $status_cron, "TEXT");
         addFieldToTable("setting", "status_keyboard_config", "1", "varchar(20)");
+        addFieldToTable("setting", "virtual_services_keyboard_migrated", "0", "varchar(20)");
         addFieldToTable("setting", "statusnoteforf", "1", "varchar(20)");
         addFieldToTable("setting", "timeauto_not_verify", "4", "varchar(20)");
         addFieldToTable("setting", "statuscopycart", "0", "varchar(20)");
@@ -842,6 +843,7 @@ try {
         ['text_star_telegram', "Star Telegram"],
         ['text_request_agent_dec', 'توضیحات خود را برای ثبت درخواست نمایندگی ارسال نمایید.'],
         ['text_extend', 'تمدید سرویس'],
+        ['text_virtual_services', 'خدمات مجازی'],
         ['text_wgdashboard', $text_wgdashboard]
     ];
     if (!$table_exists) {

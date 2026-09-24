@@ -10,6 +10,7 @@ require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
 require_once 'telegram_products.php';
+require_once 'telegram_products_admin.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -41,7 +42,7 @@ $setting = select("setting", "*");
 $ManagePanel = new ManagePanel();
 $keyboard_check = json_decode($setting['keyboardmain'], true);
 if (is_array($keyboard_check) && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $keyboard_check['keyboard'][0][0]['text'])) {
-    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_virtual_services"}],[{"text":"text_support"},{"text":"text_help"}]]}';
     update("setting", "keyboardmain", $keyboardmain, null, null);
 }
 
@@ -245,6 +246,7 @@ $datatextbot = array(
     'textpaymentnotverify' => "",
     'text_star_telegram' => '',
     'text_extend' => '',
+    'text_virtual_services' => 'خدمات مجازی',
     'text_wgdashboard' => '',
     'text_Discount' => '',
 );

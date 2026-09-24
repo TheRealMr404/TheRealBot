@@ -1,6 +1,21 @@
 <?php
 
-const TELEGRAM_PRODUCTS_BUTTON = 'محصولات تلگرامی';
+const TELEGRAM_PRODUCTS_BUTTON = 'خدمات مجازی';
+
+function telegramProductsEnsureColumn($table, $column, $definition)
+{
+    global $pdo;
+
+    $allowed = ['telegram_products', 'telegram_product_orders'];
+    if (!in_array($table, $allowed, true)) {
+        throw new InvalidArgumentException('Invalid virtual services table.');
+    }
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+    $stmt->execute([$table, $column]);
+    if ((int) $stmt->fetchColumn() === 0) {
+        $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+    }
+}
 
 function telegramProductsEnsureSchema()
 {
@@ -26,6 +41,8 @@ function telegramProductsEnsureSchema()
         description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         price BIGINT UNSIGNED NOT NULL,
         delivery_type VARCHAR(20) NOT NULL DEFAULT 'manual',
+        input_label VARCHAR(190) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        agent_scope VARCHAR(50) NOT NULL DEFAULT 'all',
         is_active TINYINT(1) NOT NULL DEFAULT 1,
         sort_order INT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -52,15 +69,69 @@ function telegramProductsEnsureSchema()
         price BIGINT UNSIGNED NOT NULL,
         delivery_type VARCHAR(20) NOT NULL,
         status VARCHAR(30) NOT NULL DEFAULT 'pending',
+        customer_input TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         delivery_payload TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         paid_at DATETIME NULL,
         delivered_at DATETIME NULL,
+        refunded_at DATETIME NULL,
         INDEX idx_tg_orders_user (user_id, created_at),
         INDEX idx_tg_orders_status (status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS telegram_product_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    telegramProductsEnsureColumn('telegram_products', 'input_label', "VARCHAR(190) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL AFTER `delivery_type`");
+    telegramProductsEnsureColumn('telegram_products', 'agent_scope', "VARCHAR(50) NOT NULL DEFAULT 'all' AFTER `input_label`");
+    telegramProductsEnsureColumn('telegram_product_orders', 'customer_input', "TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL AFTER `status`");
+    telegramProductsEnsureColumn('telegram_product_orders', 'refunded_at', "DATETIME NULL AFTER `delivered_at`");
+
+    $defaults = [
+        'enabled' => '1',
+        'home_text' => 'از فهرست زیر دسته خدمات موردنظر را انتخاب کنید.',
+        'manual_pending_text' => 'پرداخت انجام شد و سفارش برای بررسی و تحویل ادمین ثبت شد.',
+        'auto_success_text' => 'خرید با موفقیت انجام شد و محصول شما آماده است.',
+    ];
+    $stmt = $pdo->prepare('INSERT IGNORE INTO telegram_product_settings (setting_key, setting_value) VALUES (?, ?)');
+    foreach ($defaults as $key => $value) {
+        $stmt->execute([$key, $value]);
+    }
+    $pdo->prepare("INSERT IGNORE INTO textbot (id_text, text) VALUES ('text_virtual_services', 'خدمات مجازی')")->execute();
+
     $ready = true;
+}
+
+function telegramProductsSetting($key, $default = '')
+{
+    global $pdo;
+
+    telegramProductsEnsureSchema();
+    $stmt = $pdo->prepare('SELECT setting_value FROM telegram_product_settings WHERE setting_key = ?');
+    $stmt->execute([$key]);
+    $value = $stmt->fetchColumn();
+    return $value === false ? $default : (string) $value;
+}
+
+function telegramProductsSetSetting($key, $value)
+{
+    global $pdo;
+
+    telegramProductsEnsureSchema();
+    $stmt = $pdo->prepare('INSERT INTO telegram_product_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
+    $stmt->execute([$key, $value]);
+}
+
+function telegramProductsButtonText()
+{
+    global $datatextbot;
+
+    return !empty($datatextbot['text_virtual_services'])
+        ? (string) $datatextbot['text_virtual_services']
+        : TELEGRAM_PRODUCTS_BUTTON;
 }
 
 function telegramProductsEscape($value)
@@ -94,15 +165,17 @@ function telegramProductsReply($text, $replyMarkup = null, $preferEdit = true)
 
 function telegramProductsShowHome()
 {
-    global $pdo;
+    global $pdo, $user;
 
-    $stmt = $pdo->query("SELECT c.id, c.title, COUNT(p.id) AS product_count
+    $stmt = $pdo->prepare("SELECT c.id, c.title, COUNT(p.id) AS product_count
         FROM telegram_product_categories c
         LEFT JOIN telegram_products p ON p.category_id = c.id AND p.is_active = 1
+            AND (p.agent_scope = 'all' OR FIND_IN_SET(?, p.agent_scope) > 0)
         WHERE c.is_active = 1
         GROUP BY c.id, c.title, c.sort_order
         HAVING COUNT(p.id) > 0
         ORDER BY c.sort_order, c.id");
+    $stmt->execute([$user['agent'] ?? 'f']);
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $rows = [];
@@ -115,9 +188,10 @@ function telegramProductsShowHome()
     $rows[] = [['text' => 'سفارش‌های من', 'callback_data' => 'tgp_orders']];
     $rows[] = [['text' => 'بازگشت به منوی اصلی', 'callback_data' => 'tgp_main']];
 
-    $text = "<b>محصولات تلگرامی</b>\n\nدسته موردنظر را انتخاب کنید.";
+    $text = '<b>' . telegramProductsEscape(telegramProductsButtonText()) . "</b>\n\n";
+    $text .= telegramProductsEscape(telegramProductsSetting('home_text', 'دسته موردنظر را انتخاب کنید.'));
     if (!$categories) {
-        $text = "<b>محصولات تلگرامی</b>\n\nدر حال حاضر محصول فعالی ثبت نشده است.";
+        $text = '<b>' . telegramProductsEscape(telegramProductsButtonText()) . "</b>\n\nدر حال حاضر محصول فعالی ثبت نشده است.";
     }
 
     telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
@@ -125,7 +199,7 @@ function telegramProductsShowHome()
 
 function telegramProductsShowCategory($categoryId)
 {
-    global $pdo;
+    global $pdo, $user;
 
     $stmt = $pdo->prepare('SELECT id, title FROM telegram_product_categories WHERE id = ? AND is_active = 1');
     $stmt->execute([(int) $categoryId]);
@@ -139,8 +213,9 @@ function telegramProductsShowCategory($categoryId)
         (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id = p.id AND s.status = 'available') AS stock_count
         FROM telegram_products p
         WHERE p.category_id = ? AND p.is_active = 1
+            AND (p.agent_scope = 'all' OR FIND_IN_SET(?, p.agent_scope) > 0)
         ORDER BY p.sort_order, p.id");
-    $stmt->execute([(int) $categoryId]);
+    $stmt->execute([(int) $categoryId, $user['agent'] ?? 'f']);
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $rows = [];
@@ -164,13 +239,14 @@ function telegramProductsShowCategory($categoryId)
 
 function telegramProductsGetProduct($productId)
 {
-    global $pdo;
+    global $pdo, $user;
 
     $stmt = $pdo->prepare("SELECT p.*,
         (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id = p.id AND s.status = 'available') AS stock_count
         FROM telegram_products p
-        WHERE p.id = ? AND p.is_active = 1");
-    $stmt->execute([(int) $productId]);
+        WHERE p.id = ? AND p.is_active = 1
+            AND (p.agent_scope = 'all' OR FIND_IN_SET(?, p.agent_scope) > 0)");
+    $stmt->execute([(int) $productId, $user['agent'] ?? 'f']);
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
@@ -190,6 +266,9 @@ function telegramProductsShowProduct($productId)
     if ($product['delivery_type'] === 'auto') {
         $text .= "\n<b>موجودی:</b> " . (int) $product['stock_count'];
     }
+    if (!empty($product['input_label'])) {
+        $text .= "\n<b>اطلاعات لازم:</b> " . telegramProductsEscape($product['input_label']);
+    }
 
     $rows = [];
     if ($product['delivery_type'] !== 'auto' || (int) $product['stock_count'] > 0) {
@@ -199,7 +278,7 @@ function telegramProductsShowProduct($productId)
     telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
 }
 
-function telegramProductsCreateDraft($productId)
+function telegramProductsCreateDraft($productId, $customerInput = null)
 {
     global $pdo, $from_id;
 
@@ -210,22 +289,29 @@ function telegramProductsCreateDraft($productId)
     }
 
     $stmt = $pdo->prepare("INSERT INTO telegram_product_orders
-        (user_id, product_id, product_title, price, delivery_type, status)
-        VALUES (?, ?, ?, ?, ?, 'pending')");
-    $stmt->execute([$from_id, $product['id'], $product['title'], $product['price'], $product['delivery_type']]);
+        (user_id, product_id, product_title, price, delivery_type, customer_input, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+    $stmt->execute([$from_id, $product['id'], $product['title'], $product['price'], $product['delivery_type'], $customerInput]);
     $orderId = $pdo->lastInsertId();
 
-    $stmt = $pdo->prepare('SELECT Balance FROM user WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT Balance, agent, maxbuyagent FROM user WHERE id = ?');
     $stmt->execute([$from_id]);
-    $balance = (int) $stmt->fetchColumn();
+    $wallet = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['Balance' => 0, 'agent' => 'f', 'maxbuyagent' => 0];
+    $balance = (int) $wallet['Balance'];
+    $creditLimit = $wallet['agent'] === 'n2' ? (int) $wallet['maxbuyagent'] : 0;
+    $canPay = $balance >= (int) $product['price']
+        || ($creditLimit > 0 && ($balance - (int) $product['price']) >= -$creditLimit);
 
     $text = "<b>تأیید خرید</b>\n\n";
     $text .= '<b>محصول:</b> ' . telegramProductsEscape($product['title']) . "\n";
     $text .= '<b>مبلغ:</b> ' . telegramProductsMoney($product['price']) . "\n";
     $text .= '<b>موجودی کیف پول:</b> ' . telegramProductsMoney($balance);
+    if ($customerInput !== null && $customerInput !== '') {
+        $text .= "\n<b>اطلاعات سفارش:</b> " . telegramProductsEscape($customerInput);
+    }
 
     $rows = [];
-    if ($balance >= (int) $product['price']) {
+    if ($canPay) {
         $rows[] = [['text' => 'تأیید و پرداخت', 'callback_data' => 'tgp_pay_' . $orderId]];
     } else {
         $text .= "\n\nموجودی کیف پول شما کافی نیست.";
@@ -251,10 +337,14 @@ function telegramProductsPayOrder($orderId)
             return;
         }
 
-        $stmt = $pdo->prepare('SELECT Balance FROM user WHERE id = ? FOR UPDATE');
+        $stmt = $pdo->prepare('SELECT Balance, agent, maxbuyagent FROM user WHERE id = ? FOR UPDATE');
         $stmt->execute([$from_id]);
-        $balance = (int) $stmt->fetchColumn();
-        if ($balance < (int) $order['price']) {
+        $wallet = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['Balance' => 0, 'agent' => 'f', 'maxbuyagent' => 0];
+        $balance = (int) $wallet['Balance'];
+        $creditLimit = $wallet['agent'] === 'n2' ? (int) $wallet['maxbuyagent'] : 0;
+        $canPay = $balance >= (int) $order['price']
+            || ($creditLimit > 0 && ($balance - (int) $order['price']) >= -$creditLimit);
+        if (!$canPay) {
             $pdo->rollBack();
             telegramProductsReply('موجودی کیف پول برای این خرید کافی نیست.', json_encode(['inline_keyboard' => [[['text' => 'افزایش موجودی', 'callback_data' => 'account']], [['text' => 'بازگشت', 'callback_data' => 'tgp_home']]]], JSON_UNESCAPED_UNICODE));
             return;
@@ -291,14 +381,16 @@ function telegramProductsPayOrder($orderId)
         }
 
         if ($stock) {
-            $text = "خرید با موفقیت انجام شد.\n\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']);
+            $text = telegramProductsEscape(telegramProductsSetting('auto_success_text', 'خرید با موفقیت انجام شد.'));
+            $text .= "\n\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']);
             $text .= "\n<b>اطلاعات تحویل:</b>\n<code>" . telegramProductsEscape($stock['payload']) . '</code>';
             telegramProductsReply($text, json_encode(['inline_keyboard' => [[['text' => 'سفارش‌های من', 'callback_data' => 'tgp_orders']], [['text' => 'بازگشت به فروشگاه', 'callback_data' => 'tgp_home']]]], JSON_UNESCAPED_UNICODE));
             return;
         }
 
-        telegramProductsNotifyAdmins($order['id'], $order['product_title'], $from_id, $order['price']);
-        telegramProductsReply("پرداخت انجام شد و سفارش برای ادمین ارسال شد.\n\n<b>شماره سفارش:</b> <code>{$order['id']}</code>", json_encode(['inline_keyboard' => [[['text' => 'سفارش‌های من', 'callback_data' => 'tgp_orders']], [['text' => 'بازگشت به فروشگاه', 'callback_data' => 'tgp_home']]]], JSON_UNESCAPED_UNICODE));
+        telegramProductsNotifyAdmins($order['id'], $order['product_title'], $from_id, $order['price'], $order['customer_input'] ?? '');
+        $pendingText = telegramProductsEscape(telegramProductsSetting('manual_pending_text', 'پرداخت انجام شد و سفارش برای ادمین ارسال شد.'));
+        telegramProductsReply($pendingText . "\n\n<b>شماره سفارش:</b> <code>{$order['id']}</code>", json_encode(['inline_keyboard' => [[['text' => 'سفارش‌های من', 'callback_data' => 'tgp_orders']], [['text' => 'بازگشت به فروشگاه', 'callback_data' => 'tgp_home']]]], JSON_UNESCAPED_UNICODE));
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -308,7 +400,7 @@ function telegramProductsPayOrder($orderId)
     }
 }
 
-function telegramProductsNotifyAdmins($orderId, $title, $userId, $price)
+function telegramProductsNotifyAdmins($orderId, $title, $userId, $price, $customerInput = '')
 {
     global $admin_ids;
 
@@ -317,7 +409,10 @@ function telegramProductsNotifyAdmins($orderId, $title, $userId, $price)
     $text .= '<b>کاربر:</b> <code>' . telegramProductsEscape($userId) . "</code>\n";
     $text .= '<b>محصول:</b> ' . telegramProductsEscape($title) . "\n";
     $text .= '<b>مبلغ:</b> ' . telegramProductsMoney($price) . "\n\n";
-    $text .= "برای تحویل: <code>/tg_deliver {$orderId}|متن یا کد تحویل</code>";
+    if ($customerInput !== '') {
+        $text .= '<b>اطلاعات کاربر:</b> <code>' . telegramProductsEscape($customerInput) . "</code>\n\n";
+    }
+    $text .= 'برای مدیریت سفارش وارد بخش «خدمات مجازی» پنل ادمین شوید.';
     foreach ((array) $admin_ids as $adminId) {
         sendmessage($adminId, $text, null, 'HTML');
     }
@@ -336,17 +431,55 @@ function telegramProductsShowOrders()
         'paid_pending' => 'در انتظار تحویل ادمین',
         'delivered' => 'تحویل‌شده',
         'cancelled' => 'لغوشده',
+        'refunded' => 'لغو و بازپرداخت‌شده',
     ];
     $text = "<b>سفارش‌های محصولات تلگرامی</b>\n\n";
     if (!$orders) {
         $text .= 'هنوز سفارشی ثبت نکرده‌اید.';
     }
+    $rows = [];
     foreach ($orders as $order) {
         $status = $statusLabels[$order['status']] ?? $order['status'];
         $text .= '#' . $order['id'] . ' - ' . telegramProductsEscape($order['product_title']);
         $text .= "\n" . telegramProductsMoney($order['price']) . ' - ' . $status . "\n\n";
+        $rows[] = [[
+            'text' => 'مشاهده سفارش #' . $order['id'],
+            'callback_data' => 'tgp_order_' . $order['id'],
+        ]];
     }
-    telegramProductsReply($text, json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'tgp_home']]]], JSON_UNESCAPED_UNICODE));
+    $rows[] = [['text' => 'بازگشت', 'callback_data' => 'tgp_home']];
+    telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
+}
+
+function telegramProductsShowOrder($orderId)
+{
+    global $pdo, $from_id;
+
+    $stmt = $pdo->prepare('SELECT * FROM telegram_product_orders WHERE id = ? AND user_id = ?');
+    $stmt->execute([(int) $orderId, $from_id]);
+    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$order) {
+        telegramProductsReply('این سفارش پیدا نشد.', json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'tgp_orders']]]], JSON_UNESCAPED_UNICODE));
+        return;
+    }
+    $labels = [
+        'pending' => 'در انتظار پرداخت',
+        'paid_pending' => 'در انتظار تحویل ادمین',
+        'delivered' => 'تحویل‌شده',
+        'cancelled' => 'لغوشده',
+        'refunded' => 'لغو و بازپرداخت‌شده',
+    ];
+    $text = "<b>سفارش #{$order['id']}</b>\n\n";
+    $text .= '<b>محصول:</b> ' . telegramProductsEscape($order['product_title']) . "\n";
+    $text .= '<b>مبلغ:</b> ' . telegramProductsMoney($order['price']) . "\n";
+    $text .= '<b>وضعیت:</b> ' . ($labels[$order['status']] ?? telegramProductsEscape($order['status'])) . "\n";
+    if (!empty($order['customer_input'])) {
+        $text .= '<b>اطلاعات سفارش:</b> <code>' . telegramProductsEscape($order['customer_input']) . "</code>\n";
+    }
+    if (!empty($order['delivery_payload'])) {
+        $text .= "\n<b>اطلاعات تحویل:</b>\n<code>" . telegramProductsEscape($order['delivery_payload']) . '</code>';
+    }
+    telegramProductsReply($text, json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'tgp_orders']]]], JSON_UNESCAPED_UNICODE));
 }
 
 function telegramProductsAdminCommand($text)
@@ -458,11 +591,15 @@ function telegramProductsAdminCommand($text)
 
 function telegramProductsHandleRequest()
 {
-    global $text, $datain, $from_id, $callback_query_id, $keyboard;
+    global $text, $datain, $from_id, $callback_query_id, $keyboard, $user, $setting;
 
-    $isProductRequest = $text === TELEGRAM_PRODUCTS_BUTTON
+    $buttonText = telegramProductsButtonText();
+    $isInputStep = strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0;
+    $isProductRequest = $text === $buttonText
+        || $text === TELEGRAM_PRODUCTS_BUTTON
         || strpos($text, '/tg_') === 0
-        || strpos($datain, 'tgp_') === 0;
+        || strpos($datain, 'tgp_') === 0
+        || $isInputStep;
     if (!$isProductRequest) {
         return false;
     }
@@ -476,7 +613,38 @@ function telegramProductsHandleRequest()
     if (telegramProductsAdminCommand($text)) {
         return true;
     }
-    if ($text === TELEGRAM_PRODUCTS_BUTTON || $datain === 'tgp_home') {
+    if (telegramProductsSetting('enabled', '1') !== '1') {
+        sendmessage($from_id, 'بخش خدمات مجازی در حال حاضر غیرفعال است.', $keyboard, 'HTML');
+        step('home', $from_id);
+        return true;
+    }
+    if (isset($setting['keyboardmain']) && !check_active_btn($setting['keyboardmain'], 'text_virtual_services') && ($text === $buttonText || $text === TELEGRAM_PRODUCTS_BUTTON)) {
+        sendmessage($from_id, 'این دکمه غیرفعال است.', $keyboard, 'HTML');
+        return true;
+    }
+    if ($isInputStep && $datain !== '') {
+        step('home', $from_id);
+        $user['step'] = 'home';
+        $isInputStep = false;
+    }
+    if ($isInputStep) {
+        $productId = (int) str_replace('tg_product_input_', '', $user['step']);
+        $product = telegramProductsGetProduct($productId);
+        if (!$product) {
+            step('home', $from_id);
+            sendmessage($from_id, 'محصول موردنظر دیگر در دسترس نیست.', $keyboard, 'HTML');
+            return true;
+        }
+        $customerInput = trim((string) $text);
+        if ($customerInput === '' || mb_strlen($customerInput, 'UTF-8') > 500) {
+            sendmessage($from_id, 'اطلاعات واردشده معتبر نیست. حداکثر ۵۰۰ کاراکتر ارسال کنید.', null, 'HTML');
+            return true;
+        }
+        step('home', $from_id);
+        telegramProductsCreateDraft($productId, $customerInput);
+        return true;
+    }
+    if ($text === $buttonText || $text === TELEGRAM_PRODUCTS_BUTTON || $datain === 'tgp_home') {
         telegramProductsShowHome();
         return true;
     }
@@ -492,6 +660,10 @@ function telegramProductsHandleRequest()
         telegramProductsShowOrders();
         return true;
     }
+    if (preg_match('/^tgp_order_(\d+)$/', $datain, $match)) {
+        telegramProductsShowOrder($match[1]);
+        return true;
+    }
     if (preg_match('/^tgp_cat_(\d+)$/', $datain, $match)) {
         telegramProductsShowCategory($match[1]);
         return true;
@@ -501,7 +673,18 @@ function telegramProductsHandleRequest()
         return true;
     }
     if (preg_match('/^tgp_buy_(\d+)$/', $datain, $match)) {
-        telegramProductsCreateDraft($match[1]);
+        $product = telegramProductsGetProduct($match[1]);
+        if (!$product) {
+            telegramProductsReply('این محصول در دسترس نیست.', null);
+            return true;
+        }
+        if (!empty($product['input_label'])) {
+            step('tg_product_input_' . $product['id'], $from_id);
+            $prompt = '<b>' . telegramProductsEscape($product['input_label']) . "</b>\n\nاطلاعات را با دقت ارسال کنید.";
+            telegramProductsReply($prompt, json_encode(['inline_keyboard' => [[['text' => 'انصراف', 'callback_data' => 'tgp_view_' . $product['id']]]]], JSON_UNESCAPED_UNICODE));
+            return true;
+        }
+        telegramProductsCreateDraft($match[1], null);
         return true;
     }
     if (preg_match('/^tgp_pay_(\d+)$/', $datain, $match)) {
@@ -511,4 +694,3 @@ function telegramProductsHandleRequest()
 
     return true;
 }
-

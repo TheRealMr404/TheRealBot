@@ -45,6 +45,7 @@ $datatextbot = array(
     'text_wheel_luck' => '',
     'text_star_telegram' => "",
     'text_extend' => '',
+    'text_virtual_services' => 'خدمات مجازی',
     'textsnowpayment' => ''
 
 );
@@ -91,11 +92,30 @@ $replacements = [
     'text_Tariff_list' => $datatextbot['text_Tariff_list'],
     'text_affiliates' => $datatextbot['text_affiliates'],
     'text_wheel_luck' => $datatextbot['text_wheel_luck'],
-    'text_extend' => $datatextbot['text_extend']
+    'text_extend' => $datatextbot['text_extend'],
+    'text_virtual_services' => $datatextbot['text_virtual_services']
 ];
 $admin_idss = select("admin", "*", "id_admin", $from_id, "count");
 $temp_addtional_key = [];
 $keyboardLayout = json_decode($setting['keyboardmain'], true);
+$virtualServicesKeyboardMigrated = (string) ($setting['virtual_services_keyboard_migrated'] ?? '0');
+if ($virtualServicesKeyboardMigrated !== '1') {
+    $hasVirtualServicesButton = false;
+    foreach (($keyboardLayout['keyboard'] ?? []) as $keyboardRow) {
+        foreach ((array) $keyboardRow as $keyboardButton) {
+            if (($keyboardButton['text'] ?? '') === 'text_virtual_services') {
+                $hasVirtualServicesButton = true;
+                break 2;
+            }
+        }
+    }
+    if (!$hasVirtualServicesButton) {
+        $keyboardLayout['keyboard'][] = [['text' => 'text_virtual_services']];
+        $setting['keyboardmain'] = json_encode($keyboardLayout, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        update('setting', 'keyboardmain', $setting['keyboardmain'], null, null);
+    }
+    update('setting', 'virtual_services_keyboard_migrated', '1', null, null);
+}
 $keyboardRows = [];
 if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array($keyboardLayout['keyboard'])) {
     $keyboardRows = $keyboardLayout['keyboard'];
@@ -135,6 +155,9 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
             if ($keyboard['text'] == "text_usertest") {
                 $trace_keyboard[$key][$keyboard_key]['callback_data'] = "usertestbtn";
             }
+            if ($keyboard['text'] == "text_virtual_services") {
+                $trace_keyboard[$key][$keyboard_key]['callback_data'] = "tgp_home";
+            }
         }
     }
     if ($admin_idss != 0) {
@@ -149,10 +172,6 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
     $keyboard = ['inline_keyboard' => []];
     $keyboardcustom = $trace_keyboard;
     $keyboardcustom = json_decode(strtr(strval(json_encode($keyboardcustom)), $replacements), true);
-    $keyboardcustom[] = [[
-        'text' => TELEGRAM_PRODUCTS_BUTTON,
-        'callback_data' => 'tgp_home'
-    ]];
     $keyboardcustom[] = $temp_addtional_key;
     $keyboard['inline_keyboard'] = $keyboardcustom;
     $keyboard = json_encode($keyboard);
@@ -169,7 +188,6 @@ if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
     $keyboard = ['keyboard' => [], 'resize_keyboard' => true];
     $keyboardcustom = $keyboardRows;
     $keyboardcustom = json_decode(strtr(strval(json_encode($keyboardcustom)), $replacements), true);
-    $keyboardcustom[] = [['text' => TELEGRAM_PRODUCTS_BUTTON]];
     $keyboardcustom[] = $temp_addtional_key;
     $keyboard['keyboard'] = $keyboardcustom;
     $keyboard = json_encode($keyboard);
@@ -192,7 +210,7 @@ if ($adminrulecheck['rule'] == "administrator") {
             [['text' => $textbotlang['Admin']['btnkeyboardadmin']['managementpanel']], ['text' => $textbotlang['Admin']['btnkeyboardadmin']['addpanel']]],
             [['text' => "⏳ تنظیم سریع قیمت زمان"], ['text' => "🔋 تنظیم سریع قیمت حجم"]],
             [['text' => $textbotlang['Admin']['btnkeyboardadmin']['managruser']], ['text' => "🏬 تنظیمات فروشگاه"]],
-            [['text' => "💎 مالی"]],
+            [['text' => "💎 مالی"], ['text' => "مدیریت خدمات مجازی"]],
             [['text' => "🤙 بخش پشتیبانی"], ['text' => "📚 بخش آموزش"]],
             [['text' => "♻️ آپدیت ربات"], ['text' => "🛠 قابلیت های پنل"]],
             [['text' => "⚙️ تنظیمات عمومی"], ['text' => "💵 رسید های تایید نشده"]],
