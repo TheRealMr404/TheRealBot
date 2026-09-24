@@ -449,17 +449,17 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         $xuiVersionKeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => 'نسخه ۳ و بالاتر', 'callback_data' => 'xuiaddver#v3', 'style' => 'success'],
+                    ['text' => 'نسخه ۳ و بالاتر', 'callback_data' => 'xuiaddver#v3'],
                 ],
                 [
                     ['text' => 'نسخه ۲.۹.۴ و پایین‌تر', 'callback_data' => 'xuiaddver#legacy'],
                 ],
                 [
-                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin', 'style' => 'danger'],
+                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin'],
                 ],
             ],
         ], JSON_UNESCAPED_UNICODE);
-        Editmessagetext($from_id, $message_id, "🧩 <b>نسخه پنل سنایی را انتخاب کنید</b>\n\nنسخه ۳ ساختار جدید Client API دارد؛ نسخه‌های قدیمی با همان API قبلی متصل می‌شوند.", $xuiVersionKeyboard, 'HTML');
+        Editmessagetext($from_id, $message_id, "🧩 <b>نسخه پنل سنایی شما کدام است؟</b>\n\nلطفاً نسخه‌ای را انتخاب کنید که هم‌اکنون روی سرور نصب است. اگر نسخه پنل شما ۳ یا جدیدتر است، گزینه اول را بزنید.", $xuiVersionKeyboard, 'HTML');
         step('xui_add_version', $from_id);
         return;
     }
@@ -470,7 +470,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $userdata = json_decode($user['Processing_value'], true);
     if (!in_array($userdata['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true)) {
         deletemessage($from_id, $message_id);
-        sendmessage($from_id, "❌ نشست افزودن پنل معتبر نیست؛ دوباره تلاش کنید.", $backadmin, 'HTML');
+        sendmessage($from_id, "❌ اطلاعات افزودن پنل کامل نیست. لطفاً از بخش مدیریت پنل، دوباره گزینه افزودن پنل را انتخاب کنید.", $backadmin, 'HTML');
         step('home', $from_id);
         return;
     }
@@ -519,17 +519,17 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         $authKeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => 'API Token (پیشنهادی)', 'callback_data' => 'xuiaddauth#token', 'style' => 'success'],
+                    ['text' => 'API Token (پیشنهادی)', 'callback_data' => 'xuiaddauth#token'],
                 ],
                 [
                     ['text' => 'نام کاربری و رمز عبور', 'callback_data' => 'xuiaddauth#session'],
                 ],
                 [
-                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin', 'style' => 'danger'],
+                    ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin'],
                 ],
             ],
         ], JSON_UNESCAPED_UNICODE);
-        sendmessage($from_id, "🔐 <b>روش اتصال به API نسخه ۳ را انتخاب کنید</b>\n\nتوکن را از مسیر <code>Settings → Security → API Token</code> پنل دریافت کنید. اگر ورود دومرحله‌ای پنل فعال است، حتماً از توکن استفاده کنید.", $authKeyboard, 'HTML');
+        sendmessage($from_id, "🔐 <b>ربات چگونه به پنل متصل شود؟</b>\n\nاستفاده از <b>API Token</b> پیشنهاد می‌شود؛ راه‌اندازی آن ساده‌تر و اتصال آن پایدارتر است. اگر ورود دومرحله‌ای پنل فعال است، حتماً همین گزینه را انتخاب کنید.", $authKeyboard, 'HTML');
         step('xui_add_auth_choice', $from_id);
         return;
     }
@@ -539,14 +539,14 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $userdata = json_decode($user['Processing_value'], true);
     if (!in_array($userdata['type'] ?? '', ['x-ui_single', 'x-ui_tunnel'], true) || ($userdata['xui_version'] ?? '') !== 'v3') {
         deletemessage($from_id, $message_id);
-        sendmessage($from_id, "❌ نشست افزودن پنل معتبر نیست؛ دوباره تلاش کنید.", $backadmin, 'HTML');
+        sendmessage($from_id, "❌ اطلاعات افزودن پنل کامل نیست. لطفاً از بخش مدیریت پنل، دوباره گزینه افزودن پنل را انتخاب کنید.", $backadmin, 'HTML');
         step('home', $from_id);
         return;
     }
     savedata('save', 'xui_auth_mode', $dataget[1]);
     deletemessage($from_id, $message_id);
     if ($dataget[1] === 'token') {
-        sendmessage($from_id, "🔑 توکن API پنل سنایی را ارسال کنید:\n\nتوکن فقط برای ارتباط با پنل ذخیره می‌شود.", $backadmin, 'HTML');
+        sendmessage($from_id, "🔑 <b>توکن API پنل را ارسال کنید</b>\n\nتوکن را از مسیر زیر در پنل سنایی دریافت کنید:\n<code>Settings → Security → API Token</code>\n\nتوکن فقط برای اتصال ربات به پنل استفاده می‌شود.", $backadmin, 'HTML');
         step('add_xui_token_panel', $from_id);
     } else {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
@@ -555,7 +555,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
 } elseif ($user['step'] == 'add_xui_token_panel') {
     $token = trim($text);
     if (strlen($token) < 16 || preg_match('/\s/', $token)) {
-        sendmessage($from_id, "❌ توکن API معتبر نیست؛ توکن کامل را بدون فاصله ارسال کنید.", $backadmin, 'HTML');
+        sendmessage($from_id, "❌ توکن واردشده معتبر نیست. لطفاً توکن کامل را بدون هیچ فاصله‌ای ارسال کنید.", $backadmin, 'HTML');
         return;
     }
     savedata('save', 'xui_api_token', $token);
