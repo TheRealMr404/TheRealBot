@@ -1577,20 +1577,20 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
                 ['text' => 'افزایش', 'callback_data' => 'csi_v_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_d_dec'],
+                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_d_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$days} روز", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_d_inc'],
+                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_d_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_c_dec'],
+                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_c_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$count} عدد", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_c_inc'],
+                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_c_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'تأیید و پرداخت  ✅', 'callback_data' => 'confirmandgetservice', 'style' => 'success'],
+                ['text' => 'تأیید و پرداخت  ✅', 'callback_data' => 'confirmandgetservice', 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
             ],
             [
-                ['text' => 'بازگشت  ↪️', 'callback_data' => 'backuser', 'style' => 'danger'],
+                ['text' => 'بازگشت  ↪️', 'callback_data' => 'backuser', 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
             ],
         ],
     ];
