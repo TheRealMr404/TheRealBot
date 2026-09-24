@@ -6,6 +6,12 @@ function pasarguardNormalizeUrl($url)
     return preg_replace('~/api(?:/.*)?$~i', '', $url);
 }
 
+function pasarguardDashboardUrl($url)
+{
+    $baseUrl = rtrim(pasarguardNormalizeUrl($url), '/');
+    return preg_match('~/dashboard$~i', $baseUrl) ? $baseUrl : $baseUrl . '/dashboard';
+}
+
 function pasarguardErrorText($data, $fallback = 'خطای نامشخص از پنل پاسارگارد')
 {
     if (!is_array($data)) {
@@ -243,7 +249,7 @@ function pasarguardProductSettings($product, $panel)
 
 function pasarguardBuildDeliveryText($panel, $output, $product)
 {
-    $url = htmlspecialchars(pasarguardNormalizeUrl($panel['url_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $url = htmlspecialchars(pasarguardDashboardUrl($panel['url_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $username = htmlspecialchars((string) ($output['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $password = htmlspecialchars((string) ($output['subscription_url'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $name = htmlspecialchars((string) ($product['name_product'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
