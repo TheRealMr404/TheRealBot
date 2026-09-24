@@ -353,6 +353,7 @@ function virtualServicesAdminProduct($productId)
         ],
         [['text' => 'مدیریت موجودی خودکار', 'callback_data' => 'vsa_stock_' . $product['id']]],
         [['text' => (int) $product['is_active'] === 1 ? 'غیرفعال‌سازی پلن' : 'فعال‌سازی پلن', 'callback_data' => 'vsa_ptoggle_' . $product['id']]],
+        [['text' => 'حذف پلن', 'callback_data' => 'vsa_product_delete_' . $product['id'], 'style' => 'danger']],
         [['text' => 'بازگشت', 'callback_data' => !empty($product['group_id']) ? 'vsa_group_' . $product['group_id'] : 'vsa_products']],
     ];
     virtualServicesAdminReply($text, $rows);
@@ -524,6 +525,38 @@ function virtualServicesAdminRefund($orderId)
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
+        throw $e;
+    }
+}
+
+function virtualServicesAdminDeletePlan($productId)
+{
+    global $pdo;
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT id,group_id,title FROM telegram_products WHERE id=? FOR UPDATE');
+        $stmt->execute([(int) $productId]);
+        $product = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$product) { $pdo->rollBack(); return [false, 'پلن پیدا نشد.', 0]; }
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM telegram_product_orders WHERE product_id=? AND status IN ('paid_pending','delivered','refunded')");
+        $stmt->execute([$product['id']]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            $pdo->prepare('UPDATE telegram_products SET is_active=0 WHERE id=?')->execute([$product['id']]);
+            $pdo->commit();
+            return [false, 'این پلن سابقه مالی دارد؛ برای حفظ گزارش‌ها حذف نشد و به‌صورت امن غیرفعال شد.', (int) $product['group_id']];
+        }
+
+        $pdo->prepare('UPDATE telegram_product_discounts SET is_active=0 WHERE product_id=?')->execute([$product['id']]);
+        $pdo->prepare('DELETE FROM telegram_product_fields WHERE product_id=?')->execute([$product['id']]);
+        $pdo->prepare('DELETE FROM telegram_product_stock WHERE product_id=?')->execute([$product['id']]);
+        $pdo->prepare('DELETE FROM telegram_product_orders WHERE product_id=?')->execute([$product['id']]);
+        $pdo->prepare('DELETE FROM telegram_products WHERE id=?')->execute([$product['id']]);
+        $pdo->commit();
+        return [true, 'پلن و اطلاعات وابسته به آن با موفقیت حذف شد.', (int) $product['group_id']];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
 }
@@ -838,7 +871,7 @@ function telegramProductsAdminPanelHandleRequest()
     if ($text === ($textbotlang['Admin']['backadmin'] ?? null) || $text === ($textbotlang['Admin']['backmenu'] ?? null)) {
         return false;
     }
-    $isRequest = $text === 'مدیریت خدمات مجازی'
+    $isRequest = in_array($text, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
         || strpos($datain, 'vsa_') === 0
         || strpos((string) ($user['step'] ?? ''), 'vsa_') === 0;
     if (!$isRequest) {
@@ -866,7 +899,7 @@ function telegramProductsAdminPanelHandleRequest()
         if ($datain === '' && virtualServicesAdminHandleState()) {
             return true;
         }
-        if ($text === 'مدیریت خدمات مجازی' || $datain === 'vsa_home') {
+        if (in_array($text, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true) || $datain === 'vsa_home') {
             virtualServicesAdminClearState();
             if (function_exists('telegramProductsProfessionalAlerts')) telegramProductsProfessionalAlerts();
             virtualServicesAdminHome();
@@ -1114,6 +1147,21 @@ function telegramProductsAdminPanelHandleRequest()
         }
         if (preg_match('/^vsa_product_(\d+)$/', $datain, $match)) {
             virtualServicesAdminProduct($match[1]);
+            return true;
+        }
+        if (preg_match('/^vsa_product_delete_(\d+)$/', $datain, $match)) {
+            $stmt=$pdo->prepare('SELECT id,title,group_id FROM telegram_products WHERE id=?');$stmt->execute([(int)$match[1]]);$plan=$stmt->fetch(PDO::FETCH_ASSOC);
+            if(!$plan){virtualServicesAdminProducts();return true;}
+            virtualServicesAdminReply("<b>حذف پلن</b>\n\nآیا از حذف «".telegramProductsEscape($plan['title'])."» مطمئن هستید؟\n\nموجودی، فیلدهای فرم و سفارش‌های پرداخت‌نشده این پلن پاک می‌شوند. پلن دارای سابقه مالی فقط غیرفعال خواهد شد.",[
+                [['text'=>'بله، حذف شود','callback_data'=>'vsa_product_delete_confirm_'.$plan['id'],'style'=>'danger']],
+                [['text'=>'انصراف','callback_data'=>'vsa_product_'.$plan['id']]],
+            ]);
+            return true;
+        }
+        if (preg_match('/^vsa_product_delete_confirm_(\d+)$/', $datain, $match)) {
+            [$deleted,$message,$groupId]=virtualServicesAdminDeletePlan($match[1]);
+            $back=$groupId>0?'vsa_group_'.$groupId:'vsa_products';
+            virtualServicesAdminReply(telegramProductsEscape($message),[[['text'=>'بازگشت','callback_data'=>$back]]]);
             return true;
         }
         if (preg_match('/^vsa_pe_(title|price|desc|input)_(\d+)$/', $datain, $match)) {

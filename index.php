@@ -500,7 +500,7 @@ $virtualServicesIncomingText = trim(telegramProductsPlainText((string) $text));
 $virtualServicesButtonText = trim(telegramProductsPlainText(telegramProductsButtonText()));
 $isVirtualServicesAdminRoute = in_array((string) $from_id, array_map('strval', (array) $admin_ids), true)
     && (
-        $virtualServicesIncomingText === 'مدیریت خدمات مجازی'
+        in_array($virtualServicesIncomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
         || strpos((string) $datain, 'vsa_') === 0
         || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
             && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
@@ -4852,9 +4852,94 @@ $textinvite
         }
         Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['Service-select-first'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom));
     }
+} elseif ($datain == "csi_none") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+} elseif (preg_match('/^csi_(v|d|c)_(inc|dec)$/', $datain, $customInvoiceAction)) {
+    if ($user['step'] != "payments" || !preg_match('/^customvolume_\d+_\d+$/', (string)$user['Processing_value_one'])) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "❌ این فاکتور منقضی شده است؛ خرید را دوباره آغاز کنید.",
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "❌ این پنل در دسترس نیست.",
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
+    $days = $selection['days'];
+    $volume = $selection['volume'];
+    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    $limits = $selection['limits'];
+    $direction = $customInvoiceAction[2] == 'inc' ? 1 : -1;
+    $notice = null;
+
+    if ($customInvoiceAction[1] == 'v') {
+        $newVolume = max($limits['min_volume'], min($limits['max_volume'], $volume + ($direction * $limits['volume_step'])));
+        if ($newVolume == $volume) {
+            $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
+        }
+        $volume = $newVolume;
+    } elseif ($customInvoiceAction[1] == 'd') {
+        $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
+        if ($newDays == $days) {
+            $notice = "زمان مجاز بین {$limits['min_days']} تا {$limits['max_days']} روز است.";
+        }
+        $days = $newDays;
+    } else {
+        $newCount = max(1, min(15, $count + $direction));
+        if ($newCount == $count) {
+            $notice = "تعداد سفارش باید بین ۱ تا ۱۵ عدد باشد.";
+        }
+        $count = $newCount;
+    }
+
+    $customCode = "customvolume_{$days}_{$volume}";
+    update("user", "Processing_value_one", $customCode, "id", $from_id);
+    update("user", "Processing_value_four", $count, "id", $from_id);
+    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $days, $volume, $count, $user['pricediscount']);
+    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
+    telegram('answerCallbackQuery', array_filter([
+        'callback_query_id' => $callback_query_id,
+        'text' => $notice,
+        'show_alert' => $notice !== null ? true : null,
+    ], static function ($value) {
+        return $value !== null;
+    }));
+} elseif ($user['step'] == "custom_service_username") {
+    if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+        sendmessage($from_id, $textbotlang['users']['invalidusername'], $backuser, 'HTML');
+        return;
+    }
+    $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
+        sendmessage($from_id, "❌ این پنل در دسترس نیست؛ خرید را دوباره آغاز کنید.", $keyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
+    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, $text, $ManagePanel, $usernameinvoice ?? []);
+    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
+    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], $count, $user['pricediscount']);
+    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard'], false);
+    step('payments', $from_id);
 } elseif ($datain == "customsellvolume") {
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+
+    if (!$marzban_list_get) {
+        Editmessagetext($from_id, $message_id, "❌ اطلاعات پنل معتبر نیست؛ خرید را دوباره آغاز کنید.", $backuser, 'HTML');
+        return;
+    }
 
     if ($marzban_list_get['type'] == "x-ui_tunnel") {
         deletemessage($from_id, $message_id);
@@ -4864,18 +4949,26 @@ $textinvite
         return;
     }
 
-    $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
-    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
-    $mainvolume = $mainvolume[$user['agent']];
-    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
-    $maxvolume = $maxvolume[$user['agent']];
-    $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
-    sendmessage($from_id, $textcustom, $backuser, 'html');
-    deletemessage($from_id, $message_id);
-    step('gettimecustomvol', $from_id);
+    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
+        Editmessagetext($from_id, $message_id, "❌ این پنل در دسترس نیست؛ پنل دیگری را انتخاب کنید.", $backuser, 'HTML');
+        return;
+    }
+    $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
+    update("user", "Processing_value", $marzban_list_get['name_panel'], "id", $from_id);
+    update("user", "Processing_value_one", $selection['code'], "id", $from_id);
+    update("user", "Processing_value_four", 1, "id", $from_id);
+
+    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+        Editmessagetext($from_id, $message_id, $textbotlang['users']['selectusername'], $backuser, 'HTML');
+        step('custom_service_username', $from_id);
+        return;
+    }
+
+    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, '', $ManagePanel, $usernameinvoice ?? []);
+    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
+    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], 1, $user['pricediscount']);
+    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
+    step('payments', $from_id);
 } elseif ($user['step'] == "gettimecustomvol") {
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
@@ -6114,14 +6207,27 @@ elseif ($datain == "confirm_pay_tun_custom") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['Service-select'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolumeom"));
 } elseif ($datain == "customsellvolumeom") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
-    $textcustom = "🔋 لطفا مقدار حجم سرویس مورد نظر را وارد کنید ( برحسب گیگابایت ) :
-📌 تعرفه هر گیگ :  $custompricevalue 
-🔔 حداقل حجم 1 گیگابایت و حداکثر 1000 گیگابایت می باشد.";
-    sendmessage($from_id, $textcustom, $backuser, 'html');
-    deletemessage($from_id, $message_id);
-    step('gettimecustomvolom', $from_id);
+    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
+        Editmessagetext($from_id, $message_id, "❌ این پنل در دسترس نیست؛ پنل دیگری را انتخاب کنید.", $backuser, 'HTML');
+        return;
+    }
+
+    $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
+    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    update("user", "Processing_value_one", $selection['code'], "id", $from_id);
+    update("user", "Processing_value_four", $count, "id", $from_id);
+
+    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+        Editmessagetext($from_id, $message_id, $textbotlang['users']['selectusername'], $backuser, 'HTML');
+        step('custom_service_username', $from_id);
+        return;
+    }
+
+    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, '', $ManagePanel, $usernameinvoice ?? []);
+    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
+    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], $count, $user['pricediscount']);
+    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
+    step('payments', $from_id);
 } elseif ($user['step'] == "gettimecustomvolom") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
@@ -6339,7 +6445,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         'username' => $username,
         'type' => 'buyomdh'
     );
-    if ($info_product['inbounds'] != null) {
+    if (!empty($info_product['inbounds'])) {
         $marzban_list_get['inboundid'] = $info_product['inbounds'];
     }
     $notifctions = json_encode(array(

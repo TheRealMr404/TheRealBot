@@ -467,7 +467,7 @@ function telegramProductsFeatureUserHandle()
 function telegramProductsAdminPermissionForRequest($callback, $state = '', $incomingText = '')
 {
     $value = $callback !== '' ? $callback : $state;
-    if ($incomingText === 'مدیریت خدمات مجازی' || in_array($callback, ['vsa_home', 'vsa_exit'], true)) return null;
+    if (in_array($incomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true) || in_array($callback, ['vsa_home', 'vsa_exit'], true)) return null;
     if (strpos($value, 'vsa_fx_role') === 0) return 'roles';
     if (strpos($value, 'vsa_fx_discount') === 0 || strpos($value, 'vsa_fx_d') === 0) return 'discounts';
     if (strpos($value, 'vsa_fx_w') === 0) return 'warranty';

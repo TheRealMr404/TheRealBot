@@ -1504,6 +1504,167 @@ function savedata($type, $namefiled, $valuefiled)
         update("user", "Processing_value", json_encode($dataperevieos), "id", $from_id);
     }
 }
+
+function customServiceAgentNumber($panel, $field, $agent, $fallback = 0)
+{
+    $values = json_decode($panel[$field] ?? '', true);
+    $value = is_array($values) ? ($values[$agent] ?? $values['all'] ?? $fallback) : $fallback;
+
+    return is_numeric($value) ? (int)$value : (int)$fallback;
+}
+
+function customServiceLimits($panel, $agent)
+{
+    $minVolume = max(1, customServiceAgentNumber($panel, 'mainvolume', $agent, 1));
+    $maxVolume = max($minVolume, customServiceAgentNumber($panel, 'maxvolume', $agent, 1000));
+    $minDays = max(1, customServiceAgentNumber($panel, 'maintime', $agent, 1));
+    $maxDays = max($minDays, customServiceAgentNumber($panel, 'maxtime', $agent, 365));
+
+    return [
+        'min_volume' => $minVolume,
+        'max_volume' => $maxVolume,
+        'min_days' => $minDays,
+        'max_days' => $maxDays,
+        'volume_step' => max(1, min(10, $maxVolume - $minVolume ?: 1)),
+        'days_step' => max(1, min(10, $maxDays - $minDays ?: 1)),
+    ];
+}
+
+function customServiceSelection($code, $panel, $agent)
+{
+    $limits = customServiceLimits($panel, $agent);
+    $days = $limits['min_days'];
+    $volume = $limits['min_volume'];
+
+    if (preg_match('/^customvolume_(\d+)_(\d+)$/', (string)$code, $matches)) {
+        $days = max($limits['min_days'], min($limits['max_days'], (int)$matches[1]));
+        $volume = max($limits['min_volume'], min($limits['max_volume'], (int)$matches[2]));
+    }
+
+    return [
+        'days' => $days,
+        'volume' => $volume,
+        'code' => "customvolume_{$days}_{$volume}",
+        'limits' => $limits,
+    ];
+}
+
+function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0)
+{
+    $count = max(1, min(15, (int)$count));
+    $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
+    $dayPrice = customServiceAgentNumber($panel, 'pricecustomtime', $agent, 0);
+    $unitPrice = ($volume * $volumePrice) + ($days * $dayPrice);
+    $subtotal = $unitPrice * $count;
+    $discountPercent = max(0, min(100, (int)$discountPercent));
+    $total = $subtotal - (($subtotal * $discountPercent) / 100);
+    $total = max(0, round($total));
+
+    $text = "🛍 <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
+    $text .= "🔶 <b>حجم:</b> {$volume} گیگابایت\n\n";
+    $text .= "🔷 <b>زمان:</b> {$days} روز\n\n";
+    $text .= "⚙️ <b>تعداد سفارش:</b> {$count} عدد\n\n";
+    if ($discountPercent > 0) {
+        $text .= "🏷 <b>تخفیف:</b> {$discountPercent} درصد\n\n";
+    }
+    $text .= "🪙 <b>مبلغ:</b> " . number_format($total) . " تومان";
+
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_v_dec'],
+                ['text' => "{$volume} گیگابایت", 'callback_data' => 'csi_none', 'style' => 'primary'],
+                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_v_inc'],
+            ],
+            [
+                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_d_dec'],
+                ['text' => "{$days} روز", 'callback_data' => 'csi_none', 'style' => 'primary'],
+                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_d_inc'],
+            ],
+            [
+                ['text' => 'کاهش  ➖', 'callback_data' => 'csi_c_dec'],
+                ['text' => "{$count} عدد", 'callback_data' => 'csi_none', 'style' => 'primary'],
+                ['text' => 'افزایش  ➕', 'callback_data' => 'csi_c_inc'],
+            ],
+            [
+                ['text' => 'تأیید و پرداخت  ✅', 'callback_data' => 'confirmandgetservice', 'style' => 'success'],
+            ],
+            [
+                ['text' => 'بازگشت  ↪️', 'callback_data' => 'backuser', 'style' => 'danger'],
+            ],
+        ],
+    ];
+
+    return [
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
+        'unit_price' => $unitPrice,
+        'total' => $total,
+    ];
+}
+
+function customServiceCompatibleKeyboard($keyboard)
+{
+    $markup = is_string($keyboard) ? json_decode($keyboard, true) : $keyboard;
+    if (!is_array($markup)) {
+        return $keyboard;
+    }
+    foreach (($markup['inline_keyboard'] ?? []) as $rowIndex => $row) {
+        foreach ((array)$row as $buttonIndex => $button) {
+            if (!is_array($button)) {
+                continue;
+            }
+            unset($button['style'], $button['icon_custom_emoji_id']);
+            $markup['inline_keyboard'][$rowIndex][$buttonIndex] = $button;
+        }
+    }
+
+    return json_encode($markup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+function customServiceReply($chatId, $messageId, $text, $keyboard, $preferEdit = true)
+{
+    $response = $preferEdit
+        ? Editmessagetext($chatId, $messageId, $text, $keyboard, 'HTML')
+        : sendmessage($chatId, $text, $keyboard, 'HTML');
+    if (is_array($response) && !empty($response['ok'])) {
+        return $response;
+    }
+
+    $compatibleKeyboard = customServiceCompatibleKeyboard($keyboard);
+    if ($compatibleKeyboard === $keyboard) {
+        return $response;
+    }
+
+    return $preferEdit
+        ? Editmessagetext($chatId, $messageId, $text, $compatibleKeyboard, 'HTML')
+        : sendmessage($chatId, $text, $compatibleKeyboard, 'HTML');
+}
+
+function customServiceUsername($fromId, $panel, $user, $telegramUsername, $requestedUsername, $managePanel, $existingUsernames = [])
+{
+    $randomString = bin2hex(random_bytes(2));
+    $generated = generateUsername(
+        $fromId,
+        $panel['MethodUsername'],
+        $telegramUsername,
+        $randomString,
+        strtolower((string)$requestedUsername),
+        $panel['namecustom'],
+        $user['namecustom']
+    );
+    if (!is_string($generated) || trim($generated) === '') {
+        $generated = $fromId . '_' . $randomString;
+    }
+
+    $generated = strtolower($generated);
+    $remoteUser = $managePanel->DataUser($panel['name_panel'], $generated);
+    if (isset($remoteUser['username']) || in_array($generated, (array)$existingUsernames, true)) {
+        $generated = rand(1000000, 9999999) . '_' . $generated;
+    }
+
+    return $generated;
+}
 function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype = "VARCHAR(500)")
 {
     global $pdo;

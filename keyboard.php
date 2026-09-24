@@ -210,7 +210,7 @@ if ($adminrulecheck['rule'] == "administrator") {
             [['text' => $textbotlang['Admin']['btnkeyboardadmin']['managementpanel']], ['text' => $textbotlang['Admin']['btnkeyboardadmin']['addpanel']]],
             [['text' => "⏳ تنظیم سریع قیمت زمان"], ['text' => "🔋 تنظیم سریع قیمت حجم"]],
             [['text' => $textbotlang['Admin']['btnkeyboardadmin']['managruser']], ['text' => "🏬 تنظیمات فروشگاه"]],
-            [['text' => "💎 مالی"], ['text' => "مدیریت خدمات مجازی"]],
+            [['text' => "💎 مالی"], ['text' => "🛍 خدمات مجازی"]],
             [['text' => "🤙 بخش پشتیبانی"], ['text' => "📚 بخش آموزش"]],
             [['text' => "♻️ آپدیت ربات"], ['text' => "🛠 قابلیت های پنل"]],
             [['text' => "⚙️ تنظیمات عمومی"], ['text' => "💵 رسید های تایید نشده"]],
