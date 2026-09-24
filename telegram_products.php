@@ -6,7 +6,7 @@ function telegramProductsEnsureColumn($table, $column, $definition)
 {
     global $pdo;
 
-    $allowed = ['telegram_product_categories', 'telegram_products', 'telegram_product_orders'];
+    $allowed = ['telegram_product_categories', 'telegram_products', 'telegram_product_orders', 'telegram_product_discounts'];
     if (!in_array($table, $allowed, true)) {
         throw new InvalidArgumentException('Invalid virtual services table.');
     }
@@ -60,6 +60,19 @@ function telegramProductsEnsureSchema()
         sort_order INT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_tg_products_category (category_id, is_active, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS telegram_product_groups (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        category_id INT UNSIGNED NOT NULL,
+        title VARCHAR(190) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        button_style VARCHAR(20) NOT NULL DEFAULT 'primary',
+        button_emoji_id VARCHAR(30) NULL,
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tg_groups_category (category_id, is_active, sort_order)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS telegram_product_stock (
@@ -122,6 +135,7 @@ function telegramProductsEnsureSchema()
         max_discount BIGINT UNSIGNED NOT NULL DEFAULT 0,
         min_purchase BIGINT UNSIGNED NOT NULL DEFAULT 0,
         product_id INT UNSIGNED NULL,
+        group_id INT UNSIGNED NULL,
         category_id INT UNSIGNED NULL,
         usage_limit INT UNSIGNED NOT NULL DEFAULT 0,
         per_user_limit INT UNSIGNED NOT NULL DEFAULT 1,
@@ -184,6 +198,7 @@ function telegramProductsEnsureSchema()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     telegramProductsEnsureColumn('telegram_products', 'input_label', "VARCHAR(190) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL AFTER `delivery_type`");
+    telegramProductsEnsureColumn('telegram_products', 'group_id', "INT UNSIGNED NULL AFTER `category_id`");
     telegramProductsEnsureColumn('telegram_products', 'agent_scope', "VARCHAR(50) NOT NULL DEFAULT 'all' AFTER `input_label`");
     telegramProductsEnsureColumn('telegram_product_categories', 'button_style', "VARCHAR(20) NOT NULL DEFAULT 'primary' AFTER `title`");
     telegramProductsEnsureColumn('telegram_product_categories', 'button_emoji_id', "VARCHAR(30) NULL AFTER `button_style`");
@@ -204,6 +219,7 @@ function telegramProductsEnsureSchema()
     telegramProductsEnsureColumn('telegram_product_orders', 'resend_count', "INT UNSIGNED NOT NULL DEFAULT 0 AFTER `points_earned`");
     telegramProductsEnsureColumn('telegram_product_orders', 'warranty_until', "DATETIME NULL AFTER `refunded_at`");
     telegramProductsEnsureColumn('telegram_product_orders', 'pending_alerted_at', "DATETIME NULL AFTER `warranty_until`");
+    telegramProductsEnsureColumn('telegram_product_discounts', 'group_id', "INT UNSIGNED NULL AFTER `product_id`");
     $pdo->exec("UPDATE telegram_products SET product_mode = IF(delivery_type = 'auto', 'stock', 'form') WHERE product_mode = 'legacy'");
     $pdo->exec('UPDATE telegram_product_orders SET original_price = price WHERE original_price = 0 AND price > 0');
 
@@ -512,16 +528,34 @@ function telegramProductsShowCategory($categoryId)
         return;
     }
 
+    $stmt = $pdo->prepare("SELECT g.*,
+        (SELECT COUNT(*) FROM telegram_products p WHERE p.group_id = g.id AND p.is_active = 1
+            AND (p.agent_scope = 'all' OR FIND_IN_SET(?, p.agent_scope) > 0)) AS plan_count
+        FROM telegram_product_groups g
+        WHERE g.category_id = ? AND g.is_active = 1
+        HAVING plan_count > 0
+        ORDER BY g.sort_order, g.id");
+    $stmt->execute([$user['agent'] ?? 'f', (int) $categoryId]);
+    $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     $stmt = $pdo->prepare("SELECT p.*,
         (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id = p.id AND s.status = 'available') AS stock_count
         FROM telegram_products p
-        WHERE p.category_id = ? AND p.is_active = 1
+        WHERE p.category_id = ? AND p.group_id IS NULL AND p.is_active = 1
             AND (p.agent_scope = 'all' OR FIND_IN_SET(?, p.agent_scope) > 0)
         ORDER BY p.sort_order, p.id");
     $stmt->execute([(int) $categoryId, $user['agent'] ?? 'f']);
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $rows = [];
+    foreach ($groups as $group) {
+        $rows[] = [telegramProductsStyledButton(
+            $group['title'] . ' (' . $group['plan_count'] . ' پلن)',
+            'tgp_group_' . $group['id'],
+            $group['button_style'],
+            $group['button_emoji_id']
+        )];
+    }
     foreach ($products as $product) {
         if ($product['delivery_type'] === 'auto' && (int) $product['stock_count'] === 0) {
             continue;
@@ -540,6 +574,41 @@ function telegramProductsShowCategory($categoryId)
     if (count($rows) === 1) {
         $text .= "\n\nمحصول موجودی در این دسته وجود ندارد.";
     }
+    telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
+}
+
+function telegramProductsShowGroup($groupId)
+{
+    global $pdo, $user;
+
+    $stmt = $pdo->prepare('SELECT g.*, c.title AS category_title FROM telegram_product_groups g JOIN telegram_product_categories c ON c.id=g.category_id WHERE g.id=? AND g.is_active=1 AND c.is_active=1');
+    $stmt->execute([(int) $groupId]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) { telegramProductsShowHome(); return; }
+
+    $stmt = $pdo->prepare("SELECT p.*,
+        (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id=p.id AND s.status='available') AS stock_count
+        FROM telegram_products p
+        WHERE p.group_id=? AND p.is_active=1
+            AND (p.agent_scope='all' OR FIND_IN_SET(?,p.agent_scope)>0)
+        ORDER BY p.sort_order,p.id");
+    $stmt->execute([(int) $groupId, $user['agent'] ?? 'f']);
+    $plans = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = [];
+    foreach ($plans as $plan) {
+        if ($plan['delivery_type'] === 'auto' && (int) $plan['stock_count'] === 0) continue;
+        $rows[] = [telegramProductsStyledButton(
+            $plan['title'] . ' - ' . telegramProductsMoney($plan['price']),
+            'tgp_view_' . $plan['id'],
+            $plan['button_style'],
+            $plan['button_emoji_id']
+        )];
+    }
+    $rows[] = [['text' => 'بازگشت', 'callback_data' => 'tgp_cat_' . $group['category_id'], 'style' => 'danger']];
+    $text = '<b>' . telegramProductsSafeCustomText($group['title']) . "</b>\n\n";
+    if (!empty($group['description'])) $text .= telegramProductsSafeCustomText($group['description']) . "\n\n";
+    $text .= 'پلن موردنظر را انتخاب کنید.';
+    if (count($rows) === 1) $text .= "\n\nدر حال حاضر پلن قابل خریدی وجود ندارد.";
     telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
 }
 
@@ -599,7 +668,8 @@ function telegramProductsShowProduct($productId)
     if ($product['delivery_type'] !== 'auto' || (int) $product['stock_count'] > 0) {
         $rows[] = [['text' => 'خرید با موجودی کیف پول', 'callback_data' => 'tgp_buy_' . $product['id'], 'style' => 'success']];
     }
-    $rows[] = [['text' => 'بازگشت', 'callback_data' => 'tgp_cat_' . $product['category_id'], 'style' => 'danger']];
+    $backCallback = !empty($product['group_id']) ? 'tgp_group_' . $product['group_id'] : 'tgp_cat_' . $product['category_id'];
+    $rows[] = [['text' => 'بازگشت', 'callback_data' => $backCallback, 'style' => 'danger']];
     telegramProductsReply($text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE));
 }
 
@@ -1085,6 +1155,10 @@ function telegramProductsHandleRequestInternal()
     }
     if (preg_match('/^tgp_cat_(\d+)$/', $datain, $match)) {
         telegramProductsShowCategory($match[1]);
+        return true;
+    }
+    if (preg_match('/^tgp_group_(\d+)$/', $datain, $match)) {
+        telegramProductsShowGroup($match[1]);
         return true;
     }
     if (preg_match('/^tgp_view_(\d+)$/', $datain, $match)) {

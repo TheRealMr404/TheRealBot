@@ -162,7 +162,8 @@ function telegramProductsDiscountResult($code, array $product, $userId, $lock = 
     if (!empty($discount['starts_at']) && strtotime($discount['starts_at']) > $now) return [false, 'زمان استفاده از این کد هنوز شروع نشده است.'];
     if (!empty($discount['expires_at']) && strtotime($discount['expires_at']) < $now) return [false, 'این کد تخفیف منقضی شده است.'];
     if ((int) $discount['usage_limit'] > 0 && (int) $discount['used_count'] >= (int) $discount['usage_limit']) return [false, 'ظرفیت استفاده از این کد تکمیل شده است.'];
-    if ((int) $discount['product_id'] > 0 && (int) $discount['product_id'] !== (int) $product['id']) return [false, 'این کد برای محصول انتخابی قابل استفاده نیست.'];
+    if ((int) $discount['product_id'] > 0 && (int) $discount['product_id'] !== (int) $product['id']) return [false, 'این کد برای پلن انتخابی قابل استفاده نیست.'];
+    if ((int) ($discount['group_id'] ?? 0) > 0 && (int) $discount['group_id'] !== (int) ($product['group_id'] ?? 0)) return [false, 'این کد برای محصول انتخابی قابل استفاده نیست.'];
     if ((int) $discount['category_id'] > 0 && (int) $discount['category_id'] !== (int) $product['category_id']) return [false, 'این کد برای این دسته قابل استفاده نیست.'];
     if ((int) $product['price'] < (int) $discount['min_purchase']) return [false, 'مبلغ سفارش از حداقل خرید این کد کمتر است.'];
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM telegram_product_discount_redemptions WHERE discount_id = ? AND user_id = ?');
@@ -196,7 +197,7 @@ function telegramProductsPreparePayment(array $order, array $product)
     if (!empty($order['discount_code'])) {
         [$valid, $result] = telegramProductsDiscountResult(
             $order['discount_code'],
-            ['id' => $product['id'], 'category_id' => $product['category_id'], 'price' => $original],
+            ['id' => $product['id'], 'group_id' => $product['group_id'] ?? 0, 'category_id' => $product['category_id'], 'price' => $original],
             $order['user_id'],
             true
         );
@@ -289,7 +290,7 @@ function telegramProductsFormatCustomerInput($value)
 function telegramProductsCheckout($orderId)
 {
     global $pdo, $from_id;
-    $stmt = $pdo->prepare('SELECT o.*, p.category_id FROM telegram_product_orders o JOIN telegram_products p ON p.id = o.product_id WHERE o.id = ? AND o.user_id = ? AND o.status = \'pending\'');
+    $stmt = $pdo->prepare('SELECT o.*, p.category_id, p.group_id FROM telegram_product_orders o JOIN telegram_products p ON p.id = o.product_id WHERE o.id = ? AND o.user_id = ? AND o.status = \'pending\'');
     $stmt->execute([(int) $orderId, $from_id]);
     $order = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$order) {
@@ -328,7 +329,7 @@ function telegramProductsCheckout($orderId)
 function telegramProductsRepriceOrder($orderId, $discountCode = null, $togglePoints = false)
 {
     global $pdo, $from_id;
-    $stmt = $pdo->prepare('SELECT o.*, p.category_id, p.price AS current_price, p.id AS current_product_id FROM telegram_product_orders o JOIN telegram_products p ON p.id = o.product_id WHERE o.id = ? AND o.user_id = ? AND o.status = \'pending\'');
+    $stmt = $pdo->prepare('SELECT o.*, p.category_id, p.group_id, p.price AS current_price, p.id AS current_product_id FROM telegram_product_orders o JOIN telegram_products p ON p.id = o.product_id WHERE o.id = ? AND o.user_id = ? AND o.status = \'pending\'');
     $stmt->execute([(int) $orderId, $from_id]);
     $order = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$order) return [false, 'سفارش معتبر نیست.'];
@@ -336,7 +337,7 @@ function telegramProductsRepriceOrder($orderId, $discountCode = null, $togglePoi
     $discountAmount = (int) $order['discount_amount'];
     $code = $order['discount_code'];
     if ($discountCode !== null) {
-        [$valid, $result] = telegramProductsDiscountResult($discountCode, ['id' => $order['product_id'], 'category_id' => $order['category_id'], 'price' => $original], $from_id);
+        [$valid, $result] = telegramProductsDiscountResult($discountCode, ['id' => $order['product_id'], 'group_id' => $order['group_id'] ?? 0, 'category_id' => $order['category_id'], 'price' => $original], $from_id);
         if (!$valid) return [false, $result];
         $discountAmount = (int) $result['calculated_amount'];
         $code = $result['code'];
@@ -472,7 +473,7 @@ function telegramProductsAdminPermissionForRequest($callback, $state = '', $inco
     if (strpos($value, 'vsa_fx_w') === 0) return 'warranty';
     if (strpos($value, 'vsa_fx_loyalty') === 0 || strpos($value, 'vsa_fx_alert') === 0) return 'settings';
     if (strpos($value, 'vsa_fx_field') === 0 || strpos($value, 'vsa_fx_ftype') === 0 || strpos($value, 'vsa_fx_product_') === 0 || strpos($value, 'vsa_fx_mode_') === 0) return 'catalog';
-    if (preg_match('/^vsa_(categor|cat_|product|pe_|ptoggle|pstyle|pemoji|plowstock|pmax|pdelivery|pscope|pset|pcat|stock|begin|add)/', $value)) return 'catalog';
+    if (preg_match('/^vsa_(categor|cat_|group|product|plan|pe_|ptoggle|pstyle|pemoji|plowstock|pmax|pdelivery|pscope|pset|pcat|pgroup|stock|begin|add)/', $value)) return 'catalog';
     if (preg_match('/^vsa_(orders|recent|order_|deliver_|resend_)/', $value)) return 'orders';
     if (preg_match('/^vsa_(stats|refund_)/', $value)) return 'finance';
     if (preg_match('/^vsa_(settings|toggle|topics|text_)/', $value)) return 'settings';
@@ -545,7 +546,7 @@ function telegramProductsAdminDiscount($discountId)
     $stmt->execute([(int) $discountId]);
     $d = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$d) { telegramProductsAdminDiscounts(); return; }
-    $scope = (int) $d['product_id'] ? 'محصول #' . $d['product_id'] : ((int) $d['category_id'] ? 'دسته #' . $d['category_id'] : 'همه محصولات');
+    $scope = (int) $d['product_id'] ? 'پلن #' . $d['product_id'] : ((int) ($d['group_id'] ?? 0) ? 'محصول #' . $d['group_id'] : ((int) $d['category_id'] ? 'دسته #' . $d['category_id'] : 'همه پلن‌ها'));
     $value = $d['discount_type'] === 'percent' ? $d['discount_value'] . ' درصد' : telegramProductsMoney($d['discount_value']);
     $text = '<b>کد ' . telegramProductsEscape($d['code']) . "</b>\n\n";
     $text .= "مقدار: {$value}\nدامنه: {$scope}\nحداقل خرید: " . telegramProductsMoney($d['min_purchase']) . "\n";
@@ -764,12 +765,14 @@ function telegramProductsAdminFeatureHandleRequest()
     if (preg_match('/^vsa_fx_discount_toggle_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET is_active=1-is_active WHERE id=?')->execute([$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
     if (preg_match('/^vsa_fx_discount_delete_(\d+)$/', $datain, $m)) { $stmt=$pdo->prepare('SELECT used_count FROM telegram_product_discounts WHERE id=?');$stmt->execute([$m[1]]); if((int)$stmt->fetchColumn()>0)$pdo->prepare('UPDATE telegram_product_discounts SET is_active=0 WHERE id=?')->execute([$m[1]]);else $pdo->prepare('DELETE FROM telegram_product_discounts WHERE id=?')->execute([$m[1]]); telegramProductsAdminDiscounts(); return true; }
     if (preg_match('/^vsa_fx_discount_limits_(\d+)$/', $datain, $m)) { virtualServicesAdminSetState('vsa_fx_discount_limits',['id'=>(int)$m[1]]); virtualServicesAdminReply("مقادیر را به این شکل بفرستید:\n<code>حداقل خرید|سقف تخفیف|ظرفیت کل|سقف هر کاربر|YYYY-MM-DD یا -</code>\n\nعدد صفر یعنی نامحدود.", [[['text'=>'انصراف','callback_data'=>'vsa_fx_discount_'.$m[1]]]]); return true; }
-    if (preg_match('/^vsa_fx_dscope_(\d+)$/', $datain, $m)) { virtualServicesAdminReply('دامنه کد را انتخاب کنید.', [[['text'=>'همه محصولات','callback_data'=>'vsa_fx_dglobal_'.$m[1]]],[['text'=>'یک دسته','callback_data'=>'vsa_fx_dcats_'.$m[1]],['text'=>'یک محصول','callback_data'=>'vsa_fx_dproducts_'.$m[1]]],[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]]); return true; }
-    if (preg_match('/^vsa_fx_dglobal_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=NULL,category_id=NULL WHERE id=?')->execute([$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
+    if (preg_match('/^vsa_fx_dscope_(\d+)$/', $datain, $m)) { virtualServicesAdminReply('دامنه کد را انتخاب کنید.', [[['text'=>'همه پلن‌ها','callback_data'=>'vsa_fx_dglobal_'.$m[1]]],[['text'=>'یک دسته','callback_data'=>'vsa_fx_dcats_'.$m[1]],['text'=>'یک محصول','callback_data'=>'vsa_fx_dgroups_'.$m[1]]],[['text'=>'فقط یک پلن','callback_data'=>'vsa_fx_dproducts_'.$m[1]]],[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]]); return true; }
+    if (preg_match('/^vsa_fx_dglobal_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=NULL,group_id=NULL,category_id=NULL WHERE id=?')->execute([$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
     if (preg_match('/^vsa_fx_dcats_(\d+)$/', $datain, $m)) { $rows=[]; foreach($pdo->query('SELECT id,title FROM telegram_product_categories ORDER BY sort_order,id LIMIT 50')->fetchAll(PDO::FETCH_ASSOC) as $x)$rows[]=[['text'=>$x['title'],'callback_data'=>'vsa_fx_dcat_'.$m[1].'_'.$x['id']]]; $rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]; virtualServicesAdminReply('دسته را انتخاب کنید.',$rows); return true; }
-    if (preg_match('/^vsa_fx_dproducts_(\d+)$/', $datain, $m)) { $rows=[]; foreach($pdo->query('SELECT id,title FROM telegram_products ORDER BY id DESC LIMIT 50')->fetchAll(PDO::FETCH_ASSOC) as $x)$rows[]=[['text'=>$x['title'],'callback_data'=>'vsa_fx_dproduct_'.$m[1].'_'.$x['id']]]; $rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]; virtualServicesAdminReply('محصول را انتخاب کنید.',$rows); return true; }
-    if (preg_match('/^vsa_fx_dcat_(\d+)_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=NULL,category_id=? WHERE id=?')->execute([$m[2],$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
-    if (preg_match('/^vsa_fx_dproduct_(\d+)_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=?,category_id=NULL WHERE id=?')->execute([$m[2],$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
+    if (preg_match('/^vsa_fx_dgroups_(\d+)$/', $datain, $m)) { $rows=[]; foreach($pdo->query('SELECT id,title FROM telegram_product_groups ORDER BY id DESC LIMIT 50')->fetchAll(PDO::FETCH_ASSOC) as $x)$rows[]=[['text'=>$x['title'],'callback_data'=>'vsa_fx_dgroup_'.$m[1].'_'.$x['id']]]; $rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]; virtualServicesAdminReply('محصول را انتخاب کنید.',$rows); return true; }
+    if (preg_match('/^vsa_fx_dproducts_(\d+)$/', $datain, $m)) { $rows=[]; foreach($pdo->query('SELECT id,title FROM telegram_products ORDER BY id DESC LIMIT 50')->fetchAll(PDO::FETCH_ASSOC) as $x)$rows[]=[['text'=>$x['title'],'callback_data'=>'vsa_fx_dproduct_'.$m[1].'_'.$x['id']]]; $rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_fx_discount_'.$m[1]]]; virtualServicesAdminReply('پلن را انتخاب کنید.',$rows); return true; }
+    if (preg_match('/^vsa_fx_dcat_(\d+)_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=NULL,group_id=NULL,category_id=? WHERE id=?')->execute([$m[2],$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
+    if (preg_match('/^vsa_fx_dgroup_(\d+)_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=NULL,group_id=?,category_id=NULL WHERE id=?')->execute([$m[2],$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
+    if (preg_match('/^vsa_fx_dproduct_(\d+)_(\d+)$/', $datain, $m)) { $pdo->prepare('UPDATE telegram_product_discounts SET product_id=?,group_id=NULL,category_id=NULL WHERE id=?')->execute([$m[2],$m[1]]); telegramProductsAdminDiscount($m[1]); return true; }
 
     if (preg_match('/^vsa_fx_fields_(\d+)$/', $datain, $m)) { telegramProductsAdminFields($m[1]); return true; }
     if (preg_match('/^vsa_fx_field_add_(\d+)$/', $datain, $m)) { virtualServicesAdminSetState('vsa_fx_field_label',['product_id'=>(int)$m[1]]); virtualServicesAdminReply('عنوان فیلد را ارسال کنید؛ مانند «یوزرنیم تلگرام».',[[['text'=>'انصراف','callback_data'=>'vsa_fx_fields_'.$m[1]]]]); return true; }

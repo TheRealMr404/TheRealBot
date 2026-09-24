@@ -86,7 +86,8 @@ function virtualServicesAdminHome()
     global $pdo, $from_id;
 
     $categoryCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_product_categories')->fetchColumn();
-    $productCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_products')->fetchColumn();
+    $productCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_product_groups')->fetchColumn();
+    $planCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_products')->fetchColumn();
     $pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_orders WHERE status = 'paid_pending'")->fetchColumn();
     $stockCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_stock WHERE status = 'available'")->fetchColumn();
     $warrantyCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_warranties WHERE status = 'pending'")->fetchColumn();
@@ -94,14 +95,15 @@ function virtualServicesAdminHome()
 
     $text = "<b>مدیریت خدمات مجازی</b>\n\n";
     $text .= 'وضعیت فروشگاه: ' . ($enabled ? 'فعال' : 'غیرفعال') . "\n";
-    $text .= "دسته‌ها: <code>{$categoryCount}</code> | محصولات: <code>{$productCount}</code>\n";
+    $text .= "دسته‌ها: <code>{$categoryCount}</code> | محصولات: <code>{$productCount}</code> | پلن‌ها: <code>{$planCount}</code>\n";
     $text .= "موجودی خودکار: <code>{$stockCount}</code> | منتظر تحویل: <code>{$pendingCount}</code>";
 
     $rows = [
         [
             ['text' => 'دسته‌بندی‌ها', 'callback_data' => 'vsa_categories'],
-            ['text' => 'محصولات', 'callback_data' => 'vsa_products'],
+            ['text' => 'محصولات', 'callback_data' => 'vsa_groups'],
         ],
+        [['text' => 'پلن‌های قابل خرید', 'callback_data' => 'vsa_products']],
         [
             ['text' => 'سفارش‌های منتظر تحویل' . ($pendingCount ? " ({$pendingCount})" : ''), 'callback_data' => 'vsa_orders'],
         ],
@@ -135,7 +137,7 @@ function virtualServicesAdminCategories()
 
     $rows = [];
     $categories = $pdo->query("SELECT c.*,
-        (SELECT COUNT(*) FROM telegram_products p WHERE p.category_id = c.id) AS product_count
+        (SELECT COUNT(*) FROM telegram_product_groups g WHERE g.category_id = c.id) AS product_count
         FROM telegram_product_categories c
         ORDER BY c.sort_order, c.id")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($categories as $category) {
@@ -161,7 +163,7 @@ function virtualServicesAdminCategory($categoryId)
     global $pdo;
 
     $stmt = $pdo->prepare("SELECT c.*,
-        (SELECT COUNT(*) FROM telegram_products p WHERE p.category_id = c.id) AS product_count
+        (SELECT COUNT(*) FROM telegram_product_groups g WHERE g.category_id = c.id) AS product_count
         FROM telegram_product_categories c WHERE c.id = ?");
     $stmt->execute([(int) $categoryId]);
     $category = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -179,6 +181,7 @@ function virtualServicesAdminCategory($categoryId)
             ['text' => 'تغییر نام', 'callback_data' => 'vsa_cat_edit_' . $category['id']],
             ['text' => (int) $category['is_active'] === 1 ? 'غیرفعال‌سازی' : 'فعال‌سازی', 'callback_data' => 'vsa_cat_toggle_' . $category['id']],
         ],
+        [['text' => 'محصولات این دسته', 'callback_data' => 'vsa_groups_cat_' . $category['id']]],
         [
             ['text' => 'انتقال به بالاتر', 'callback_data' => 'vsa_cat_up_' . $category['id']],
             ['text' => 'انتقال به پایین‌تر', 'callback_data' => 'vsa_cat_down_' . $category['id']],
@@ -193,29 +196,95 @@ function virtualServicesAdminCategory($categoryId)
     virtualServicesAdminReply($text, $rows);
 }
 
-function virtualServicesAdminProducts()
+function virtualServicesAdminGroups($categoryId = null)
+{
+    global $pdo;
+    $params = [];
+    $where = '';
+    if ($categoryId !== null) {
+        $where = 'WHERE g.category_id = ?';
+        $params[] = (int) $categoryId;
+    }
+    $stmt = $pdo->prepare("SELECT g.*, c.title AS category_title,
+        (SELECT COUNT(*) FROM telegram_products p WHERE p.group_id=g.id) AS plan_count
+        FROM telegram_product_groups g
+        JOIN telegram_product_categories c ON c.id=g.category_id
+        {$where} ORDER BY g.sort_order,g.id");
+    $stmt->execute($params);
+    $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = [];
+    foreach ($groups as $group) {
+        $rows[] = [telegramProductsStyledButton(
+            $group['title'] . ' | ' . $group['category_title'] . ' | ' . $group['plan_count'] . ' پلن',
+            'vsa_group_' . $group['id'],
+            $group['button_style'],
+            $group['button_emoji_id']
+        )];
+    }
+    $rows[] = [['text' => 'افزودن محصول', 'callback_data' => 'vsa_group_add', 'style' => 'success']];
+    $rows[] = [['text' => 'بازگشت', 'callback_data' => $categoryId === null ? 'vsa_home' : 'vsa_cat_' . (int) $categoryId]];
+    $text = "<b>محصولات خدمات مجازی</b>\n\nهر محصول می‌تواند چند پلن قابل خرید داشته باشد.";
+    if (!$groups) $text .= "\n\nهنوز محصولی ساخته نشده است.";
+    virtualServicesAdminReply($text, $rows);
+}
+
+function virtualServicesAdminGroup($groupId)
+{
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT g.*,c.title AS category_title,
+        (SELECT COUNT(*) FROM telegram_products p WHERE p.group_id=g.id) AS plan_count
+        FROM telegram_product_groups g JOIN telegram_product_categories c ON c.id=g.category_id WHERE g.id=?");
+    $stmt->execute([(int) $groupId]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$group) { virtualServicesAdminGroups(); return; }
+    $text = '<b>' . telegramProductsSafeCustomText($group['title']) . "</b>\n\n";
+    $text .= 'دسته: ' . telegramProductsEscape($group['category_title']) . "\n";
+    $text .= 'پلن‌ها: ' . (int) $group['plan_count'] . "\n";
+    $text .= 'وضعیت: ' . ((int) $group['is_active'] ? 'فعال' : 'غیرفعال') . "\n";
+    $text .= 'رنگ دکمه: ' . virtualServicesAdminStyleLabel($group['button_style']) . "\n";
+    $text .= 'ایموجی: ' . (!empty($group['button_emoji_id']) ? '<code>' . telegramProductsEscape($group['button_emoji_id']) . '</code>' : 'ندارد');
+    if (!empty($group['description'])) $text .= "\n\n" . telegramProductsSafeCustomText($group['description']);
+    $rows = [
+        [['text' => 'تغییر نام', 'callback_data' => 'vsa_group_edit_' . $group['id']], ['text' => 'توضیحات', 'callback_data' => 'vsa_group_desc_' . $group['id']]],
+        [['text' => 'تغییر دسته‌بندی', 'callback_data' => 'vsa_group_cat_' . $group['id']]],
+        [['text' => (int) $group['is_active'] ? 'غیرفعال‌سازی' : 'فعال‌سازی', 'callback_data' => 'vsa_group_toggle_' . $group['id']]],
+        [['text' => 'رنگ دکمه', 'callback_data' => 'vsa_group_style_' . $group['id']], ['text' => 'ایموجی دکمه', 'callback_data' => 'vsa_group_emoji_' . $group['id']]],
+        [['text' => 'انتقال به بالاتر', 'callback_data' => 'vsa_group_up_' . $group['id']], ['text' => 'انتقال به پایین‌تر', 'callback_data' => 'vsa_group_down_' . $group['id']]],
+        [['text' => 'افزودن پلن به این محصول', 'callback_data' => 'vsa_plan_add_' . $group['id'], 'style' => 'success']],
+        [['text' => 'مشاهده پلن‌ها', 'callback_data' => 'vsa_group_plans_' . $group['id']]],
+        [['text' => 'حذف محصول خالی', 'callback_data' => 'vsa_group_delete_' . $group['id'], 'style' => 'danger']],
+        [['text' => 'بازگشت', 'callback_data' => 'vsa_groups']],
+    ];
+    virtualServicesAdminReply($text, $rows);
+}
+
+function virtualServicesAdminProducts($groupId = null)
 {
     global $pdo;
 
-    $products = $pdo->query("SELECT p.*, c.title AS category_title,
+    $where = $groupId === null ? '' : 'WHERE p.group_id = ?';
+    $stmt = $pdo->prepare("SELECT p.*, c.title AS category_title, g.title AS group_title,
         (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id = p.id AND s.status = 'available') AS stock_count
         FROM telegram_products p LEFT JOIN telegram_product_categories c ON c.id = p.category_id
-        ORDER BY p.id DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC);
+        LEFT JOIN telegram_product_groups g ON g.id=p.group_id
+        {$where} ORDER BY p.id DESC LIMIT 40");
+    $stmt->execute($groupId === null ? [] : [(int) $groupId]);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $rows = [];
     foreach ($products as $product) {
         $status = (int) $product['is_active'] === 1 ? 'فعال' : 'غیرفعال';
         $rows[] = [telegramProductsStyledButton(
-            '#' . $product['id'] . ' ' . $product['title'] . ' | ' . telegramProductsMoney($product['price']) . ' | ' . $status,
+            '#' . $product['id'] . ' ' . $product['title'] . ' | ' . ($product['group_title'] ?: 'قدیمی') . ' | ' . telegramProductsMoney($product['price']) . ' | ' . $status,
             'vsa_product_' . $product['id'],
             $product['button_style'],
             $product['button_emoji_id']
         )];
     }
-    $rows[] = [['text' => 'افزودن محصول', 'callback_data' => 'vsa_product_add']];
-    $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_home']];
-    $text = "<b>محصولات خدمات مجازی</b>\n\nمحصول موردنظر را انتخاب کنید.";
+    $rows[] = [['text' => 'افزودن پلن', 'callback_data' => 'vsa_product_add']];
+    $rows[] = [['text' => 'بازگشت', 'callback_data' => $groupId === null ? 'vsa_home' : 'vsa_group_' . (int) $groupId]];
+    $text = "<b>پلن‌های خدمات مجازی</b>\n\nپلن قابل خرید موردنظر را انتخاب کنید.";
     if (!$products) {
-        $text .= "\n\nهنوز محصولی ثبت نشده است.";
+        $text .= "\n\nهنوز پلنی ثبت نشده است.";
     }
     virtualServicesAdminReply($text, $rows);
 }
@@ -224,10 +293,11 @@ function virtualServicesAdminProduct($productId)
 {
     global $pdo;
 
-    $stmt = $pdo->prepare("SELECT p.*, c.title AS category_title,
+    $stmt = $pdo->prepare("SELECT p.*, c.title AS category_title, g.title AS group_title,
         (SELECT COUNT(*) FROM telegram_product_stock s WHERE s.product_id = p.id AND s.status = 'available') AS stock_count,
         (SELECT COUNT(*) FROM telegram_product_orders o WHERE o.product_id = p.id AND o.status != 'pending') AS order_count
-        FROM telegram_products p LEFT JOIN telegram_product_categories c ON c.id = p.category_id WHERE p.id = ?");
+        FROM telegram_products p LEFT JOIN telegram_product_categories c ON c.id = p.category_id
+        LEFT JOIN telegram_product_groups g ON g.id=p.group_id WHERE p.id = ?");
     $stmt->execute([(int) $productId]);
     $product = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$product) {
@@ -240,6 +310,7 @@ function virtualServicesAdminProduct($productId)
     $scopeLabels = ['all' => 'همه', 'f' => 'کاربر عادی', 'n' => 'نماینده', 'n2' => 'نماینده پیشرفته'];
     $text = '<b>' . telegramProductsEscape($product['title']) . "</b>\n\n";
     $text .= 'دسته: ' . telegramProductsEscape($product['category_title'] ?? 'بدون دسته') . "\n";
+    $text .= 'محصول: ' . telegramProductsEscape($product['group_title'] ?? 'پلن قدیمی بدون محصول') . "\n";
     $text .= 'قیمت: ' . telegramProductsMoney($product['price']) . "\n";
     $text .= "مدل فروش: {$mode} | تحویل: {$delivery} | وضعیت: {$status}\n";
     $text .= 'نمایش برای: ' . ($scopeLabels[$product['agent_scope']] ?? telegramProductsEscape($product['agent_scope'])) . "\n";
@@ -258,7 +329,7 @@ function virtualServicesAdminProduct($productId)
         ],
         [
             ['text' => 'فیلدها و قوانین ورودی', 'callback_data' => 'vsa_fx_fields_' . $product['id']],
-            ['text' => 'دسته', 'callback_data' => 'vsa_pcat_' . $product['id']],
+            ['text' => 'محصول والد', 'callback_data' => 'vsa_pgroup_' . $product['id']],
         ],
         [
             ['text' => 'مدل: ' . $mode, 'callback_data' => 'vsa_fx_mode_' . $product['id']],
@@ -281,8 +352,8 @@ function virtualServicesAdminProduct($productId)
             ['text' => 'انتقال به پایین‌تر', 'callback_data' => 'vsa_product_down_' . $product['id']],
         ],
         [['text' => 'مدیریت موجودی خودکار', 'callback_data' => 'vsa_stock_' . $product['id']]],
-        [['text' => (int) $product['is_active'] === 1 ? 'غیرفعال‌سازی محصول' : 'فعال‌سازی محصول', 'callback_data' => 'vsa_ptoggle_' . $product['id']]],
-        [['text' => 'بازگشت', 'callback_data' => 'vsa_products']],
+        [['text' => (int) $product['is_active'] === 1 ? 'غیرفعال‌سازی پلن' : 'فعال‌سازی پلن', 'callback_data' => 'vsa_ptoggle_' . $product['id']]],
+        [['text' => 'بازگشت', 'callback_data' => !empty($product['group_id']) ? 'vsa_group_' . $product['group_id'] : 'vsa_products']],
     ];
     virtualServicesAdminReply($text, $rows);
 }
@@ -500,9 +571,23 @@ function virtualServicesAdminHandleState()
         virtualServicesAdminCategory($data['id'] ?? 0);
         return true;
     }
+    if ($state === 'vsa_group_add') {
+        if (mb_strlen($value, 'UTF-8') > 100) { sendmessage($from_id, 'نام محصول حداکثر ۱۰۰ کاراکتر باشد.', null, 'HTML'); return true; }
+        $pdo->prepare('INSERT INTO telegram_product_groups (category_id,title) VALUES (?,?)')->execute([(int) ($data['category_id'] ?? 0), telegramProductsPlainText($value)]);
+        $id = (int) $pdo->lastInsertId(); virtualServicesAdminClearState(); virtualServicesAdminGroup($id); return true;
+    }
+    if ($state === 'vsa_group_edit') {
+        if (mb_strlen($value, 'UTF-8') > 100) { sendmessage($from_id, 'نام محصول حداکثر ۱۰۰ کاراکتر باشد.', null, 'HTML'); return true; }
+        $pdo->prepare('UPDATE telegram_product_groups SET title=? WHERE id=?')->execute([telegramProductsPlainText($value), (int) ($data['id'] ?? 0)]);
+        $id=(int)($data['id']??0);virtualServicesAdminClearState();virtualServicesAdminGroup($id);return true;
+    }
+    if ($state === 'vsa_group_desc') {
+        $pdo->prepare('UPDATE telegram_product_groups SET description=? WHERE id=?')->execute([$value==='-'?'':virtualServicesAdminCustomText(),(int)($data['id']??0)]);
+        $id=(int)($data['id']??0);virtualServicesAdminClearState();virtualServicesAdminGroup($id);return true;
+    }
     if ($state === 'vsa_add_title') {
         if (mb_strlen($value, 'UTF-8') > 100) {
-            sendmessage($from_id, 'نام محصول حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
+            sendmessage($from_id, 'نام پلن حداکثر باید ۱۰۰ کاراکتر باشد.', null, 'HTML');
             return true;
         }
         $data['title'] = telegramProductsPlainText($value);
@@ -563,9 +648,10 @@ function virtualServicesAdminHandleState()
             sendmessage($from_id, 'یک ایموجی پریمیوم، شناسه عددی آن، یا <code>-</code> برای بدون ایموجی ارسال کنید.', null, 'HTML');
             return true;
         }
-        $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, title, description, price, delivery_type, product_mode, input_label, agent_scope, button_style, button_emoji_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, group_id, title, description, price, delivery_type, product_mode, input_label, agent_scope, button_style, button_emoji_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
             (int) ($data['category_id'] ?? 0),
+            !empty($data['group_id']) ? (int) $data['group_id'] : null,
             $data['title'] ?? '',
             $data['description'] ?? '',
             (int) ($data['price'] ?? 0),
@@ -582,9 +668,9 @@ function virtualServicesAdminHandleState()
                 ->execute([$productId, $data['input_label'], 'text']);
         }
         virtualServicesAdminClearState();
-        sendmessage($from_id, 'محصول با موفقیت ساخته شد.', null, 'HTML');
+        sendmessage($from_id, 'پلن با موفقیت ساخته شد.', null, 'HTML');
         if (($data['delivery_type'] ?? 'manual') === 'auto') {
-            virtualServicesAdminReply('محصول خودکار ساخته شد. برای فعال‌شدن فروش، موجودی کد یا لینک آن را اضافه کنید.', [
+            virtualServicesAdminReply('پلن مخزنی ساخته شد. برای فعال‌شدن فروش، موجودی کد یا لینک آن را اضافه کنید.', [
                 [['text' => 'افزودن موجودی', 'callback_data' => 'vsa_stock_add_' . $productId, 'style' => 'success']],
                 [['text' => 'مشاهده محصول', 'callback_data' => 'vsa_product_' . $productId]],
             ], false);
@@ -677,18 +763,18 @@ function virtualServicesAdminHandleState()
         virtualServicesAdminProduct($productId);
         return true;
     }
-    if (in_array($state, ['vsa_cat_emoji_edit', 'vsa_product_emoji_edit'], true)) {
+    if (in_array($state, ['vsa_cat_emoji_edit', 'vsa_group_emoji_edit', 'vsa_product_emoji_edit'], true)) {
         $emojiId = virtualServicesAdminEmojiId();
         if ($emojiId === null) {
             sendmessage($from_id, 'یک ایموجی پریمیوم، شناسه عددی آن، یا <code>-</code> برای حذف ارسال کنید.', null, 'HTML');
             return true;
         }
-        $table = $state === 'vsa_cat_emoji_edit' ? 'telegram_product_categories' : 'telegram_products';
+        $table = $state === 'vsa_cat_emoji_edit' ? 'telegram_product_categories' : ($state === 'vsa_group_emoji_edit' ? 'telegram_product_groups' : 'telegram_products');
         $stmt = $pdo->prepare("UPDATE {$table} SET button_emoji_id = ? WHERE id = ?");
         $stmt->execute([$emojiId === '' ? null : $emojiId, (int) ($data['id'] ?? 0)]);
         $id = (int) ($data['id'] ?? 0);
         virtualServicesAdminClearState();
-        $state === 'vsa_cat_emoji_edit' ? virtualServicesAdminCategory($id) : virtualServicesAdminProduct($id);
+        if ($state === 'vsa_cat_emoji_edit') virtualServicesAdminCategory($id); elseif ($state === 'vsa_group_emoji_edit') virtualServicesAdminGroup($id); else virtualServicesAdminProduct($id);
         return true;
     }
     if (in_array($state, ['vsa_edit_lowstock', 'vsa_edit_max'], true)) {
@@ -773,7 +859,7 @@ function telegramProductsAdminPanelHandleRequest()
         if (function_exists('telegramProductsAdminFeatureHandleRequest') && telegramProductsAdminFeatureHandleRequest()) {
             return true;
         }
-        $isStateContinuation = preg_match('/^vsa_(begin|addcat_|add_(delivery|scope|style)_)/', $datain) === 1;
+        $isStateContinuation = preg_match('/^vsa_(begin|planbegin_|addcat_|addgroup_|add_(delivery|scope|style)_)/', $datain) === 1;
         if ($datain !== '' && strpos((string) ($user['step'] ?? ''), 'vsa_') === 0 && !$isStateContinuation) {
             virtualServicesAdminClearState();
         }
@@ -848,8 +934,8 @@ function telegramProductsAdminPanelHandleRequest()
             return true;
         }
         if (preg_match('/^vsa_cat_delete_(\d+)$/', $datain, $match)) {
-            $stmt = $pdo->prepare('SELECT COUNT(*) FROM telegram_products WHERE category_id = ?');
-            $stmt->execute([(int) $match[1]]);
+            $stmt = $pdo->prepare('SELECT (SELECT COUNT(*) FROM telegram_products WHERE category_id=?) + (SELECT COUNT(*) FROM telegram_product_groups WHERE category_id=?)');
+            $stmt->execute([(int) $match[1], (int) $match[1]]);
             if ((int) $stmt->fetchColumn() > 0) {
                 virtualServicesAdminReply('این دسته دارای محصول است و قابل حذف نیست. ابتدا محصولات را جابه‌جا کنید.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_cat_' . $match[1]]]]);
                 return true;
@@ -859,15 +945,73 @@ function telegramProductsAdminPanelHandleRequest()
             virtualServicesAdminCategories();
             return true;
         }
+        if ($datain === 'vsa_groups') {
+            virtualServicesAdminGroups();
+            return true;
+        }
+        if (preg_match('/^vsa_groups_cat_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminGroups($match[1]);
+            return true;
+        }
+        if ($datain === 'vsa_group_add') {
+            $categories = $pdo->query('SELECT id,title FROM telegram_product_categories WHERE is_active=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+            $rows=[];
+            foreach($categories as $category) $rows[]=[['text'=>$category['title'],'callback_data'=>'vsa_group_addcat_'.$category['id']]];
+            $rows[]=[['text'=>'انصراف','callback_data'=>'vsa_groups']];
+            virtualServicesAdminReply('<b>ساخت محصول</b>\n\nدسته‌بندی محصول را انتخاب کنید.',$rows);
+            return true;
+        }
+        if (preg_match('/^vsa_group_addcat_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_group_add',['category_id'=>(int)$match[1]]);
+            virtualServicesAdminReply('نام محصول را ارسال کنید؛ مثلاً <code>استارز</code>.',[[['text'=>'انصراف','callback_data'=>'vsa_groups']]]);
+            return true;
+        }
+        if (preg_match('/^vsa_group_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminGroup($match[1]);
+            return true;
+        }
+        if (preg_match('/^vsa_group_edit_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_group_edit',['id'=>(int)$match[1]]);virtualServicesAdminReply('نام جدید محصول را ارسال کنید.',[[['text'=>'انصراف','callback_data'=>'vsa_group_'.$match[1]]]]);return true;
+        }
+        if (preg_match('/^vsa_group_desc_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_group_desc',['id'=>(int)$match[1]]);virtualServicesAdminReply('توضیحات محصول را ارسال کنید؛ برای حذف <code>-</code>.',[[['text'=>'انصراف','callback_data'=>'vsa_group_'.$match[1]]]]);return true;
+        }
+        if (preg_match('/^vsa_group_toggle_(\d+)$/', $datain, $match)) {
+            $pdo->prepare('UPDATE telegram_product_groups SET is_active=1-is_active WHERE id=?')->execute([(int)$match[1]]);virtualServicesAdminGroup($match[1]);return true;
+        }
+        if (preg_match('/^vsa_group_(up|down)_(\d+)$/', $datain, $match)) {
+            $delta=$match[1]==='up'?-1:1;$pdo->prepare('UPDATE telegram_product_groups SET sort_order=sort_order+? WHERE id=?')->execute([$delta,(int)$match[2]]);virtualServicesAdminGroup($match[2]);return true;
+        }
+        if (preg_match('/^vsa_group_cat_(\d+)$/', $datain, $match)) {
+            $rows=[];foreach($pdo->query('SELECT id,title FROM telegram_product_categories WHERE is_active=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC) as $category)$rows[]=[['text'=>$category['title'],'callback_data'=>'vsa_group_setcat_'.$match[1].'_'.$category['id']]];$rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_group_'.$match[1]]];virtualServicesAdminReply('دسته‌بندی جدید محصول را انتخاب کنید.',$rows);return true;
+        }
+        if (preg_match('/^vsa_group_setcat_(\d+)_(\d+)$/', $datain, $match)) {
+            $pdo->beginTransaction();try{$pdo->prepare('UPDATE telegram_product_groups SET category_id=? WHERE id=?')->execute([(int)$match[2],(int)$match[1]]);$pdo->prepare('UPDATE telegram_products SET category_id=? WHERE group_id=?')->execute([(int)$match[2],(int)$match[1]]);$pdo->commit();}catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}virtualServicesAdminGroup($match[1]);return true;
+        }
+        if (preg_match('/^vsa_group_style_(\d+)$/', $datain, $match)) {
+            $rows=virtualServicesAdminStyleRows('vsa_set_group_style',(int)$match[1]);$rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_group_'.$match[1]]];virtualServicesAdminReply('رنگ دکمه محصول را انتخاب کنید.',$rows);return true;
+        }
+        if (preg_match('/^vsa_set_group_style_(\d+)_(primary|success|danger|none)$/', $datain, $match)) {
+            $pdo->prepare('UPDATE telegram_product_groups SET button_style=? WHERE id=?')->execute([$match[2],(int)$match[1]]);virtualServicesAdminGroup($match[1]);return true;
+        }
+        if (preg_match('/^vsa_group_emoji_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminSetState('vsa_group_emoji_edit',['id'=>(int)$match[1]]);virtualServicesAdminReply('ایموجی پریمیوم یا شناسه آن را ارسال کنید؛ برای حذف <code>-</code>.',[[['text'=>'انصراف','callback_data'=>'vsa_group_'.$match[1]]]]);return true;
+        }
+        if (preg_match('/^vsa_group_plans_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminProducts($match[1]);return true;
+        }
+        if (preg_match('/^vsa_group_delete_(\d+)$/', $datain, $match)) {
+            $stmt=$pdo->prepare('SELECT COUNT(*) FROM telegram_products WHERE group_id=?');$stmt->execute([(int)$match[1]]);if((int)$stmt->fetchColumn()>0){virtualServicesAdminReply('این محصول دارای پلن است و قابل حذف نیست.',[[['text'=>'بازگشت','callback_data'=>'vsa_group_'.$match[1]]]]);return true;}$pdo->prepare('DELETE FROM telegram_product_groups WHERE id=?')->execute([(int)$match[1]]);virtualServicesAdminGroups();return true;
+        }
         if ($datain === 'vsa_products') {
             virtualServicesAdminProducts();
             return true;
         }
         if ($datain === 'vsa_product_add') {
             virtualServicesAdminClearState();
-            virtualServicesAdminReply("<b>ساخت محصول جدید</b>\n\nابتدا نوع فروش محصول را مشخص کنید تا فقط اطلاعات مرتبط با همان روش پرسیده شود.", [
-                [['text' => 'محصول مخزنی (تحویل خودکار)', 'callback_data' => 'vsa_begin_stock', 'style' => 'success']],
-                [['text' => 'محصول فرم‌دار (تحویل ادمین)', 'callback_data' => 'vsa_begin_form', 'style' => 'primary']],
+            virtualServicesAdminReply("<b>ساخت پلن جدید</b>\n\nابتدا نوع فروش پلن را مشخص کنید تا فقط اطلاعات مرتبط با همان روش پرسیده شود.", [
+                [['text' => 'پلن مخزنی (تحویل خودکار)', 'callback_data' => 'vsa_begin_stock', 'style' => 'success']],
+                [['text' => 'پلن فرم‌دار (تحویل ادمین)', 'callback_data' => 'vsa_begin_form', 'style' => 'primary']],
                 [['text' => 'انصراف', 'callback_data' => 'vsa_products']],
             ]);
             return true;
@@ -875,7 +1019,7 @@ function telegramProductsAdminPanelHandleRequest()
         if (preg_match('/^vsa_begin_(stock|form)$/', $datain, $match)) {
             $categories = $pdo->query('SELECT id, title FROM telegram_product_categories WHERE is_active = 1 ORDER BY sort_order, id')->fetchAll(PDO::FETCH_ASSOC);
             if (!$categories) {
-                virtualServicesAdminReply('برای ساخت محصول ابتدا یک دسته فعال بسازید.', [
+                virtualServicesAdminReply('برای ساخت پلن ابتدا یک دسته فعال بسازید.', [
                     [['text' => 'ساخت دسته', 'callback_data' => 'vsa_cat_add']],
                     [['text' => 'بازگشت', 'callback_data' => 'vsa_products']],
                 ]);
@@ -896,8 +1040,53 @@ function telegramProductsAdminPanelHandleRequest()
         if (preg_match('/^vsa_addcat_(\d+)$/', $datain, $match)) {
             $data = virtualServicesAdminStateData();
             $data['category_id'] = (int) $match[1];
+            $stmt = $pdo->prepare('SELECT id,title FROM telegram_product_groups WHERE category_id=? AND is_active=1 ORDER BY sort_order,id');
+            $stmt->execute([$data['category_id']]);
+            $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!$groups) {
+                virtualServicesAdminClearState();
+                virtualServicesAdminReply('در این دسته هنوز محصولی وجود ندارد. ابتدا محصول را بسازید و سپس پلن آن را اضافه کنید.', [
+                    [['text' => 'ساخت محصول', 'callback_data' => 'vsa_group_add']],
+                    [['text' => 'بازگشت', 'callback_data' => 'vsa_products']],
+                ]);
+                return true;
+            }
+            virtualServicesAdminSetState('vsa_add_group_wait', $data);
+            $rows = [];
+            foreach ($groups as $group) $rows[] = [['text' => telegramProductsPlainText($group['title']), 'callback_data' => 'vsa_addgroup_' . $group['id']]];
+            $rows[] = [['text' => 'انصراف', 'callback_data' => 'vsa_products']];
+            virtualServicesAdminReply('<b>مرحله ۳: محصول</b>\n\nاین پلن متعلق به کدام محصول است؟', $rows);
+            return true;
+        }
+        if (preg_match('/^vsa_addgroup_(\d+)$/', $datain, $match)) {
+            $data = virtualServicesAdminStateData();
+            $stmt = $pdo->prepare('SELECT id,category_id FROM telegram_product_groups WHERE id=? AND is_active=1');
+            $stmt->execute([(int) $match[1]]);
+            $group = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$group || (int) $group['category_id'] !== (int) ($data['category_id'] ?? 0)) { virtualServicesAdminProducts(); return true; }
+            $data['group_id'] = (int) $group['id'];
             virtualServicesAdminSetState('vsa_add_title', $data);
-            virtualServicesAdminReply('<b>مرحله ۳: نام محصول</b>\n\nنامی کوتاه و واضح برای محصول ارسال کنید.', [[['text' => 'انصراف', 'callback_data' => 'vsa_products']]]);
+            virtualServicesAdminReply('<b>مرحله ۴: نام پلن</b>\n\nمثلاً «پکیج ۵۰ استارزی» را ارسال کنید.', [[['text' => 'انصراف', 'callback_data' => 'vsa_products']]]);
+            return true;
+        }
+        if (preg_match('/^vsa_plan_add_(\d+)$/', $datain, $match)) {
+            virtualServicesAdminReply('<b>افزودن پلن</b>\n\nنوع تحویل پلن را انتخاب کنید.', [
+                [['text' => 'مخزنی و خودکار', 'callback_data' => 'vsa_planbegin_' . $match[1] . '_stock', 'style' => 'success']],
+                [['text' => 'فرم‌دار و دستی', 'callback_data' => 'vsa_planbegin_' . $match[1] . '_form', 'style' => 'primary']],
+                [['text' => 'انصراف', 'callback_data' => 'vsa_group_' . $match[1]]],
+            ]);
+            return true;
+        }
+        if (preg_match('/^vsa_planbegin_(\d+)_(stock|form)$/', $datain, $match)) {
+            $stmt = $pdo->prepare('SELECT id,category_id FROM telegram_product_groups WHERE id=?');
+            $stmt->execute([(int) $match[1]]);
+            $group = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$group) { virtualServicesAdminGroups(); return true; }
+            virtualServicesAdminSetState('vsa_add_title', [
+                'group_id' => (int) $group['id'], 'category_id' => (int) $group['category_id'],
+                'product_mode' => $match[2], 'delivery_type' => $match[2] === 'stock' ? 'auto' : 'manual',
+            ]);
+            virtualServicesAdminReply('نام پلن را ارسال کنید؛ مثلاً <code>پکیج ۵۰ استارزی</code>.', [[['text' => 'انصراف', 'callback_data' => 'vsa_group_' . $group['id']]]]);
             return true;
         }
         if (preg_match('/^vsa_add_delivery_(auto|manual)$/', $datain, $match)) {
@@ -942,7 +1131,7 @@ function telegramProductsAdminPanelHandleRequest()
         if (preg_match('/^vsa_pstyle_(\d+)$/', $datain, $match)) {
             $rows = virtualServicesAdminStyleRows('vsa_set_product_style', (int) $match[1]);
             $rows[] = [['text' => 'بازگشت', 'callback_data' => 'vsa_product_' . $match[1]]];
-            virtualServicesAdminReply('رنگ دکمه این محصول را انتخاب کنید.', $rows);
+            virtualServicesAdminReply('رنگ دکمه این پلن را انتخاب کنید.', $rows);
             return true;
         }
         if (preg_match('/^vsa_set_product_style_(\d+)_(primary|success|danger|none)$/', $datain, $match)) {
@@ -963,7 +1152,7 @@ function telegramProductsAdminPanelHandleRequest()
         }
         if (preg_match('/^vsa_pmax_(\d+)$/', $datain, $match)) {
             virtualServicesAdminSetState('vsa_edit_max', ['id' => (int) $match[1]]);
-            virtualServicesAdminReply('حداکثر تعداد خرید این محصول برای هر کاربر را ارسال کنید. عدد <code>0</code> یعنی نامحدود.', [[['text' => 'انصراف', 'callback_data' => 'vsa_product_' . $match[1]]]]);
+            virtualServicesAdminReply('حداکثر تعداد خرید این پلن برای هر کاربر را ارسال کنید. عدد <code>0</code> یعنی نامحدود.', [[['text' => 'انصراف', 'callback_data' => 'vsa_product_' . $match[1]]]]);
             return true;
         }
         if (preg_match('/^vsa_product_(up|down)_(\d+)$/', $datain, $match)) {
@@ -995,6 +1184,18 @@ function telegramProductsAdminPanelHandleRequest()
             $stmt->execute([$match[2], (int) $match[1]]);
             virtualServicesAdminProduct($match[1]);
             return true;
+        }
+        if (preg_match('/^vsa_pgroup_(\d+)$/', $datain, $match)) {
+            $planId=(int)$match[1];
+            $groups=$pdo->query('SELECT g.id,g.title,c.title AS category_title FROM telegram_product_groups g JOIN telegram_product_categories c ON c.id=g.category_id WHERE g.is_active=1 ORDER BY c.sort_order,g.sort_order,g.id')->fetchAll(PDO::FETCH_ASSOC);
+            $rows=[];foreach($groups as $group)$rows[]=[['text'=>$group['category_title'].' | '.$group['title'],'callback_data'=>'vsa_psetgroup_'.$planId.'_'.$group['id']]];
+            $rows[]=[['text'=>'بازگشت','callback_data'=>'vsa_product_'.$planId]];
+            virtualServicesAdminReply('محصول والد پلن را انتخاب کنید.',$rows);return true;
+        }
+        if (preg_match('/^vsa_psetgroup_(\d+)_(\d+)$/', $datain, $match)) {
+            $stmt=$pdo->prepare('SELECT category_id FROM telegram_product_groups WHERE id=?');$stmt->execute([(int)$match[2]]);$categoryId=(int)$stmt->fetchColumn();
+            if($categoryId>0)$pdo->prepare('UPDATE telegram_products SET group_id=?,category_id=? WHERE id=?')->execute([(int)$match[2],$categoryId,(int)$match[1]]);
+            virtualServicesAdminProduct($match[1]);return true;
         }
         if (preg_match('/^vsa_pcat_(\d+)$/', $datain, $match)) {
             $productId = (int) $match[1];
