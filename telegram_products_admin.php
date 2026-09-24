@@ -122,10 +122,10 @@ function virtualServicesAdminCategories()
     global $pdo;
 
     $rows = [];
-    $categories = $pdo->query("SELECT c.*, COUNT(p.id) AS product_count
+    $categories = $pdo->query("SELECT c.*,
+        (SELECT COUNT(*) FROM telegram_products p WHERE p.category_id = c.id) AS product_count
         FROM telegram_product_categories c
-        LEFT JOIN telegram_products p ON p.category_id = c.id
-        GROUP BY c.id ORDER BY c.sort_order, c.id")->fetchAll(PDO::FETCH_ASSOC);
+        ORDER BY c.sort_order, c.id")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($categories as $category) {
         $status = (int) $category['is_active'] === 1 ? 'فعال' : 'غیرفعال';
         $rows[] = [[telegramProductsStyledButton(
@@ -148,7 +148,9 @@ function virtualServicesAdminCategory($categoryId)
 {
     global $pdo;
 
-    $stmt = $pdo->prepare("SELECT c.*, COUNT(p.id) AS product_count FROM telegram_product_categories c LEFT JOIN telegram_products p ON p.category_id = c.id WHERE c.id = ? GROUP BY c.id");
+    $stmt = $pdo->prepare("SELECT c.*,
+        (SELECT COUNT(*) FROM telegram_products p WHERE p.category_id = c.id) AS product_count
+        FROM telegram_product_categories c WHERE c.id = ?");
     $stmt->execute([(int) $categoryId]);
     $category = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$category) {

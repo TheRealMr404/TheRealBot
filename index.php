@@ -255,6 +255,7 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
+
 $time_Start = jdate('Y/m/d');
 $date_start = jdate('H:i:s', time());
 $time_string = "📆 $date_start → ⏰ $time_Start";
@@ -491,14 +492,30 @@ if ($user['joinchannel'] != "active") {
         }
     }
 }
-$isVirtualServicesAdminRequest = in_array((string) $from_id, array_map('strval', (array) $admin_ids), true)
+
+// Virtual services has its own callback namespace. Dispatch it before the
+// legacy VPN command chain so unrelated states cannot consume these updates.
+$virtualServicesIncomingText = trim(telegramProductsPlainText((string) $text));
+$virtualServicesButtonText = trim(telegramProductsPlainText(telegramProductsButtonText()));
+$isVirtualServicesAdminRoute = in_array((string) $from_id, array_map('strval', (array) $admin_ids), true)
     && (
-        $text === 'مدیریت خدمات مجازی'
+        $virtualServicesIncomingText === 'مدیریت خدمات مجازی'
         || strpos((string) $datain, 'vsa_') === 0
         || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
-            && !in_array($text, ['/start', 'start', 'panel', '/panel'], true))
+            && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
     );
-if ($isVirtualServicesAdminRequest && telegramProductsAdminPanelHandleRequest()) {
+if ($isVirtualServicesAdminRoute) {
+    telegramProductsAdminPanelHandleRequest();
+    return;
+}
+
+$isVirtualServicesUserRoute = strpos((string) $datain, 'tgp_') === 0
+    || strpos((string) $text, '/tg_') === 0
+    || strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0
+    || $virtualServicesIncomingText === telegramProductsPlainText(TELEGRAM_PRODUCTS_BUTTON)
+    || ($virtualServicesButtonText !== '' && $virtualServicesIncomingText === $virtualServicesButtonText);
+if ($isVirtualServicesUserRoute) {
+    telegramProductsHandleRequest();
     return;
 }
 
@@ -524,8 +541,6 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
-    return;
-} elseif (telegramProductsHandleRequest()) {
     return;
 } elseif ($user['step'] == 'get_number') {
     if (empty($user_phone)) {

@@ -57,8 +57,6 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         ]);
         sendmessage($from_id, $miniAppInstructionText, $miniAppInstructionKeyboard, 'HTML');
     }
-} elseif (telegramProductsAdminPanelHandleRequest()) {
-    return;
 } elseif ($text == $textbotlang['Admin']['backadmin']) {
     if ($buyreport == "0" || $otherservice == "0" || $otherreport == "0" || $paymentreports == "0" || $reporttest == "0" || $errorreport == "0") {
         sendmessage($from_id, $textbotlang['Admin']['activebottext'], $active_panell, 'HTML');

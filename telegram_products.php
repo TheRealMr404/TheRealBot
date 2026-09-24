@@ -10,10 +10,17 @@ function telegramProductsEnsureColumn($table, $column, $definition)
     if (!in_array($table, $allowed, true)) {
         throw new InvalidArgumentException('Invalid virtual services table.');
     }
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
-    $stmt->execute([$table, $column]);
-    if ((int) $stmt->fetchColumn() === 0) {
-        $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+    $quotedColumn = $pdo->quote($column);
+    $stmt = $pdo->query("SHOW COLUMNS FROM `{$table}` LIKE {$quotedColumn}");
+    if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
+        try {
+            $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+        } catch (PDOException $e) {
+            $mysqlCode = (int) ($e->errorInfo[1] ?? 0);
+            if ($mysqlCode !== 1060) {
+                throw $e;
+            }
+        }
     }
 }
 
@@ -88,7 +95,7 @@ function telegramProductsEnsureSchema()
     $pdo->exec("CREATE TABLE IF NOT EXISTS telegram_product_settings (
         setting_key VARCHAR(100) PRIMARY KEY,
         setting_value TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     telegramProductsEnsureColumn('telegram_products', 'input_label', "VARCHAR(190) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL AFTER `delivery_type`");
@@ -117,8 +124,20 @@ function telegramProductsEnsureSchema()
     foreach ($defaults as $key => $value) {
         $stmt->execute([$key, $value]);
     }
-    $pdo->prepare("INSERT IGNORE INTO textbot (id_text, text) VALUES ('text_virtual_services', 'خدمات مجازی')")->execute();
-    $pdo->prepare("INSERT IGNORE INTO topicid (report, idreport) VALUES ('virtualservices', '0'), ('virtualservices_error', '0')")->execute();
+    try {
+        $pdo->prepare("INSERT IGNORE INTO textbot (id_text, text) VALUES ('text_virtual_services', 'خدمات مجازی')")->execute();
+    } catch (Throwable $e) {
+        error_log('Virtual services text migration skipped: ' . $e->getMessage());
+    }
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS topicid (
+            report VARCHAR(500) PRIMARY KEY NOT NULL,
+            idreport TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $pdo->prepare("INSERT IGNORE INTO topicid (report, idreport) VALUES ('virtualservices', '0'), ('virtualservices_error', '0')")->execute();
+    } catch (Throwable $e) {
+        error_log('Virtual services topic migration skipped: ' . $e->getMessage());
+    }
 
     $ready = true;
 }
