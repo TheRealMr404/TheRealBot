@@ -9,6 +9,7 @@ require_once 'config.php';
 require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
+require_once 'telegram_products.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -510,6 +511,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
+    return;
+} elseif (telegramProductsHandleRequest()) {
     return;
 } elseif ($user['step'] == 'get_number') {
     if (empty($user_phone)) {
