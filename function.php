@@ -1549,6 +1549,23 @@ function customServiceSelection($code, $panel, $agent)
     ];
 }
 
+function customServiceNextVolume($volume, $direction, $minVolume, $maxVolume)
+{
+    $volume = (int)$volume;
+    $minVolume = max(1, (int)$minVolume);
+    $maxVolume = max($minVolume, (int)$maxVolume);
+
+    if ((int)$direction > 0) {
+        $nextVolume = $volume + ($volume < 10 ? 1 : 10);
+    } elseif ($volume <= 10) {
+        $nextVolume = $volume - 1;
+    } else {
+        $nextVolume = max(10, $volume - 10);
+    }
+
+    return max($minVolume, min($maxVolume, $nextVolume));
+}
+
 function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0)
 {
     $count = max(1, min(15, (int)$count));
@@ -1559,6 +1576,7 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $discountPercent = max(0, min(100, (int)$discountPercent));
     $total = $subtotal - (($subtotal * $discountPercent) / 100);
     $total = max(0, round($total));
+
 $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
     $text .= "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم:</b> {$volume} گیگابایت\n\n";
     $text .= "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان:</b> {$days} روز\n\n";
@@ -1567,6 +1585,7 @@ $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکت�
         $text .= "<tg-emoji emoji-id=\"5348470692935384957\">🏷</tg-emoji> <b>تخفیف:</b> {$discountPercent} درصد\n\n";
     }
     $text .= "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ:</b> " . number_format($total) . " تومان";
+
     $keyboard = [
         'inline_keyboard' => [
             [
@@ -1626,6 +1645,10 @@ function customServiceReply($chatId, $messageId, $text, $keyboard, $preferEdit =
         ? Editmessagetext($chatId, $messageId, $text, $keyboard, 'HTML')
         : sendmessage($chatId, $text, $keyboard, 'HTML');
     if (is_array($response) && !empty($response['ok'])) {
+        return $response;
+    }
+    $description = is_array($response) ? (string)($response['description'] ?? '') : '';
+    if (stripos($description, 'message is not modified') !== false) {
         return $response;
     }
 

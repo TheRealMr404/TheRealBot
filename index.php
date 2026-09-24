@@ -4883,11 +4883,11 @@ $textinvite
     $notice = null;
 
     if ($customInvoiceAction[1] == 'v') {
-        $newVolume = max($limits['min_volume'], min($limits['max_volume'], $volume + ($direction * $limits['volume_step'])));
+        $newVolume = customServiceNextVolume($volume, $direction, $limits['min_volume'], $limits['max_volume']);
         if ($newVolume == $volume) {
             $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
         }
-        // $volume = $newVolume;
+        $volume = $newVolume;
     } elseif ($customInvoiceAction[1] == 'd') {
         $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
         if ($newDays == $days) {
@@ -4900,6 +4900,15 @@ $textinvite
             $notice = "تعداد سفارش باید بین ۱ تا ۱۵ عدد باشد.";
         }
         $count = $newCount;
+    }
+
+    if ($notice !== null) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $notice,
+            'show_alert' => true,
+        ]);
+        return;
     }
 
     $customCode = "customvolume_{$days}_{$volume}";
