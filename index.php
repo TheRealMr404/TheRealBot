@@ -10,6 +10,7 @@ require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
 require_once 'telegram_products.php';
+require_once 'telegram_products_features.php';
 require_once 'telegram_products_admin.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
@@ -512,6 +513,7 @@ if ($isVirtualServicesAdminRoute) {
 $isVirtualServicesUserRoute = strpos((string) $datain, 'tgp_') === 0
     || strpos((string) $text, '/tg_') === 0
     || strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0
+    || strpos((string) ($user['step'] ?? ''), 'tgp_') === 0
     || $virtualServicesIncomingText === telegramProductsPlainText(TELEGRAM_PRODUCTS_BUTTON)
     || ($virtualServicesButtonText !== '' && $virtualServicesIncomingText === $virtualServicesButtonText);
 if ($isVirtualServicesUserRoute) {

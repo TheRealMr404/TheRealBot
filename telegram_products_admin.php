@@ -83,12 +83,13 @@ function virtualServicesAdminClearState()
 
 function virtualServicesAdminHome()
 {
-    global $pdo;
+    global $pdo, $from_id;
 
     $categoryCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_product_categories')->fetchColumn();
     $productCount = (int) $pdo->query('SELECT COUNT(*) FROM telegram_products')->fetchColumn();
     $pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_orders WHERE status = 'paid_pending'")->fetchColumn();
     $stockCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_stock WHERE status = 'available'")->fetchColumn();
+    $warrantyCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_product_warranties WHERE status = 'pending'")->fetchColumn();
     $enabled = telegramProductsSetting('enabled', '1') === '1';
 
     $text = "<b>مدیریت خدمات مجازی</b>\n\n";
@@ -109,11 +110,22 @@ function virtualServicesAdminHome()
             ['text' => 'آمار فروش', 'callback_data' => 'vsa_stats'],
         ],
         [
+            ['text' => 'کدهای تخفیف', 'callback_data' => 'vsa_fx_discounts'],
+            ['text' => 'گارانتی' . ($warrantyCount ? " ({$warrantyCount})" : ''), 'callback_data' => 'vsa_fx_warranties'],
+        ],
+        [
+            ['text' => 'باشگاه مشتریان', 'callback_data' => 'vsa_fx_loyalty'],
+            ['text' => 'اعلان‌های حرفه‌ای', 'callback_data' => 'vsa_fx_alerts'],
+        ],
+        [
             ['text' => 'متن‌ها و تنظیمات', 'callback_data' => 'vsa_settings'],
             ['text' => $enabled ? 'غیرفعال‌سازی' : 'فعال‌سازی', 'callback_data' => 'vsa_toggle'],
         ],
         [['text' => 'بازگشت به پنل مدیریت', 'callback_data' => 'vsa_exit']],
     ];
+    if (function_exists('telegramProductsAdminCan') && telegramProductsAdminCan($from_id, 'roles')) {
+        array_splice($rows, count($rows) - 1, 0, [[['text' => 'سطح دسترسی ادمین‌ها', 'callback_data' => 'vsa_fx_roles']]]);
+    }
     virtualServicesAdminReply($text, $rows);
 }
 
@@ -223,16 +235,18 @@ function virtualServicesAdminProduct($productId)
         return;
     }
     $delivery = $product['delivery_type'] === 'auto' ? 'خودکار' : 'دستی';
+    $mode = ($product['product_mode'] ?? '') === 'stock' ? 'مخزنی' : 'فرم‌دار';
     $status = (int) $product['is_active'] === 1 ? 'فعال' : 'غیرفعال';
     $scopeLabels = ['all' => 'همه', 'f' => 'کاربر عادی', 'n' => 'نماینده', 'n2' => 'نماینده پیشرفته'];
     $text = '<b>' . telegramProductsEscape($product['title']) . "</b>\n\n";
     $text .= 'دسته: ' . telegramProductsEscape($product['category_title'] ?? 'بدون دسته') . "\n";
     $text .= 'قیمت: ' . telegramProductsMoney($product['price']) . "\n";
-    $text .= "تحویل: {$delivery} | وضعیت: {$status}\n";
+    $text .= "مدل فروش: {$mode} | تحویل: {$delivery} | وضعیت: {$status}\n";
     $text .= 'نمایش برای: ' . ($scopeLabels[$product['agent_scope']] ?? telegramProductsEscape($product['agent_scope'])) . "\n";
     $text .= 'اطلاعات درخواستی: ' . telegramProductsSafeCustomText($product['input_label'] ?: 'ندارد') . "\n";
     $text .= 'رنگ دکمه: ' . virtualServicesAdminStyleLabel($product['button_style']) . ' | ایموجی: ' . (!empty($product['button_emoji_id']) ? '<code>' . telegramProductsEscape($product['button_emoji_id']) . '</code>' : 'ندارد') . "\n";
     $text .= 'هشدار موجودی: ' . (int) $product['low_stock_threshold'] . ' | سقف خرید هر کاربر: ' . ((int) $product['max_per_user'] ?: 'نامحدود') . "\n";
+    $text .= 'گارانتی: ' . ((int) $product['warranty_days'] ? (int) $product['warranty_days'] . ' روز' : 'ندارد') . ' | ارسال مجدد: ' . (int) $product['max_resends'] . " بار\n";
     $text .= "موجودی خودکار: {$product['stock_count']} | فروش: {$product['order_count']}\n\n";
     $text .= telegramProductsSafeCustomText($product['description']);
 
@@ -243,12 +257,16 @@ function virtualServicesAdminProduct($productId)
             ['text' => 'توضیحات', 'callback_data' => 'vsa_pe_desc_' . $product['id']],
         ],
         [
-            ['text' => 'اطلاعات مشتری', 'callback_data' => 'vsa_pe_input_' . $product['id']],
+            ['text' => 'فیلدها و قوانین ورودی', 'callback_data' => 'vsa_fx_fields_' . $product['id']],
             ['text' => 'دسته', 'callback_data' => 'vsa_pcat_' . $product['id']],
         ],
         [
-            ['text' => 'نوع تحویل: ' . $delivery, 'callback_data' => 'vsa_pdelivery_' . $product['id']],
+            ['text' => 'مدل: ' . $mode, 'callback_data' => 'vsa_fx_mode_' . $product['id']],
             ['text' => 'سطح کاربران', 'callback_data' => 'vsa_pscope_' . $product['id']],
+        ],
+        [
+            ['text' => 'مدت گارانتی', 'callback_data' => 'vsa_fx_product_warranty_' . $product['id']],
+            ['text' => 'تعداد ارسال مجدد', 'callback_data' => 'vsa_fx_product_resends_' . $product['id']],
         ],
         [
             ['text' => 'رنگ دکمه', 'callback_data' => 'vsa_pstyle_' . $product['id']],
@@ -341,7 +359,7 @@ function virtualServicesAdminOrder($orderId)
     $text .= 'مبلغ: ' . telegramProductsMoney($order['price']) . "\n";
     $text .= 'وضعیت: ' . ($labels[$order['status']] ?? telegramProductsEscape($order['status'])) . "\n";
     if (!empty($order['customer_input'])) {
-        $text .= 'اطلاعات مشتری: <code>' . telegramProductsEscape($order['customer_input']) . "</code>\n";
+        $text .= "اطلاعات مشتری:\n" . telegramProductsFormatCustomerInput($order['customer_input']) . "\n";
     }
     if (!empty($order['delivery_payload'])) {
         $text .= 'اطلاعات تحویل: <code>' . telegramProductsEscape($order['delivery_payload']) . "</code>\n";
@@ -363,8 +381,8 @@ function virtualServicesAdminSettings()
     global $pdo;
 
     $enabled = telegramProductsSetting('enabled', '1') === '1';
-    $topics = $pdo->query("SELECT report, idreport FROM topicid WHERE report IN ('virtualservices', 'virtualservices_error')")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $topicsReady = (int) ($topics['virtualservices'] ?? 0) > 0 && (int) ($topics['virtualservices_error'] ?? 0) > 0;
+    $topics = $pdo->query("SELECT report, idreport FROM topicid WHERE report IN ('virtualservices', 'virtualservices_error', 'virtualservices_alerts')")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $topicsReady = (int) ($topics['virtualservices'] ?? 0) > 0 && (int) ($topics['virtualservices_error'] ?? 0) > 0 && (int) ($topics['virtualservices_alerts'] ?? 0) > 0;
     $text = "<b>متن‌ها و تنظیمات خدمات مجازی</b>\n\n";
     $text .= 'نام دکمه: ' . telegramProductsEscape(telegramProductsButtonText()) . "\n";
     $text .= 'وضعیت بخش: ' . ($enabled ? 'فعال' : 'غیرفعال') . "\n";
@@ -421,6 +439,7 @@ function virtualServicesAdminRefund($orderId)
         }
         $stmt = $pdo->prepare('UPDATE user SET Balance = Balance + ? WHERE id = ?');
         $stmt->execute([(int) $order['price'], $order['user_id']]);
+        if (function_exists('telegramProductsReverseOrderBenefits')) telegramProductsReverseOrderBenefits($order);
         $stmt = $pdo->prepare("UPDATE telegram_product_orders SET status = 'refunded', refunded_at = NOW() WHERE id = ?");
         $stmt->execute([$order['id']]);
         $pdo->commit();
@@ -544,19 +563,24 @@ function virtualServicesAdminHandleState()
             sendmessage($from_id, 'یک ایموجی پریمیوم، شناسه عددی آن، یا <code>-</code> برای بدون ایموجی ارسال کنید.', null, 'HTML');
             return true;
         }
-        $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, title, description, price, delivery_type, input_label, agent_scope, button_style, button_emoji_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt = $pdo->prepare('INSERT INTO telegram_products (category_id, title, description, price, delivery_type, product_mode, input_label, agent_scope, button_style, button_emoji_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
             (int) ($data['category_id'] ?? 0),
             $data['title'] ?? '',
             $data['description'] ?? '',
             (int) ($data['price'] ?? 0),
             $data['delivery_type'] ?? 'manual',
+            $data['product_mode'] ?? (($data['delivery_type'] ?? 'manual') === 'auto' ? 'stock' : 'form'),
             $data['input_label'] ?? null,
             $data['agent_scope'] ?? 'all',
             $data['button_style'] ?? 'success',
             $emojiId === '' ? null : $emojiId,
         ]);
         $productId = (int) $pdo->lastInsertId();
+        if (($data['product_mode'] ?? '') === 'form' && !empty($data['input_label'])) {
+            $pdo->prepare('INSERT INTO telegram_product_fields (product_id, label, field_type, is_required) VALUES (?, ?, ?, 1)')
+                ->execute([$productId, $data['input_label'], 'text']);
+        }
         virtualServicesAdminClearState();
         sendmessage($from_id, 'محصول با موفقیت ساخته شد.', null, 'HTML');
         if (($data['delivery_type'] ?? 'manual') === 'auto') {
@@ -600,8 +624,14 @@ function virtualServicesAdminHandleState()
             sendmessage($from_id, 'این سفارش قبلاً پردازش شده است.', null, 'HTML');
             return true;
         }
-        $stmt = $pdo->prepare("UPDATE telegram_product_orders SET status = 'delivered', delivery_payload = ?, delivered_at = NOW() WHERE id = ?");
-        $stmt->execute([$value, $orderId]);
+        $stmt = $pdo->prepare('SELECT warranty_days FROM telegram_products WHERE id = ?');
+        $stmt->execute([$order['product_id']]);
+        $warrantyDays = (int) $stmt->fetchColumn();
+        $warrantyUntil = $warrantyDays > 0 ? date('Y-m-d H:i:s', time() + ($warrantyDays * 86400)) : null;
+        $stmt = $pdo->prepare("UPDATE telegram_product_orders SET status = 'delivered', delivery_payload = ?, delivered_at = NOW(), warranty_until = ? WHERE id = ?");
+        $stmt->execute([$value, $warrantyUntil, $orderId]);
+        $pdo->prepare("INSERT INTO telegram_product_deliveries (order_id, delivery_type, payload, admin_id) VALUES (?, 'initial', ?, ?)")
+            ->execute([$orderId, $value, $from_id]);
         $pdo->commit();
         virtualServicesAdminClearState();
         $message = "سفارش شما تحویل شد.\n\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']);
@@ -734,6 +764,15 @@ function telegramProductsAdminPanelHandleRequest()
         if ($callback_query_id) {
             telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
         }
+        if (function_exists('telegramProductsAdminPermissionForRequest')) {
+            $requiredPermission = telegramProductsAdminPermissionForRequest($datain, (string) ($user['step'] ?? ''), $text);
+            if ($requiredPermission && !telegramProductsRequireAdminPermission($requiredPermission)) {
+                return true;
+            }
+        }
+        if (function_exists('telegramProductsAdminFeatureHandleRequest') && telegramProductsAdminFeatureHandleRequest()) {
+            return true;
+        }
         $isStateContinuation = preg_match('/^vsa_(begin|addcat_|add_(delivery|scope|style)_)/', $datain) === 1;
         if ($datain !== '' && strpos((string) ($user['step'] ?? ''), 'vsa_') === 0 && !$isStateContinuation) {
             virtualServicesAdminClearState();
@@ -743,6 +782,7 @@ function telegramProductsAdminPanelHandleRequest()
         }
         if ($text === 'مدیریت خدمات مجازی' || $datain === 'vsa_home') {
             virtualServicesAdminClearState();
+            if (function_exists('telegramProductsProfessionalAlerts')) telegramProductsProfessionalAlerts();
             virtualServicesAdminHome();
             return true;
         }
@@ -826,13 +866,13 @@ function telegramProductsAdminPanelHandleRequest()
         if ($datain === 'vsa_product_add') {
             virtualServicesAdminClearState();
             virtualServicesAdminReply("<b>ساخت محصول جدید</b>\n\nابتدا نوع فروش محصول را مشخص کنید تا فقط اطلاعات مرتبط با همان روش پرسیده شود.", [
-                [['text' => 'فروش خودکار', 'callback_data' => 'vsa_begin_auto', 'style' => 'success']],
-                [['text' => 'فروش دستی', 'callback_data' => 'vsa_begin_manual', 'style' => 'primary']],
+                [['text' => 'محصول مخزنی (تحویل خودکار)', 'callback_data' => 'vsa_begin_stock', 'style' => 'success']],
+                [['text' => 'محصول فرم‌دار (تحویل ادمین)', 'callback_data' => 'vsa_begin_form', 'style' => 'primary']],
                 [['text' => 'انصراف', 'callback_data' => 'vsa_products']],
             ]);
             return true;
         }
-        if (preg_match('/^vsa_begin_(auto|manual)$/', $datain, $match)) {
+        if (preg_match('/^vsa_begin_(stock|form)$/', $datain, $match)) {
             $categories = $pdo->query('SELECT id, title FROM telegram_product_categories WHERE is_active = 1 ORDER BY sort_order, id')->fetchAll(PDO::FETCH_ASSOC);
             if (!$categories) {
                 virtualServicesAdminReply('برای ساخت محصول ابتدا یک دسته فعال بسازید.', [
@@ -841,7 +881,10 @@ function telegramProductsAdminPanelHandleRequest()
                 ]);
                 return true;
             }
-            virtualServicesAdminSetState('vsa_add_category_wait', ['delivery_type' => $match[1]]);
+            virtualServicesAdminSetState('vsa_add_category_wait', [
+                'product_mode' => $match[1],
+                'delivery_type' => $match[1] === 'stock' ? 'auto' : 'manual',
+            ]);
             $rows = [];
             foreach ($categories as $category) {
                 $rows[] = [['text' => telegramProductsPlainText($category['title']), 'callback_data' => 'vsa_addcat_' . $category['id']]];
@@ -1021,6 +1064,8 @@ function telegramProductsAdminPanelHandleRequest()
             $message = "اطلاعات سفارش شما دوباره ارسال شد.\n\n<b>محصول:</b> " . telegramProductsEscape($order['product_title']);
             $message .= "\n<b>اطلاعات تحویل:</b>\n<code>" . telegramProductsEscape($order['delivery_payload']) . '</code>';
             sendmessage($order['user_id'], $message, null, 'HTML');
+            $pdo->prepare("INSERT INTO telegram_product_deliveries (order_id, delivery_type, payload, admin_id) VALUES (?, 'admin_resend', ?, ?)")
+                ->execute([$order['id'], $order['delivery_payload'], $from_id]);
             virtualServicesAdminOrder($match[1]);
             return true;
         }
@@ -1031,8 +1076,9 @@ function telegramProductsAdminPanelHandleRequest()
         if ($datain === 'vsa_topics_rebuild') {
             $salesTopic = telegramProductsEnsureReportTopic('virtualservices', 'خدمات مجازی', true);
             $errorTopic = telegramProductsEnsureReportTopic('virtualservices_error', 'خطاهای خدمات مجازی', true);
-            if ($salesTopic > 0 && $errorTopic > 0) {
-                virtualServicesAdminReply('هر دو تاپیک گزارش با موفقیت ساخته شدند.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_settings']]]);
+            $alertTopic = telegramProductsEnsureReportTopic('virtualservices_alerts', 'هشدارهای خدمات مجازی', true);
+            if ($salesTopic > 0 && $errorTopic > 0 && $alertTopic > 0) {
+                virtualServicesAdminReply('هر سه تاپیک فروش، خطا و هشدار با موفقیت ساخته شدند.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_settings']]]);
             } else {
                 virtualServicesAdminReply('ساخت تاپیک کامل نشد. گروه گزارش باید سوپرگروه انجمنی باشد و ربات دسترسی مدیریت تاپیک‌ها را داشته باشد.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_settings']]]);
             }
