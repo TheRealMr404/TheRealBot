@@ -599,6 +599,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 'text' => "پنل نمایندگی من",
                 'callback_data' => "my_pasarguard_panels",
                 'style' => 'primary',
+                'icon_custom_emoji_id' => 5350295774863311434,
             ]];
         }
         if ($has_tunnel > 0) {
@@ -652,7 +653,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -663,7 +664,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -719,7 +720,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -730,7 +731,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -770,17 +771,16 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $stmt->execute([':id_user' => $from_id]);
     $resellerInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (!$resellerInvoices) {
-        Editmessagetext($from_id, $message_id, "ℹ️ پنل نمایندگی خریداری‌شده‌ای برای حساب شما پیدا نشد.", json_encode([
-            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backorder']]],
+        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5350626912546865231\">ℹ️</tg-emoji> پنل نمایندگی خریداری‌شده‌ای برای حساب شما پیدا نشد.", json_encode([
+            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backorder', 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]],
         ], JSON_UNESCAPED_UNICODE), 'HTML');
         return;
     }
 
     $resellerKeyboard = ['inline_keyboard' => []];
     foreach ($resellerInvoices as $resellerInvoice) {
-        $accountLabel = $resellerInvoice['name_product'] === 'سرویس تست' ? 'تست' : $resellerInvoice['name_product'];
         $button = applyPanelAppearanceToButton([
-            'text' => $accountLabel . ' | ' . $resellerInvoice['username'],
+            'text' => purchasedServiceDisplayName($resellerInvoice, true),
             'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
         ], $resellerInvoice);
         $resellerKeyboard['inline_keyboard'][] = [$button];
@@ -791,7 +791,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         'style' => 'danger',
         'icon_custom_emoji_id' => 5258236805890710909,
     ]];
-    Editmessagetext($from_id, $message_id, "🧩 <b>پنل‌های نمایندگی من</b>\n\nبرای مشاهده اطلاعات و مدیریت هر نمایندگی، آن را انتخاب کنید.", json_encode($resellerKeyboard, JSON_UNESCAPED_UNICODE), 'HTML');
+    Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5350295774863311434\">🧩</tg-emoji> <b>پنل‌های نمایندگی من</b>\n\n<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> برای مشاهده مشخصات و مدیریت نمایندگی، پلن مورد نظر را انتخاب کنید.", json_encode($resellerKeyboard, JSON_UNESCAPED_UNICODE), 'HTML');
 } elseif (preg_match('/^my_pasarguard_panel_([a-zA-Z0-9]+)$/', $datain, $resellerMatch)) {
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
@@ -799,14 +799,14 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $stmt->execute([':invoice' => $resellerMatch[1], ':id_user' => $from_id]);
     $resellerInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$resellerInvoice) {
-        Editmessagetext($from_id, $message_id, "❌ این پنل نمایندگی پیدا نشد یا متعلق به حساب شما نیست.", json_encode([
-            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'my_pasarguard_panels']]],
+        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> این پنل نمایندگی پیدا نشد یا متعلق به حساب شما نیست.", json_encode([
+            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'my_pasarguard_panels', 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]],
         ], JSON_UNESCAPED_UNICODE), 'HTML');
         return;
     }
     $resellerPanel = select('marzban_panel', '*', 'name_panel', $resellerInvoice['Service_location'], 'select');
     if (!$resellerPanel || $resellerPanel['type'] !== 'pasarguard_reseller') {
-        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی در دسترس نیست.", null, 'HTML');
+        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> پنل نمایندگی در دسترس نیست.", null, 'HTML');
         return;
     }
     $resellerData = $ManagePanel->DataUser($resellerInvoice['Service_location'], $resellerInvoice['username']);
@@ -814,27 +814,29 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $resellerButtons = ['inline_keyboard' => []];
     $dashboardUrl = pasarguardDashboardUrl($resellerPanel['url_panel']);
     if (filter_var($dashboardUrl, FILTER_VALIDATE_URL)) {
-        $resellerButtons['inline_keyboard'][] = [[
+        $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
             'text' => 'ورود به پنل نمایندگی',
             'url' => $dashboardUrl,
             'style' => 'success',
-        ]];
+        ], $resellerPanel)];
     }
-    $resellerButtons['inline_keyboard'][] = [[
+    $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
         'text' => 'تازه‌سازی اطلاعات',
         'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
         'style' => 'primary',
-    ]];
+    ], $resellerPanel)];
     if ($resellerInvoice['name_product'] !== 'سرویس تست' && $resellerPanel['status_extend'] === 'on_extend') {
-        $resellerButtons['inline_keyboard'][] = [[
+        $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
             'text' => 'تمدید نمایندگی',
             'callback_data' => 'extend_' . $resellerInvoice['id_invoice'],
-        ]];
+            'style' => 'success',
+        ], $resellerPanel)];
     }
     $resellerButtons['inline_keyboard'][] = [[
         'text' => 'بازگشت به پنل‌های من',
         'callback_data' => 'my_pasarguard_panels',
         'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909,
     ]];
     Editmessagetext($from_id, $message_id, $resellerText, json_encode($resellerButtons, JSON_UNESCAPED_UNICODE), 'HTML');
 } elseif ($datain == "my_tunnels_list") {
@@ -1480,7 +1482,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1491,7 +1493,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1555,7 +1557,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1566,7 +1568,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1780,8 +1782,10 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                     $data = " | {$row['note']}";
                 $keyboardlists['inline_keyboard'][] = [
                     [
-                        'text' => "✨" . $row['username'] . $data . "✨",
-                        'callback_data' => "product_" . $row['id_invoice']
+                        'text' => purchasedServiceDisplayName($row, false, true),
+                        'callback_data' => "product_" . $row['id_invoice'],
+                        'style' => 'primary',
+                        'icon_custom_emoji_id' => 5359719332542718652,
                     ],
                 ];
             }
@@ -1789,8 +1793,10 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $keyboardlists['inline_keyboard'][] = [
                     [
-                        'text' => "✨" . $row['username'] . "✨",
-                        'callback_data' => "product_" . $row['id_invoice']
+                        'text' => purchasedServiceDisplayName($row),
+                        'callback_data' => "product_" . $row['id_invoice'],
+                        'style' => 'primary',
+                        'icon_custom_emoji_id' => 5359719332542718652,
                     ],
                 ];
             }
@@ -1798,7 +1804,9 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         $backuser = [
             [
                 'text' => "بازگشت به منوی اصلی",
-                'callback_data' => 'backuser'
+                'callback_data' => 'backuser',
+                'style' => 'danger',
+                'icon_custom_emoji_id' => 5258236805890710909,
             ]
         ];
         if ($setting['NotUser'] == "onnotuser") {
@@ -1806,7 +1814,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         }
         $keyboardlists['inline_keyboard'][] = $backuser;
         $keyboard_json = json_encode($keyboardlists);
-        sendmessage($from_id, "🛍 $countservice عدد سرویس یافت برای مشاهده و مدیریت سرویس روی یکی از سرویس ها کلیک کنید", $keyboard_json, 'html');
+        sendmessage($from_id, "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>{$countservice} سرویس پیدا شد</b>\n\nبرای مشاهده مشخصات و مدیریت، سرویس مورد نظر را انتخاب کنید.", $keyboard_json, 'html');
         step("home", $from_id);
         return;
     }
@@ -2434,6 +2442,43 @@ $textconnect
         sendmessage($from_id, "❌ هنوز به سرویس متصل نشده اید برای تمدید سرویس ابتدا به سرویس متصل شوید سپس اقدام به تمدید کنید", null, 'html');
         return;
     }
+    if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
+        if ($nameloc['name_product'] === 'سرویس تست') {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'نمایندگی آزمایشی قابل تمدید نیست.',
+                'show_alert' => true,
+            ]);
+            return;
+        }
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+        $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
+        savedata('clear', 'id_invoice', $nameloc['id_invoice']);
+        savedata('save', 'extension_flow', 'pasarguard_custom');
+        savedata('save', 'time', $selection['days']);
+        savedata('save', 'data_limit', $selection['volume']);
+        savedata('save', 'code_product', 'custom_volume');
+        update('user', 'Processing_value_one', $selection['code'], 'id', $from_id);
+        $renewalInvoice = customServiceInvoice(
+            $marzban_list_get,
+            $user['agent'],
+            $selection['days'],
+            $selection['volume'],
+            1,
+            $user['pricediscount'],
+            [
+                'callback_prefix' => 'pgext',
+                'confirm_callback' => 'confirmserivce',
+                'back_callback' => 'my_pasarguard_panel_' . $nameloc['id_invoice'],
+                'is_extension' => true,
+                'username' => $nameloc['username'],
+            ]
+        );
+        savedata('save', 'price_product', $renewalInvoice['unit_price']);
+        step('pasarguard_extend_custom', $from_id);
+        customServiceReply($from_id, $message_id, $renewalInvoice['text'], $renewalInvoice['keyboard']);
+        return;
+    }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = $eextraprice[$user['agent']];
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -2504,6 +2549,84 @@ $textconnect
         $monthkeyboard = keyboardTimeCategory($nameloc['Service_location'], $user['agent'], "productextendmonths_", "product_$id_invoice", false, true);
         Editmessagetext($from_id, $message_id, $textbotlang['Admin']['month']['title'], $monthkeyboard);
     }
+} elseif ($datain == 'pgext_none') {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+} elseif (preg_match('/^pgext_(v|d)_(inc|dec)$/', $datain, $pasarguardExtendAction)) {
+    $extensionData = json_decode((string) $user['Processing_value'], true);
+    $extensionInvoiceId = is_array($extensionData) ? ($extensionData['id_invoice'] ?? '') : '';
+    if (($extensionData['extension_flow'] ?? '') !== 'pasarguard_custom' || $extensionInvoiceId === '') {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'این فاکتور تمدید منقضی شده است؛ دوباره از پنل نمایندگی وارد شوید.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    $stmt = $pdo->prepare("SELECT i.* FROM invoice i WHERE i.id_invoice = :invoice AND i.id_user = :id_user AND EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') LIMIT 1");
+    $stmt->execute([':invoice' => $extensionInvoiceId, ':id_user' => $from_id]);
+    $extensionInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
+    $extensionPanel = $extensionInvoice
+        ? select('marzban_panel', '*', 'name_panel', $extensionInvoice['Service_location'], 'select')
+        : false;
+    if (!$extensionInvoice || !$extensionPanel || $extensionPanel['status_extend'] !== 'on_extend') {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'امکان تمدید این نمایندگی در حال حاضر وجود ندارد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $selection = customServiceSelection($user['Processing_value_one'], $extensionPanel, $user['agent']);
+    $days = $selection['days'];
+    $volume = $selection['volume'];
+    $limits = $selection['limits'];
+    $direction = $pasarguardExtendAction[2] === 'inc' ? 1 : -1;
+    $notice = null;
+    if ($pasarguardExtendAction[1] === 'v') {
+        $newVolume = customServiceNextVolume($volume, $direction, $limits['min_volume'], $limits['max_volume']);
+        if ($newVolume === $volume) {
+            $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
+        }
+        $volume = $newVolume;
+    } else {
+        $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
+        if ($newDays === $days) {
+            $notice = "زمان مجاز بین {$limits['min_days']} تا {$limits['max_days']} روز است.";
+        }
+        $days = $newDays;
+    }
+    if ($notice !== null) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $notice,
+            'show_alert' => true,
+        ]);
+        return;
+    }
+
+    $customCode = "customvolume_{$days}_{$volume}";
+    update('user', 'Processing_value_one', $customCode, 'id', $from_id);
+    savedata('save', 'time', $days);
+    savedata('save', 'data_limit', $volume);
+    $renewalInvoice = customServiceInvoice(
+        $extensionPanel,
+        $user['agent'],
+        $days,
+        $volume,
+        1,
+        $user['pricediscount'],
+        [
+            'callback_prefix' => 'pgext',
+            'confirm_callback' => 'confirmserivce',
+            'back_callback' => 'my_pasarguard_panel_' . $extensionInvoice['id_invoice'],
+            'is_extension' => true,
+            'username' => $extensionInvoice['username'],
+        ]
+    );
+    savedata('save', 'price_product', $renewalInvoice['unit_price']);
+    customServiceReply($from_id, $message_id, $renewalInvoice['text'], $renewalInvoice['keyboard']);
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 } elseif ($user['step'] == "gettimecustomvolomforextend") {
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
@@ -2771,11 +2894,19 @@ $textconnect
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     step("home", $from_id);
 } elseif ($datain == "confirmserivce" || $datain == "confirmserdiscount") {
-    Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
-    $partsdic = explode("_", $user['Processing_value_four']);
+    telegram('editMessageReplyMarkup', [
+        'chat_id' => $from_id,
+        'message_id' => $message_id,
+        'reply_markup' => json_encode(['inline_keyboard' => []]),
+    ]);
+    $partsdic = explode("_", (string) $user['Processing_value_four']);
     $userdata = json_decode($user['Processing_value'], true);
+    $isPasarguardCustomExtension = is_array($userdata)
+        && ($userdata['extension_flow'] ?? '') === 'pasarguard_custom';
     $id_invoice = $userdata['id_invoice'];
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :invoice AND id_user = :id_user LIMIT 1");
+    $stmt->execute([':invoice' => $id_invoice, ':id_user' => $from_id]);
+    $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($nameloc == false) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
@@ -2790,9 +2921,9 @@ $textconnect
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
     $customtimevalueprice = $eextraprice[$user['agent']];
     $randomString = bin2hex(random_bytes(2));
-    if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
+    if ($isPasarguardCustomExtension || $nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
         $prodcut['code_product'] = "custom_volume";
-        $prodcut['name_product'] = $nameloc['name_product'];
+        $prodcut['name_product'] = $isPasarguardCustomExtension ? 'تمدید سفارشی نمایندگی' : $nameloc['name_product'];
         $prodcut['price_product'] = ($userdata['data_limit'] * $custompricevalue) + ($userdata['time'] * $customtimevalueprice);
         $prodcut['Service_time'] = $userdata['time'];
         $prodcut['Volume_constraint'] = $userdata['data_limit'];
@@ -2807,7 +2938,11 @@ $textconnect
         $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     $pricelastextend = $prodcut['price_product'];
-    if ($prodcut == false || !in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
+    $extendableStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'];
+    if ($isPasarguardCustomExtension) {
+        $extendableStatuses = array_merge($extendableStatuses, ['disabled', 'disabledn']);
+    }
+    if ($prodcut == false || !in_array(strtolower((string) $nameloc['Status']), $extendableStatuses, true)) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
@@ -2913,6 +3048,13 @@ $textconnect
         }
         return;
     }
+    if ($isPasarguardCustomExtension) {
+        $refreshedReseller = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+        $refreshedLimit = is_array($refreshedReseller) && isset($refreshedReseller['data_limit'])
+            ? $refreshedReseller['data_limit']
+            : null;
+        pasarguardApplyInvoiceExtension($nameloc, $prodcut['Service_time'], $refreshedLimit);
+    }
     if ($user['agent'] == "f") {
         $valurcashbackextend = select("shopSetting", "*", "Namevalue", "chashbackextend", "select")['value'];
     } else {
@@ -2951,22 +3093,40 @@ $textconnect
     $keyboardextendfnished = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => "backorder"],
+                [
+                    'text' => $isPasarguardCustomExtension ? 'بازگشت به پنل‌های نمایندگی' : $textbotlang['users']['stateus']['backlist'],
+                    'callback_data' => $isPasarguardCustomExtension ? 'my_pasarguard_panels' : 'backorder',
+                    'style' => 'primary',
+                    'icon_custom_emoji_id' => 5350295774863311434,
+                ],
             ],
             [
-                ['text' => $textbotlang['users']['stateus']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
+                [
+                    'text' => $isPasarguardCustomExtension ? 'مشاهده پنل تمدیدشده' : $textbotlang['users']['stateus']['backservice'],
+                    'callback_data' => $isPasarguardCustomExtension ? 'my_pasarguard_panel_' . $nameloc['id_invoice'] : 'product_' . $nameloc['id_invoice'],
+                    'style' => 'success',
+                    'icon_custom_emoji_id' => 5350572310627632617,
+                ],
             ]
         ]
     ]);
     $priceproductformat = number_format($pricelastextend);
     $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
     $balanceformatsellbefore = number_format($user['Balance'], 0);
-    $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
+    if ($isPasarguardCustomExtension) {
+        $textextend = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی شما با موفقیت تمدید شد</b>\n\n"
+            . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$nameloc['username']}</code>\n"
+            . "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم افزوده‌شده:</b> {$prodcut['Volume_constraint']} گیگابایت\n"
+            . "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان افزوده‌شده:</b> {$prodcut['Service_time']} روز\n"
+            . "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ پرداختی:</b> {$priceproductformat} تومان";
+    } else {
+        $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
  
 ▫️نام سرویس : {$nameloc['username']}
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
+    }
     sendmessage($from_id, $textextend, $keyboardextendfnished, 'HTML');
     $timejalali = jdate('Y/m/d H:i:s');
     $Response = json_encode([
@@ -8977,7 +9137,7 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5258011929993026890
@@ -8988,7 +9148,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'],
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9042,7 +9202,7 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9053,7 +9213,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9110,7 +9270,7 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row, false, true),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5258011929993026890
@@ -9121,7 +9281,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => $row['username'] . $data,
+                    'text' => purchasedServiceDisplayName($row),
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652

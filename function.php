@@ -1152,6 +1152,14 @@ $textonebuy
             return;
         }
 
+        if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
+            $refreshedReseller = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+            $refreshedLimit = is_array($refreshedReseller) && isset($refreshedReseller['data_limit'])
+                ? $refreshedReseller['data_limit']
+                : null;
+            pasarguardApplyInvoiceExtension($nameloc, $prodcut['Service_time'], $refreshedLimit);
+        }
+
         update("service_other", "output", json_encode($extend), "id", $data_order['id']);
         update("service_other", "status", "paid", "id", $data_order['id']);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
@@ -1172,13 +1180,24 @@ $textonebuy
                 ]);
             }
         }
+        $isPasarguardExtension = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller';
         $keyboardextendfnished = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => "backorder"],
+                    [
+                        'text' => $isPasarguardExtension ? 'بازگشت به پنل‌های نمایندگی' : $textbotlang['users']['stateus']['backlist'],
+                        'callback_data' => $isPasarguardExtension ? 'my_pasarguard_panels' : 'backorder',
+                        'style' => 'primary',
+                        'icon_custom_emoji_id' => 5350295774863311434,
+                    ],
                 ],
                 [
-                    ['text' => $textbotlang['users']['stateus']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
+                    [
+                        'text' => $isPasarguardExtension ? 'مشاهده پنل تمدیدشده' : $textbotlang['users']['stateus']['backservice'],
+                        'callback_data' => $isPasarguardExtension ? 'my_pasarguard_panel_' . $nameloc['id_invoice'] : 'product_' . $nameloc['id_invoice'],
+                        'style' => 'success',
+                        'icon_custom_emoji_id' => 5350572310627632617,
+                    ],
                 ]
             ]
         ]);
@@ -1195,12 +1214,20 @@ $textonebuy
 📌 به عنوان هدیه تمدید مبلغ $result تومان حساب شما شارژ گردید", null, 'HTML');
         }
         $priceproductformat = number_format($prodcut['price_product']);
-        $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
+        if ($isPasarguardExtension) {
+            $textextend = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی شما با موفقیت تمدید شد</b>\n\n"
+                . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$usernamepanel}</code>\n"
+                . "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم افزوده‌شده:</b> {$prodcut['Volume_constraint']} گیگابایت\n"
+                . "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان افزوده‌شده:</b> {$prodcut['Service_time']} روز\n"
+                . "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ پرداختی:</b> {$priceproductformat} تومان";
+        } else {
+            $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
  
 ▫️نام سرویس : $usernamepanel
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
+        }
         sendmessage($Balance_id['id'], $textextend, $keyboardextendfnished, 'HTML');
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
             sendmessage($Balance_id['id'], "📌شما 2 امتیاز جدید کسب کردید.", null, 'html');
@@ -1540,6 +1567,34 @@ function applyPanelAppearanceToButton(array $button, $panel)
     return $button;
 }
 
+function purchasedServiceDisplayName($invoice, $isReseller = false, $includeNote = false)
+{
+    if (!is_array($invoice)) {
+        return '';
+    }
+
+    $username = trim((string) ($invoice['username'] ?? ''));
+    $productName = trim((string) ($invoice['name_product'] ?? ''));
+    if ($productName === 'سرویس تست') {
+        $productName = $isReseller ? 'نمایندگی آزمایشی' : 'سرویس آزمایشی';
+    } elseif ($isReseller && $productName !== '') {
+        $productName = 'پلن ' . preg_replace('/^پلن\s+/u', '', $productName);
+    }
+
+    $parts = array_values(array_filter([$productName, $username], static function ($value) {
+        return trim((string) $value) !== '';
+    }));
+    $label = implode(' | ', $parts);
+    if ($includeNote && trim((string) ($invoice['note'] ?? '')) !== '') {
+        $label .= ' • ' . trim((string) $invoice['note']);
+    }
+
+    if (function_exists('mb_strlen') && mb_strlen($label, 'UTF-8') > 64) {
+        return mb_substr($label, 0, 61, 'UTF-8') . '...';
+    }
+    return strlen($label) > 128 ? substr($label, 0, 125) . '...' : $label;
+}
+
 function customServiceButtonText($title)
 {
     $title = trim((string) $title);
@@ -1610,9 +1665,15 @@ function customServiceNextVolume($volume, $direction, $minVolume, $maxVolume)
     return max($minVolume, min($maxVolume, $nextVolume));
 }
 
-function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0)
+function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0, $options = [])
 {
+    $options = is_array($options) ? $options : [];
     $isPasarguard = is_array($panel) && ($panel['type'] ?? '') === 'pasarguard_reseller';
+    $callbackPrefix = preg_replace('/[^a-z0-9_]/i', '', (string) ($options['callback_prefix'] ?? 'csi')) ?: 'csi';
+    $confirmCallback = (string) ($options['confirm_callback'] ?? 'confirmandgetservice');
+    $backCallback = (string) ($options['back_callback'] ?? 'backuser');
+    $isExtension = !empty($options['is_extension']);
+    $accountUsername = htmlspecialchars((string) ($options['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $count = customServiceOrderCount($panel, $count);
     $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
     $dayPrice = customServiceAgentNumber($panel, 'pricecustomtime', $agent, 0);
@@ -1622,7 +1683,11 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $total = $subtotal - (($subtotal * $discountPercent) / 100);
     $total = max(0, round($total));
 
-$text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
+    $invoiceTitle = $isExtension ? 'فاکتور تمدید نمایندگی' : 'فاکتور خرید';
+    $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>{$invoiceTitle} [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
+    if ($accountUsername !== '') {
+        $text .= "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$accountUsername}</code>\n\n";
+    }
     $text .= "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم:</b> {$volume} گیگابایت\n\n";
     $text .= "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان:</b> {$days} روز\n\n";
     if (!$isPasarguard) {
@@ -1635,28 +1700,28 @@ $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکت�
 
     $keyboardRows = [
             [
-                ['text' => 'کاهش', 'callback_data' => 'csi_v_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
-                ['text' => "{$volume} گیگابایت", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش', 'callback_data' => 'csi_v_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
+                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_v_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
+                applyPanelAppearanceToButton(['text' => "{$volume} گیگابایت", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
+                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_v_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
             [
-                ['text' => 'کاهش', 'callback_data' => 'csi_d_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
-                ['text' => "{$days} روز", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش', 'callback_data' => 'csi_d_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
+                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_d_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
+                applyPanelAppearanceToButton(['text' => "{$days} روز", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
+                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_d_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
     ];
     if (!$isPasarguard) {
         $keyboardRows[] = [
-                ['text' => 'کاهش', 'callback_data' => 'csi_c_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
-                ['text' => "{$count} عدد", 'callback_data' => 'csi_none', 'style' => 'primary'],
-                ['text' => 'افزایش', 'callback_data' => 'csi_c_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
+                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_c_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
+                applyPanelAppearanceToButton(['text' => "{$count} عدد", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
+                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_c_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
         ];
     }
     $keyboardRows[] = [
-                ['text' => 'تأیید و پرداخت', 'callback_data' => 'confirmandgetservice', 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
+                ['text' => $isExtension ? 'تأیید و تمدید نمایندگی' : 'تأیید و پرداخت', 'callback_data' => $confirmCallback, 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
     ];
     $keyboardRows[] = [
-                ['text' => 'بازگشت', 'callback_data' => 'backuser', 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
+                ['text' => $isExtension ? 'بازگشت به پنل نمایندگی' : 'بازگشت', 'callback_data' => $backCallback, 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
     ];
     $keyboard = [
         'inline_keyboard' => $keyboardRows,

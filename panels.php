@@ -1868,7 +1868,7 @@ class ManagePanel
         $product = select("product", "*", "code_product", $code_product, "select");
         $invoice = select("invoice", "*", "username", $username, "select");
         if ($code_product == "custom_volume")
-            $product = true;
+            $product = [];
         if ($panel == false || $product == false) {
             return array(
                 'status' => false,
@@ -2050,7 +2050,12 @@ class ManagePanel
                 "expiry" => $time_new
             );
         } elseif ($panel['type'] == "pasarguard_reseller") {
-            $settings = pasarguardProductSettings($product, $panel);
+            $settings = $code_product === 'custom_volume'
+                ? [
+                    'role_id' => max(1, (int) ($data_user['role_id'] ?? $panel['inboundid'] ?? 1)),
+                    'max_users' => max(0, (int) ($data_user['max_users'] ?? 0)),
+                ]
+                : pasarguardProductSettings($product, $panel);
             $data = [
                 'status' => 'active',
                 'data_limit' => $data_limit_new > 0 ? $data_limit_new : null,

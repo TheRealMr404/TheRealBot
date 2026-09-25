@@ -321,6 +321,8 @@ function pasarguardStatusLabel($status)
 
 function pasarguardProductSettings($product, $panel)
 {
+    $product = is_array($product) ? $product : [];
+    $panel = is_array($panel) ? $panel : [];
     $settings = json_decode((string) ($product['inbounds'] ?? ''), true);
     if (!is_array($settings) || ($settings['provider'] ?? '') !== 'pasarguard') {
         $settings = [];
@@ -329,6 +331,32 @@ function pasarguardProductSettings($product, $panel)
         'role_id' => max(1, (int) ($settings['role_id'] ?? $panel['inboundid'] ?? 1)),
         'max_users' => max(0, (int) ($settings['max_users'] ?? 0)),
     ];
+}
+
+function pasarguardApplyInvoiceExtension($invoice, $days, $dataLimitBytes = null)
+{
+    if (!is_array($invoice) || empty($invoice['id_invoice']) || !function_exists('update')) {
+        return false;
+    }
+
+    $now = time();
+    $days = max(0, (int) $days);
+    $currentExpire = (int) ($invoice['Service_time'] ?? 0) > 0
+        ? (int) ($invoice['time_sell'] ?? 0) + ((int) $invoice['Service_time'] * 86400)
+        : 0;
+    $baseTime = max($now, $currentExpire);
+    $newExpire = $days === 0 ? 0 : $baseTime + ($days * 86400);
+    $storedDays = $newExpire === 0 ? 0 : (int) ceil(($newExpire - $now) / 86400);
+
+    update('invoice', 'time_sell', $now, 'id_invoice', $invoice['id_invoice']);
+    update('invoice', 'Service_time', $storedDays, 'id_invoice', $invoice['id_invoice']);
+    update('invoice', 'Status', 'active', 'id_invoice', $invoice['id_invoice']);
+    if ($dataLimitBytes !== null) {
+        $volume = max(0, (int) round(((float) $dataLimitBytes) / pow(1024, 3)));
+        update('invoice', 'Volume', $volume, 'id_invoice', $invoice['id_invoice']);
+    }
+
+    return true;
 }
 
 function pasarguardBuildDeliveryText($panel, $output, $product)
@@ -344,15 +372,15 @@ function pasarguardBuildDeliveryText($panel, $output, $product)
     $traffic = $volume > 0 ? $volume . ' گیگابایت' : 'نامحدود';
     $users = $maxUsers > 0 ? $maxUsers . ' کاربر' : 'مطابق نقش انتخابی';
 
-    return "✅ <b>نمایندگی پاسارگارد با موفقیت فعال شد</b>\n\n"
-        . "🌐 <b>آدرس ورود:</b> <code>{$url}</code>\n"
-        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
-        . "🔑 <b>رمز عبور:</b> <code>{$password}</code>\n\n"
-        . "🛍 <b>پلن:</b> {$name}\n"
-        . "⏳ <b>اعتبار:</b> {$duration}\n"
-        . "💾 <b>سقف ترافیک:</b> {$traffic}\n"
-        . "👥 <b>حداکثر کاربران:</b> {$users}\n\n"
-        . "⚠️ برای امنیت بیشتر، پس از اولین ورود رمز عبور را تغییر دهید.";
+    return "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی پاسارگارد با موفقیت فعال شد</b>\n\n"
+        . "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آدرس ورود:</b> <code>{$url}</code>\n"
+        . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "<tg-emoji emoji-id=\"5373052667671093676\">🔑</tg-emoji> <b>رمز عبور:</b> <code>{$password}</code>\n\n"
+        . "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>پلن:</b> {$name}\n"
+        . "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>اعتبار:</b> {$duration}\n"
+        . "<tg-emoji emoji-id=\"5350481089817232086\">💾</tg-emoji> <b>سقف ترافیک:</b> {$traffic}\n"
+        . "<tg-emoji emoji-id=\"5985379274524202415\">👥</tg-emoji> <b>حداکثر کاربران:</b> {$users}\n\n"
+        . "<tg-emoji emoji-id=\"5350626912546865231\">⚠️</tg-emoji> برای امنیت بیشتر، پس از اولین ورود رمز عبور را تغییر دهید.";
 }
 
 function pasarguardBuildTestDeliveryText($panel, $output, $hours, $volumeMb)
@@ -364,14 +392,14 @@ function pasarguardBuildTestDeliveryText($panel, $output, $hours, $volumeMb)
     $volumeMb = max(0, (int) $volumeMb);
     $traffic = $volumeMb > 0 ? number_format($volumeMb) . ' مگابایت' : 'نامحدود';
 
-    return "✅ <b>نمایندگی آزمایشی پاسارگارد ساخته شد</b>\n\n"
-        . "🌐 <b>آدرس ورود:</b> <code>{$url}</code>\n"
-        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
-        . "🔑 <b>رمز عبور:</b> <code>{$password}</code>\n\n"
-        . "⏳ <b>مدت اعتبار:</b> {$hours} ساعت\n"
-        . "💾 <b>سقف ترافیک:</b> {$traffic}\n"
-        . "👥 <b>حداکثر کاربران:</b> 1 کاربر\n\n"
-        . "⚠️ این حساب آزمایشی است و پس از پایان زمان تعیین‌شده غیرفعال می‌شود.";
+    return "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی آزمایشی پاسارگارد ساخته شد</b>\n\n"
+        . "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آدرس ورود:</b> <code>{$url}</code>\n"
+        . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "<tg-emoji emoji-id=\"5373052667671093676\">🔑</tg-emoji> <b>رمز عبور:</b> <code>{$password}</code>\n\n"
+        . "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$hours} ساعت\n"
+        . "<tg-emoji emoji-id=\"5350481089817232086\">💾</tg-emoji> <b>سقف ترافیک:</b> {$traffic}\n"
+        . "<tg-emoji emoji-id=\"5985379274524202415\">👥</tg-emoji> <b>حداکثر کاربران:</b> 1 کاربر\n\n"
+        . "<tg-emoji emoji-id=\"5350626912546865231\">⚠️</tg-emoji> این حساب آزمایشی است و پس از پایان زمان تعیین‌شده غیرفعال می‌شود.";
 }
 
 function pasarguardBuildCustomerPanelText($panel, $invoice, $data)
@@ -415,22 +443,22 @@ function pasarguardBuildCustomerPanelText($panel, $invoice, $data)
     $maxUsers = (int) ($data['max_users'] ?? 0);
     $maxUsersText = $maxUsers > 0 ? $maxUsers . ' کاربر' : 'مطابق نقش نمایندگی';
 
-    $text = "🧩 <b>پنل نمایندگی من</b>\n\n"
-        . "🖥 <b>پنل:</b> {$panelName}\n"
-        . "🛍 <b>پلن:</b> {$productName}\n"
-        . "🏷 <b>نوع حساب:</b> {$accountType}\n"
-        . "📊 <b>وضعیت:</b> {$statusText}\n\n"
-        . "🌐 <b>آدرس ورود:</b> <code>{$dashboardUrl}</code>\n"
-        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
-        . "🔑 <b>رمز عبور:</b> <code>{$password}</code>\n\n"
-        . "⏳ <b>اعتبار:</b> {$expireText}\n"
-        . "💾 <b>سقف ترافیک:</b> {$limitText}\n"
-        . "📥 <b>مصرف‌شده:</b> {$usedText}\n"
-        . "📤 <b>باقی‌مانده:</b> {$remainingTrafficText}\n"
-        . "👥 <b>حداکثر کاربران:</b> {$maxUsersText}";
+    $text = "<tg-emoji emoji-id=\"5350295774863311434\">🧩</tg-emoji> <b>پنل نمایندگی من</b>\n\n"
+        . "<tg-emoji emoji-id=\"5348404473129614535\">🖥</tg-emoji> <b>پنل:</b> {$panelName}\n"
+        . "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>پلن:</b> {$productName}\n"
+        . "<tg-emoji emoji-id=\"5348470692935384957\">🏷</tg-emoji> <b>نوع حساب:</b> {$accountType}\n"
+        . "<tg-emoji emoji-id=\"5348498060466996739\">📊</tg-emoji> <b>وضعیت:</b> {$statusText}\n\n"
+        . "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آدرس ورود:</b> <code>{$dashboardUrl}</code>\n"
+        . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "<tg-emoji emoji-id=\"5373052667671093676\">🔑</tg-emoji> <b>رمز عبور:</b> <code>{$password}</code>\n\n"
+        . "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>اعتبار:</b> {$expireText}\n"
+        . "<tg-emoji emoji-id=\"5350481089817232086\">💾</tg-emoji> <b>سقف ترافیک:</b> {$limitText}\n"
+        . "<tg-emoji emoji-id=\"5429571366384842791\">📥</tg-emoji> <b>مصرف‌شده:</b> {$usedText}\n"
+        . "<tg-emoji emoji-id=\"5350572310627632617\">📤</tg-emoji> <b>باقی‌مانده:</b> {$remainingTrafficText}\n"
+        . "<tg-emoji emoji-id=\"5985379274524202415\">👥</tg-emoji> <b>حداکثر کاربران:</b> {$maxUsersText}";
 
     if ($status === 'Unsuccessful') {
-        $text .= "\n\n⚠️ دریافت اطلاعات زنده ممکن نشد؛ اطلاعات ورود ذخیره‌شده همچنان نمایش داده شده است.";
+        $text .= "\n\n<tg-emoji emoji-id=\"5350626912546865231\">⚠️</tg-emoji> دریافت اطلاعات زنده ممکن نشد؛ اطلاعات ورود ذخیره‌شده همچنان نمایش داده شده است.";
     }
 
     return $text;
