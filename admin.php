@@ -89,6 +89,8 @@ function pasarguardAdminDashboardData($panel)
 
 function pasarguardPanelCapabilitiesData($panel)
 {
+    global $textbotlang;
+
     $custom = json_decode((string) ($panel['customvolume'] ?? ''), true);
     $custom = is_array($custom) ? $custom : [];
     foreach (['f', 'n', 'n2'] as $agent) {
@@ -98,32 +100,37 @@ function pasarguardPanelCapabilitiesData($panel)
     $panelStatus = ($panel['status'] ?? '') === 'active' ? 'active' : 'disable';
     $testStatus = ($panel['TestAccount'] ?? '') === 'ONTestAccount' ? 'ONTestAccount' : 'OFFTestAccount';
     $extendStatus = ($panel['status_extend'] ?? '') === 'on_extend' ? 'on_extend' : 'off_extend';
-    $stateText = static fn($enabled) => $enabled ? 'روشن' : 'خاموش';
+    $stateText = static function ($enabled) use ($textbotlang) {
+        if ($enabled) {
+            return $textbotlang['Admin']['Status']['statuson'] ?? '✅ روشن';
+        }
+        return $textbotlang['Admin']['Status']['statusoff'] ?? '❌ خاموش';
+    };
 
     $keyboard = ['inline_keyboard' => [
         [
             ['text' => $stateText($panelStatus === 'active'), 'callback_data' => "editpanel-statusbuy-{$panelStatus}-{$panel['code_panel']}"],
-            ['text' => 'نمایش پنل', 'callback_data' => 'none'],
+            ['text' => '🖥 نمایش پنل', 'callback_data' => 'none'],
         ],
         [
             ['text' => $stateText($testStatus === 'ONTestAccount'), 'callback_data' => "editpanel-statustest-{$testStatus}-{$panel['code_panel']}"],
-            ['text' => 'نمایش تست', 'callback_data' => 'none'],
+            ['text' => '🎁 نمایش تست', 'callback_data' => 'none'],
         ],
         [
             ['text' => $stateText($extendStatus === 'on_extend'), 'callback_data' => "editpanel-stautsextend-{$extendStatus}-{$panel['code_panel']}"],
-            ['text' => 'وضعیت تمدید', 'callback_data' => 'none'],
+            ['text' => '🔋 وضعیت تمدید', 'callback_data' => 'none'],
         ],
         [
             ['text' => $stateText($custom['f'] === '1'), 'callback_data' => "editpanel-customstatusf-{$custom['f']}-{$panel['code_panel']}"],
-            ['text' => 'سرویس دلخواه گروه عادی', 'callback_data' => 'none'],
+            ['text' => '♻️ سرویس دلخواه گروه عادی', 'callback_data' => 'none'],
         ],
         [
             ['text' => $stateText($custom['n'] === '1'), 'callback_data' => "editpanel-customstatusn-{$custom['n']}-{$panel['code_panel']}"],
-            ['text' => 'سرویس دلخواه گروه نماینده', 'callback_data' => 'none'],
+            ['text' => '♻️ سرویس دلخواه گروه نماینده', 'callback_data' => 'none'],
         ],
         [
             ['text' => $stateText($custom['n2'] === '1'), 'callback_data' => "editpanel-customstatusn2-{$custom['n2']}-{$panel['code_panel']}"],
-            ['text' => 'سرویس دلخواه گروه ویژه', 'callback_data' => 'none'],
+            ['text' => '♻️ سرویس دلخواه گروه ویژه', 'callback_data' => 'none'],
         ],
     ]];
 

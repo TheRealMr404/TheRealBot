@@ -1816,26 +1816,51 @@ function customServiceReply($chatId, $messageId, $text, $keyboard, $preferEdit =
         : sendmessage($chatId, $text, $compatibleKeyboard, 'HTML');
 }
 
+function pasarguardUsernameSelectionKeyboard($backCallback = 'backuser')
+{
+    return json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => 'نام کاربری تصادفی', 'callback_data' => 'pasarguard_random_username'],
+            ],
+            [
+                ['text' => 'بازگشت', 'callback_data' => $backCallback],
+            ],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+}
+
 function customServiceUsername($fromId, $panel, $user, $telegramUsername, $requestedUsername, $managePanel, $existingUsernames = [])
 {
     $randomString = bin2hex(random_bytes(2));
-    $generated = generateUsername(
-        $fromId,
-        $panel['MethodUsername'],
-        $telegramUsername,
-        $randomString,
-        strtolower((string)$requestedUsername),
-        $panel['namecustom'],
-        $user['namecustom']
-    );
+    if (($panel['type'] ?? '') === 'pasarguard_reseller') {
+        $generated = strtolower(trim((string) $requestedUsername));
+        if ($generated === '') {
+            $generated = 'pg_' . bin2hex(random_bytes(6));
+        }
+    } else {
+        $generated = generateUsername(
+            $fromId,
+            $panel['MethodUsername'],
+            $telegramUsername,
+            $randomString,
+            strtolower((string)$requestedUsername),
+            $panel['namecustom'],
+            $user['namecustom']
+        );
+    }
     if (!is_string($generated) || trim($generated) === '') {
-        $generated = $fromId . '_' . $randomString;
+        $generated = (($panel['type'] ?? '') === 'pasarguard_reseller' ? 'pg_' : $fromId . '_') . $randomString;
     }
 
     $generated = strtolower($generated);
     $remoteUser = $managePanel->DataUser($panel['name_panel'], $generated);
     if (isset($remoteUser['username']) || in_array($generated, (array)$existingUsernames, true)) {
-        $generated = rand(1000000, 9999999) . '_' . $generated;
+        if (($panel['type'] ?? '') === 'pasarguard_reseller') {
+            $generated = substr($generated, 0, 27) . '_' . bin2hex(random_bytes(2));
+        } else {
+            $generated = rand(1000000, 9999999) . '_' . $generated;
+        }
     }
 
     return $generated;
