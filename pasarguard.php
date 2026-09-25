@@ -202,6 +202,39 @@ function pasarguardFindAdmin($panel, $username)
     return ['ok' => false, 'status' => 404, 'data' => null, 'msg' => 'ادمین در پنل پیدا نشد'];
 }
 
+function pasarguardListAdmins($panel, $offset = 0, $limit = 20)
+{
+    $query = http_build_query([
+        'offset' => max(0, (int) $offset),
+        'limit' => max(1, min(100, (int) $limit)),
+        'sort' => 'username',
+    ]);
+    $response = pasarguardApiRequest($panel, 'GET', 'admins?' . $query);
+    if (!$response['ok']) {
+        return $response;
+    }
+    $response['items'] = pasarguardListValues($response['data']);
+    $response['total'] = (int) ($response['data']['total'] ?? count($response['items']));
+    $response['active'] = (int) ($response['data']['active'] ?? 0);
+    $response['disabled'] = (int) ($response['data']['disabled'] ?? 0);
+    $response['limited'] = (int) ($response['data']['limited'] ?? 0);
+    return $response;
+}
+
+function pasarguardFindAdminById($panel, $adminId)
+{
+    $response = pasarguardApiRequest($panel, 'GET', 'admins?ids=' . (int) $adminId . '&limit=1');
+    if (!$response['ok']) {
+        return $response;
+    }
+    foreach (pasarguardListValues($response['data']) as $admin) {
+        if (is_array($admin) && (int) ($admin['id'] ?? 0) === (int) $adminId) {
+            return ['ok' => true, 'status' => $response['status'], 'data' => $admin, 'msg' => ''];
+        }
+    }
+    return ['ok' => false, 'status' => 404, 'data' => null, 'msg' => 'ادمین در پنل پیدا نشد'];
+}
+
 function pasarguardCreateAdmin($panel, $username, $password, $roleId, $dataLimit, $maxUsers, $note)
 {
     $payload = [
@@ -222,17 +255,68 @@ function pasarguardCreateAdmin($panel, $username, $password, $roleId, $dataLimit
 
 function pasarguardModifyAdmin($panel, $username, $payload)
 {
-    return pasarguardApiRequest($panel, 'PUT', 'admin/' . rawurlencode($username), $payload);
+    $admin = pasarguardFindAdmin($panel, $username);
+    if (!$admin['ok'] || empty($admin['data']['id'])) {
+        return $admin;
+    }
+    return pasarguardModifyAdminById($panel, (int) $admin['data']['id'], $payload);
+}
+
+function pasarguardModifyAdminById($panel, $adminId, $payload)
+{
+    return pasarguardApiRequest($panel, 'PUT', 'admin/by-id/' . (int) $adminId, $payload);
 }
 
 function pasarguardDeleteAdmin($panel, $username)
 {
-    return pasarguardApiRequest($panel, 'DELETE', 'admin/' . rawurlencode($username));
+    $admin = pasarguardFindAdmin($panel, $username);
+    if (!$admin['ok'] || empty($admin['data']['id'])) {
+        return $admin;
+    }
+    return pasarguardDeleteAdminById($panel, (int) $admin['data']['id']);
+}
+
+function pasarguardDeleteAdminById($panel, $adminId)
+{
+    return pasarguardApiRequest($panel, 'DELETE', 'admin/by-id/' . (int) $adminId);
 }
 
 function pasarguardResetAdminUsage($panel, $username)
 {
-    return pasarguardApiRequest($panel, 'POST', 'admin/' . rawurlencode($username) . '/reset');
+    $admin = pasarguardFindAdmin($panel, $username);
+    if (!$admin['ok'] || empty($admin['data']['id'])) {
+        return $admin;
+    }
+    return pasarguardResetAdminUsageById($panel, (int) $admin['data']['id']);
+}
+
+function pasarguardResetAdminUsageById($panel, $adminId)
+{
+    return pasarguardApiRequest($panel, 'POST', 'admin/by-id/' . (int) $adminId . '/reset');
+}
+
+function pasarguardHumanBytes($bytes, $zeroLabel = 'نامحدود')
+{
+    $bytes = max(0, (float) $bytes);
+    if ($bytes <= 0) {
+        return (string) $zeroLabel;
+    }
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $power = min((int) floor(log($bytes, 1024)), count($units) - 1);
+    $value = $bytes / pow(1024, $power);
+    return number_format($value, $power > 1 ? 2 : 0) . ' ' . $units[$power];
+}
+
+function pasarguardStatusLabel($status)
+{
+    $status = strtolower((string) $status);
+    $labels = [
+        'active' => 'فعال',
+        'disabled' => 'غیرفعال',
+        'limited' => 'محدودشده',
+        'expired' => 'منقضی',
+    ];
+    return $labels[$status] ?? $status;
 }
 
 function pasarguardProductSettings($product, $panel)

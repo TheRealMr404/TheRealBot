@@ -15,6 +15,226 @@ $text_panel_admin_login_template = "💎 | Version Bot: $version
 if (!in_array($from_id, $admin_ids))
     return;
 
+function pasarguardAdminDashboardData($panel)
+{
+    global $pdo;
+    $connection = pasarguardCheckConnection($panel);
+    $remote = $connection['ok'] ? pasarguardListAdmins($panel, 0, 1) : ['ok' => false];
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE Location = :panel");
+    $stmt->execute([':panel' => $panel['name_panel']]);
+    $productCount = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS orders_count, COALESCE(SUM(CAST(price_product AS DECIMAL(20,2))), 0) AS sales_sum FROM invoice WHERE Service_location = :panel AND Status != 'unpaid'");
+    $stmt->execute([':panel' => $panel['name_panel']]);
+    $sales = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['orders_count' => 0, 'sales_sum' => 0];
+
+    $panelName = htmlspecialchars((string) $panel['name_panel'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $connectionText = $connection['ok'] ? 'متصل' : 'قطع';
+    $visibilityText = $panel['status'] === 'active' ? 'فعال' : 'مخفی';
+    $extendText = $panel['status_extend'] === 'on_extend' ? 'فعال' : 'غیرفعال';
+    $remoteTotal = $remote['ok'] ? (int) $remote['total'] : '-';
+    $remoteActive = $remote['ok'] ? (int) $remote['active'] : '-';
+    $remoteDisabled = $remote['ok'] ? (int) $remote['disabled'] : '-';
+    $remoteLimited = $remote['ok'] ? (int) $remote['limited'] : '-';
+
+    $text = "⚙️ <b>داشبورد فروش نمایندگی پاسارگارد</b>\n\n"
+        . "🖥 <b>پنل:</b> {$panelName}\n"
+        . "🔌 <b>اتصال API:</b> {$connectionText}\n"
+        . "👁 <b>نمایش برای فروش:</b> {$visibilityText}\n"
+        . "🔋 <b>تمدید نمایندگی:</b> {$extendText}\n"
+        . "🧩 <b>نقش پیش‌فرض:</b> <code>{$panel['inboundid']}</code>\n"
+        . "📦 <b>پلن‌های فروش:</b> {$productCount}\n\n"
+        . "👥 <b>کل ادمین‌های پنل:</b> {$remoteTotal}\n"
+        . "✅ <b>فعال:</b> {$remoteActive} | ⛔️ <b>غیرفعال:</b> {$remoteDisabled} | ⚠️ <b>محدود:</b> {$remoteLimited}\n\n"
+        . "🧾 <b>فاکتورهای ثبت‌شده:</b> " . (int) $sales['orders_count'] . "\n"
+        . "💰 <b>جمع فروش:</b> " . number_format((float) $sales['sales_sum']) . " تومان";
+
+    $visibilityButton = $panel['status'] === 'active'
+        ? ['text' => '🟢 نمایش پنل فعال', 'callback_data' => "pg_toggle_sale_{$panel['code_panel']}", 'style' => 'success']
+        : ['text' => '🔴 پنل از فروش مخفی است', 'callback_data' => "pg_toggle_sale_{$panel['code_panel']}", 'style' => 'danger'];
+    $extendButton = $panel['status_extend'] === 'on_extend'
+        ? ['text' => '🟢 تمدید فعال', 'callback_data' => "pg_toggle_extend_{$panel['code_panel']}", 'style' => 'success']
+        : ['text' => '🔴 تمدید غیرفعال', 'callback_data' => "pg_toggle_extend_{$panel['code_panel']}", 'style' => 'danger'];
+
+    $inlineKeyboard = [
+            [$visibilityButton],
+            [$extendButton],
+            [
+                ['text' => '👥 مدیریت نماینده‌ها', 'callback_data' => "pg_admins_{$panel['code_panel']}_0", 'style' => 'primary'],
+                ['text' => '📊 بروزرسانی آمار', 'callback_data' => "pg_dashboard_{$panel['code_panel']}", 'style' => 'primary'],
+            ],
+            [
+                ['text' => '📦 پلن‌های فروش', 'callback_data' => "pg_plans_{$panel['code_panel']}", 'style' => 'primary'],
+            ],
+            [
+                ['text' => '⏱ همگام‌سازی انقضا', 'callback_data' => "pg_sync_expire_{$panel['code_panel']}", 'style' => 'primary'],
+                ['text' => '🔄 اتصال مجدد API', 'callback_data' => "pg_reconnect_{$panel['code_panel']}", 'style' => 'primary'],
+            ],
+    ];
+    $dashboardUrl = pasarguardDashboardUrl($panel['url_panel']);
+    if (filter_var($dashboardUrl, FILTER_VALIDATE_URL) && preg_match('~^https?://~i', $dashboardUrl)) {
+        $inlineKeyboard[] = [[
+            'text' => '🌐 ورود به داشبورد',
+            'url' => $dashboardUrl,
+        ]];
+    }
+    $inlineKeyboard[] = [[
+        'text' => 'بستن',
+        'callback_data' => 'admin',
+        'style' => 'danger',
+    ]];
+    $keyboard = ['inline_keyboard' => $inlineKeyboard];
+    return ['text' => $text, 'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE)];
+}
+
+function pasarguardAdminListData($panel, $offset = 0)
+{
+    $offset = max(0, (int) $offset);
+    $limit = 10;
+    $response = pasarguardListAdmins($panel, $offset, $limit);
+    if (!$response['ok']) {
+        return ['ok' => false, 'msg' => $response['msg']];
+    }
+    $keyboard = ['inline_keyboard' => []];
+    foreach ($response['items'] as $admin) {
+        if (!is_array($admin) || empty($admin['id'])) {
+            continue;
+        }
+        $status = strtolower((string) ($admin['status'] ?? 'active'));
+        $icon = $status === 'active' ? '🟢' : ($status === 'limited' ? '🟠' : '🔴');
+        $owner = !empty($admin['role']['is_owner']) ? ' | مالک' : '';
+        $adminUsername = (string) ($admin['username'] ?? 'بدون نام');
+        if (function_exists('mb_strlen') && mb_strlen($adminUsername, 'UTF-8') > 28) {
+            $adminUsername = mb_substr($adminUsername, 0, 25, 'UTF-8') . '...';
+        } elseif (strlen($adminUsername) > 40) {
+            $adminUsername = substr($adminUsername, 0, 37) . '...';
+        }
+        $keyboard['inline_keyboard'][] = [[
+            'text' => "{$icon} {$adminUsername} | " . (int) ($admin['total_users'] ?? 0) . " کاربر{$owner}",
+            'callback_data' => "pg_admin_{$panel['code_panel']}_" . (int) $admin['id'] . "_{$offset}",
+        ]];
+    }
+    $pagination = [];
+    if ($offset > 0) {
+        $pagination[] = ['text' => 'قبلی', 'callback_data' => "pg_admins_{$panel['code_panel']}_" . max(0, $offset - $limit)];
+    }
+    if ($offset + $limit < $response['total']) {
+        $pagination[] = ['text' => 'بعدی', 'callback_data' => "pg_admins_{$panel['code_panel']}_" . ($offset + $limit)];
+    }
+    if ($pagination) {
+        $keyboard['inline_keyboard'][] = $pagination;
+    }
+    $keyboard['inline_keyboard'][] = [[
+        'text' => 'بازگشت به داشبورد',
+        'callback_data' => "pg_dashboard_{$panel['code_panel']}",
+    ]];
+    $from = $response['total'] > 0 ? $offset + 1 : 0;
+    $to = min($offset + $limit, $response['total']);
+    $text = "👥 <b>مدیریت نماینده‌های PasarGuard</b>\n\n"
+        . "نمایش {$from} تا {$to} از {$response['total']} ادمین\n"
+        . "برای مشاهده و مدیریت، یک نماینده را انتخاب کنید.";
+    return [
+        'ok' => true,
+        'item_count' => count($response['items']),
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
+    ];
+}
+
+function pasarguardAdminDetailData($panel, $admin, $offset = 0)
+{
+    global $pdo;
+    $usernameRaw = (string) ($admin['username'] ?? '');
+    $username = htmlspecialchars($usernameRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $roleName = htmlspecialchars((string) ($admin['role']['name'] ?? 'نامشخص'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $status = strtolower((string) ($admin['status'] ?? 'active'));
+    $maxUsers = $admin['permission_overrides']['max_users'] ?? $admin['role']['limits']['max_users'] ?? null;
+    $maxUsersText = $maxUsers === null ? 'نامحدود' : number_format((int) $maxUsers);
+    $dataLimit = pasarguardHumanBytes($admin['data_limit'] ?? 0);
+    $usedTraffic = pasarguardHumanBytes($admin['used_traffic'] ?? 0, '0 B');
+
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Service_location = :panel AND username = :username ORDER BY CAST(time_sell AS UNSIGNED) DESC LIMIT 1");
+    $stmt->execute([':panel' => $panel['name_panel'], ':username' => $usernameRaw]);
+    $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
+    $expiresText = 'خارج از فروش ربات';
+    if ($invoice) {
+        $expiresAt = (int) $invoice['Service_time'] === 0
+            ? 0
+            : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * 86400);
+        $expiresText = $expiresAt > 0 ? jdate('Y/m/d H:i', $expiresAt) : 'نامحدود';
+    }
+    $text = "👤 <b>مشخصات نماینده</b>\n\n"
+        . "🆔 <b>شناسه:</b> <code>" . (int) ($admin['id'] ?? 0) . "</code>\n"
+        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "📍 <b>وضعیت:</b> " . pasarguardStatusLabel($status) . "\n"
+        . "🧩 <b>نقش:</b> {$roleName}\n"
+        . "👥 <b>کاربران ساخته‌شده:</b> " . (int) ($admin['total_users'] ?? 0) . " از {$maxUsersText}\n"
+        . "💾 <b>مصرف:</b> {$usedTraffic} از {$dataLimit}\n"
+        . "⏳ <b>اعتبار ثبت‌شده در ربات:</b> {$expiresText}";
+
+    $keyboard = ['inline_keyboard' => []];
+    if (empty($admin['role']['is_owner'])) {
+        $toggleText = $status === 'active' ? 'غیرفعال‌کردن نماینده' : 'فعال‌کردن نماینده';
+        $keyboard['inline_keyboard'][] = [[
+            'text' => $toggleText,
+            'callback_data' => "pg_admin_toggle_{$panel['code_panel']}_" . (int) $admin['id'] . "_" . (int) $offset,
+            'style' => $status === 'active' ? 'danger' : 'success',
+        ]];
+        $keyboard['inline_keyboard'][] = [[
+            'text' => 'ریست مصرف نماینده',
+            'callback_data' => "pg_admin_reset_{$panel['code_panel']}_" . (int) $admin['id'] . "_" . (int) $offset,
+        ]];
+        $keyboard['inline_keyboard'][] = [[
+            'text' => 'حذف نماینده',
+            'callback_data' => "pg_admin_deleteask_{$panel['code_panel']}_" . (int) $admin['id'] . "_" . (int) $offset,
+            'style' => 'danger',
+        ]];
+    }
+    $keyboard['inline_keyboard'][] = [[
+        'text' => 'بازگشت به فهرست',
+        'callback_data' => "pg_admins_{$panel['code_panel']}_" . (int) $offset,
+    ]];
+    return ['text' => $text, 'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE)];
+}
+
+function pasarguardPlanOverviewData($panel)
+{
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT p.*, (SELECT COUNT(*) FROM invoice i WHERE i.Service_location = :invoice_panel AND i.name_product = p.name_product AND i.Status != 'unpaid') AS sold_count FROM product p WHERE p.Location = :product_panel ORDER BY p.id DESC LIMIT 20");
+    $stmt->execute([
+        ':invoice_panel' => $panel['name_panel'],
+        ':product_panel' => $panel['name_panel'],
+    ]);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $lines = [];
+    foreach ($products as $product) {
+        $settings = pasarguardProductSettings($product, $panel);
+        $nameRaw = (string) $product['name_product'];
+        if (function_exists('mb_strlen') && mb_strlen($nameRaw, 'UTF-8') > 55) {
+            $nameRaw = mb_substr($nameRaw, 0, 52, 'UTF-8') . '...';
+        } elseif (strlen($nameRaw) > 80) {
+            $nameRaw = substr($nameRaw, 0, 77) . '...';
+        }
+        $name = htmlspecialchars($nameRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $duration = (int) $product['Service_time'] > 0 ? (int) $product['Service_time'] . ' روز' : 'نامحدود';
+        $traffic = (float) $product['Volume_constraint'] > 0 ? rtrim(rtrim(number_format((float) $product['Volume_constraint'], 2, '.', ''), '0'), '.') . ' گیگ' : 'نامحدود';
+        $maxUsers = $settings['max_users'] > 0 ? number_format($settings['max_users']) : 'طبق نقش';
+        $lines[] = "• <b>{$name}</b> | " . number_format((float) $product['price_product']) . " تومان\n"
+            . "  {$duration} | {$traffic} | نقش {$settings['role_id']} | سقف {$maxUsers} | فروش " . (int) $product['sold_count'];
+    }
+    $text = "📦 <b>پلن‌های فروش نمایندگی</b>\n\n"
+        . ($lines ? implode("\n\n", $lines) : 'هنوز پلنی برای این پنل ثبت نشده است.');
+    if (count($products) === 20) {
+        $text .= "\n\nفقط ۲۰ پلن آخر نمایش داده شده است.";
+    }
+    $keyboard = json_encode(['inline_keyboard' => [[[
+        'text' => 'بازگشت به داشبورد',
+        'callback_data' => "pg_dashboard_{$panel['code_panel']}",
+    ]]]], JSON_UNESCAPED_UNICODE);
+    return ['text' => $text, 'keyboard' => $keyboard];
+}
+
 if (isset($keyboardadmin) && is_string($keyboardadmin)) {
     $keyboardadmin = str_replace(
         "📬 گزارش ربات",
@@ -4575,6 +4795,243 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     }
     update("user", "Processing_value", $text, "id", $from_id);
     step('home', $from_id);
+} elseif (($text == "⚙️ مدیریت فروش نمایندگی" || $text == "📊 آمار فروش نمایندگی") && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ ابتدا یک پنل فروش نمایندگی پاسارگارد انتخاب کنید.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $dashboard = pasarguardAdminDashboardData($panel);
+    sendmessage($from_id, $dashboard['text'], $dashboard['keyboard'], 'HTML');
+} elseif (preg_match('/^pg_dashboard_([^_]+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $dashboard = pasarguardAdminDashboardData($panel);
+    Editmessagetext($from_id, $message_id, $dashboard['text'], $dashboard['keyboard'], 'HTML');
+} elseif (($text == "📦 پلن‌های فروش" || preg_match('/^pg_plans_([^_]+)$/', $datain, $pgMatch)) && $adminrulecheck['rule'] == "administrator") {
+    $panel = $text == "📦 پلن‌های فروش"
+        ? select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select')
+        : select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل نمایندگی پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $plans = pasarguardPlanOverviewData($panel);
+    if ($text == "📦 پلن‌های فروش") {
+        sendmessage($from_id, $plans['text'], $plans['keyboard'], 'HTML');
+    } else {
+        Editmessagetext($from_id, $message_id, $plans['text'], $plans['keyboard'], 'HTML');
+    }
+} elseif (preg_match('/^pg_toggle_(sale|extend)_([^_]+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[2], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    if ($pgMatch[1] === 'sale') {
+        $newValue = $panel['status'] === 'active' ? 'disable' : 'active';
+        update('marzban_panel', 'status', $newValue, 'code_panel', $panel['code_panel']);
+    } else {
+        $newValue = $panel['status_extend'] === 'on_extend' ? 'off_extend' : 'on_extend';
+        update('marzban_panel', 'status_extend', $newValue, 'code_panel', $panel['code_panel']);
+    }
+    $panel = select('marzban_panel', '*', 'code_panel', $panel['code_panel'], 'select');
+    $dashboard = pasarguardAdminDashboardData($panel);
+    Editmessagetext($from_id, $message_id, $dashboard['text'], $dashboard['keyboard'], 'HTML');
+} elseif (($text == "🔄 اتصال مجدد API" || preg_match('/^pg_reconnect_([^_]+)$/', $datain, $pgMatch)) && $adminrulecheck['rule'] == "administrator") {
+    $panel = $text == "🔄 اتصال مجدد API"
+        ? select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select')
+        : select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل نمایندگی پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    update('marzban_panel', 'datelogin', null, 'code_panel', $panel['code_panel']);
+    $panel['datelogin'] = null;
+    $connection = pasarguardCheckConnection($panel);
+    $reason = htmlspecialchars((string) ($connection['msg'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $resultText = $connection['ok']
+        ? "✅ توکن تازه دریافت شد و اتصال API برقرار است."
+        : "❌ اتصال مجدد ناموفق بود.\nعلت: <code>{$reason}</code>";
+    if ($text == "🔄 اتصال مجدد API") {
+        sendmessage($from_id, $resultText, $optionPasarguardReseller, 'HTML');
+    } else {
+        $dashboard = pasarguardAdminDashboardData($panel);
+        Editmessagetext($from_id, $message_id, $resultText . "\n\n" . $dashboard['text'], $dashboard['keyboard'], 'HTML');
+    }
+} elseif (($text == "👥 مدیریت نماینده‌ها" || preg_match('/^pg_admins_([^_]+)_(\d+)$/', $datain, $pgMatch)) && $adminrulecheck['rule'] == "administrator") {
+    $panel = $text == "👥 مدیریت نماینده‌ها"
+        ? select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select')
+        : select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    $offset = $text == "👥 مدیریت نماینده‌ها" ? 0 : (int) $pgMatch[2];
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل نمایندگی پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $list = pasarguardAdminListData($panel, $offset);
+    if (!$list['ok']) {
+        $reason = htmlspecialchars((string) $list['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $errorText = "❌ دریافت فهرست نماینده‌ها ناموفق بود.\nعلت: <code>{$reason}</code>";
+        if ($text == "👥 مدیریت نماینده‌ها") {
+            sendmessage($from_id, $errorText, $optionPasarguardReseller, 'HTML');
+        } else {
+            Editmessagetext($from_id, $message_id, $errorText, null, 'HTML');
+        }
+        return;
+    }
+    if ($text == "👥 مدیریت نماینده‌ها") {
+        sendmessage($from_id, $list['text'], $list['keyboard'], 'HTML');
+    } else {
+        Editmessagetext($from_id, $message_id, $list['text'], $list['keyboard'], 'HTML');
+    }
+} elseif (preg_match('/^pg_admin_([^_]+)_(\d+)_(\d+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $adminResponse = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    if (!$adminResponse['ok']) {
+        $reason = htmlspecialchars((string) ($adminResponse['msg'] ?? 'اطلاعات پیدا نشد'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        Editmessagetext($from_id, $message_id, "❌ دریافت نماینده ناموفق بود.\nعلت: <code>{$reason}</code>", null, 'HTML');
+        return;
+    }
+    $detail = pasarguardAdminDetailData($panel, $adminResponse['data'], (int) $pgMatch[3]);
+    Editmessagetext($from_id, $message_id, $detail['text'], $detail['keyboard'], 'HTML');
+} elseif (preg_match('/^pg_admin_toggle_([^_]+)_(\d+)_(\d+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $adminResponse = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    if (!$adminResponse['ok'] || !empty($adminResponse['data']['role']['is_owner'])) {
+        Editmessagetext($from_id, $message_id, "❌ امکان تغییر وضعیت این حساب وجود ندارد.", null, 'HTML');
+        return;
+    }
+    $newStatus = strtolower((string) $adminResponse['data']['status']) === 'active' ? 'disabled' : 'active';
+    $result = pasarguardModifyAdminById($panel, (int) $pgMatch[2], ['status' => $newStatus]);
+    if (!$result['ok']) {
+        $reason = htmlspecialchars((string) $result['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        Editmessagetext($from_id, $message_id, "❌ تغییر وضعیت ناموفق بود.\nعلت: <code>{$reason}</code>", null, 'HTML');
+        return;
+    }
+    $invoiceStatus = $newStatus === 'active' ? 'active' : 'disablebyadmin';
+    $stmt = $pdo->prepare("UPDATE invoice SET Status = :status WHERE Service_location = :panel AND username = :username");
+    $stmt->execute([':status' => $invoiceStatus, ':panel' => $panel['name_panel'], ':username' => $adminResponse['data']['username']]);
+    $updatedAdmin = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    $detailAdmin = $updatedAdmin['ok'] ? $updatedAdmin['data'] : array_merge($adminResponse['data'], ['status' => $newStatus]);
+    $detail = pasarguardAdminDetailData($panel, $detailAdmin, (int) $pgMatch[3]);
+    Editmessagetext($from_id, $message_id, "✅ وضعیت نماینده بروزرسانی شد.\n\n" . $detail['text'], $detail['keyboard'], 'HTML');
+} elseif (preg_match('/^pg_admin_reset_([^_]+)_(\d+)_(\d+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $adminResponse = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    if (!$adminResponse['ok'] || !empty($adminResponse['data']['role']['is_owner'])) {
+        Editmessagetext($from_id, $message_id, "❌ امکان ریست مصرف این حساب وجود ندارد.", null, 'HTML');
+        return;
+    }
+    $result = pasarguardResetAdminUsageById($panel, (int) $pgMatch[2]);
+    if (!$result['ok']) {
+        $reason = htmlspecialchars((string) $result['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        Editmessagetext($from_id, $message_id, "❌ ریست مصرف ناموفق بود.\nعلت: <code>{$reason}</code>", null, 'HTML');
+        return;
+    }
+    $updatedAdmin = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    $detailAdmin = $updatedAdmin['ok'] ? $updatedAdmin['data'] : array_merge($adminResponse['data'], ['used_traffic' => 0]);
+    $detail = pasarguardAdminDetailData($panel, $detailAdmin, (int) $pgMatch[3]);
+    Editmessagetext($from_id, $message_id, "✅ مصرف نماینده با موفقیت ریست شد.\n\n" . $detail['text'], $detail['keyboard'], 'HTML');
+} elseif (preg_match('/^pg_admin_deleteask_([^_]+)_(\d+)_(\d+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $adminResponse = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    if (!$adminResponse['ok'] || !empty($adminResponse['data']['role']['is_owner'])) {
+        Editmessagetext($from_id, $message_id, "❌ امکان حذف این حساب وجود ندارد.", null, 'HTML');
+        return;
+    }
+    $usernameSafe = htmlspecialchars((string) $adminResponse['data']['username'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $confirmKeyboard = json_encode(['inline_keyboard' => [
+        [[
+            'text' => 'تأیید حذف کامل نماینده',
+            'callback_data' => "pg_admin_delete_{$panel['code_panel']}_" . (int) $pgMatch[2] . "_" . (int) $pgMatch[3],
+            'style' => 'danger',
+        ]],
+        [[
+            'text' => 'انصراف',
+            'callback_data' => "pg_admin_{$panel['code_panel']}_" . (int) $pgMatch[2] . "_" . (int) $pgMatch[3],
+        ]],
+    ]], JSON_UNESCAPED_UNICODE);
+    Editmessagetext($from_id, $message_id, "⚠️ <b>حذف نماینده</b>\n\nادمین <code>{$usernameSafe}</code> و دسترسی او از PasarGuard حذف می‌شود. این عملیات قابل بازگشت نیست.", $confirmKeyboard, 'HTML');
+} elseif (preg_match('/^pg_admin_delete_([^_]+)_(\d+)_(\d+)$/', $datain, $pgMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $adminResponse = pasarguardFindAdminById($panel, (int) $pgMatch[2]);
+    if (!$adminResponse['ok'] || !empty($adminResponse['data']['role']['is_owner'])) {
+        Editmessagetext($from_id, $message_id, "❌ امکان حذف این حساب وجود ندارد.", null, 'HTML');
+        return;
+    }
+    $result = pasarguardDeleteAdminById($panel, (int) $pgMatch[2]);
+    if (!$result['ok']) {
+        $reason = htmlspecialchars((string) $result['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        Editmessagetext($from_id, $message_id, "❌ حذف نماینده ناموفق بود.\nعلت: <code>{$reason}</code>", null, 'HTML');
+        return;
+    }
+    $stmt = $pdo->prepare("UPDATE invoice SET Status = 'removebyadmin' WHERE Service_location = :panel AND username = :username");
+    $stmt->execute([':panel' => $panel['name_panel'], ':username' => $adminResponse['data']['username']]);
+    $list = pasarguardAdminListData($panel, (int) $pgMatch[3]);
+    if ($list['ok'] && ($list['item_count'] ?? 0) === 0 && (int) $pgMatch[3] > 0) {
+        $list = pasarguardAdminListData($panel, max(0, (int) $pgMatch[3] - 10));
+    }
+    if (!$list['ok']) {
+        $dashboard = pasarguardAdminDashboardData($panel);
+        Editmessagetext($from_id, $message_id, "✅ نماینده حذف شد، اما دریافت فهرست تازه ممکن نبود.\n\n" . $dashboard['text'], $dashboard['keyboard'], 'HTML');
+        return;
+    }
+    Editmessagetext($from_id, $message_id, "✅ نماینده با موفقیت حذف شد.\n\n" . ($list['text'] ?? ''), $list['keyboard'] ?? null, 'HTML');
+} elseif (($text == "⏱ همگام‌سازی انقضا" || preg_match('/^pg_sync_expire_([^_]+)$/', $datain, $pgMatch)) && $adminrulecheck['rule'] == "administrator") {
+    $panel = $text == "⏱ همگام‌سازی انقضا"
+        ? select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select')
+        : select('marzban_panel', '*', 'code_panel', $pgMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+        sendmessage($from_id, "❌ پنل نمایندگی پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Service_location = :panel AND CAST(Service_time AS UNSIGNED) > 0 AND (CAST(time_sell AS UNSIGNED) + CAST(Service_time AS UNSIGNED) * 86400) <= :now AND Status IN ('active','sendedwarn','send_on_hold','disablebyadmin') ORDER BY CAST(time_sell AS UNSIGNED) ASC LIMIT 50");
+    $stmt->execute([':panel' => $panel['name_panel'], ':now' => time()]);
+    $expiredInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $synced = 0;
+    $failed = 0;
+    foreach ($expiredInvoices as $expiredInvoice) {
+        $result = pasarguardModifyAdmin($panel, $expiredInvoice['username'], ['status' => 'disabled']);
+        if ($result['ok']) {
+            update('invoice', 'Status', 'end_of_time', 'id_invoice', $expiredInvoice['id_invoice']);
+            $synced++;
+        } else {
+            $failed++;
+        }
+    }
+    $syncText = "✅ همگام‌سازی پایان اعتبار انجام شد.\n\nغیرفعال‌شده: {$synced}\nناموفق: {$failed}";
+    if (count($expiredInvoices) === 50) {
+        $syncText .= "\n\nبرای بررسی موارد باقی‌مانده، دکمه را دوباره بزنید.";
+    }
+    if ($text == "⏱ همگام‌سازی انقضا") {
+        sendmessage($from_id, $syncText, $optionPasarguardReseller, 'HTML');
+    } else {
+        $dashboard = pasarguardAdminDashboardData($panel);
+        Editmessagetext($from_id, $message_id, $syncText . "\n\n" . $dashboard['text'], $dashboard['keyboard'], 'HTML');
+    }
 } elseif ($text == "🔌 بررسی اتصال" && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
     if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
