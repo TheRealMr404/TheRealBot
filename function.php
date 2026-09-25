@@ -1692,8 +1692,8 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $confirmCallback = (string) ($options['confirm_callback'] ?? 'confirmandgetservice');
     $backCallback = (string) ($options['back_callback'] ?? 'backuser');
     $isExtension = !empty($options['is_extension']);
-    $coloredAdjustments = !array_key_exists('colored_adjustments', $options) || !empty($options['colored_adjustments']);
-    $valueButtonEmoji = !array_key_exists('value_button_emoji', $options) || !empty($options['value_button_emoji']);
+    $coloredAdjustments = !empty($options['colored_adjustments']);
+    $valueButtonEmoji = !empty($options['value_button_emoji']);
     $accountUsername = htmlspecialchars((string) ($options['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $count = customServiceOrderCount($panel, $count);
     $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
@@ -1749,10 +1749,20 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
             ],
     ];
     if (!$isPasarguard) {
+        $decreaseCountButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_c_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
+        $increaseCountButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_c_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
+        if ($coloredAdjustments) {
+            $decreaseCountButton['style'] = 'danger';
+            $increaseCountButton['style'] = 'success';
+        }
+        $countValueButton = applyPanelAppearanceToButton(['text' => "{$count} عدد", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
+        if (!$valueButtonEmoji) {
+            unset($countValueButton['icon_custom_emoji_id']);
+        }
         $keyboardRows[] = [
-                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_c_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
-                applyPanelAppearanceToButton(['text' => "{$count} عدد", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
-                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_c_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
+                $decreaseCountButton,
+                $countValueButton,
+                $increaseCountButton,
         ];
     }
     $keyboardRows[] = [
