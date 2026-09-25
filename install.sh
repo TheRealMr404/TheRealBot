@@ -1010,8 +1010,132 @@ docker_env_value() {
     sed -n "s/^${key}=//p" "$file" | tail -1
 }
 
+docker_port_in_use() {
+    local port="$1"
+    ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)${port}$"
+}
+
+docker_gateway_mode() {
+    local running
+    running=$(docker inspect -f '{{.State.Running}}' mirza-gateway 2>/dev/null || true)
+    if [ "$running" = "true" ]; then
+        printf 'direct'
+        return 0
+    fi
+    if systemctl is-active --quiet apache2 2>/dev/null || pgrep -x apache2 >/dev/null 2>&1; then
+        printf 'apache'
+        return 0
+    fi
+    if docker_port_in_use 80 || docker_port_in_use 443; then
+        echo "Ports 80/443 are occupied by an unsupported service:" >&2
+        ss -ltnp 2>/dev/null | awk '$4 ~ /:80$|:443$/ {print}' >&2
+        echo "Stop that service or use Apache as the host gateway, then retry." >&2
+        return 1
+    fi
+    printf 'direct'
+}
+
+docker_allocate_app_port() {
+    local port env_file used
+    for ((port=19000; port<=19999; port++)); do
+        used=0
+        docker_port_in_use "$port" && used=1
+        if [ "$used" -eq 0 ]; then
+            for env_file in "$DOCKER_INSTANCES"/*/.env; do
+                [ -f "$env_file" ] || continue
+                [ "$(docker_env_value APP_PORT "$env_file")" = "$port" ] && { used=1; break; }
+            done
+        fi
+        [ "$used" -eq 0 ] && { printf '%s' "$port"; return 0; }
+    done
+    echo "No free local application port is available in range 19000-19999." >&2
+    return 1
+}
+
+docker_configure_apache_route() {
+    local slug="$1" domain="$2" port="$3" site acme_root cert_dir
+    valid_bot_slug "$slug" || return 1
+    validate_domain "$domain" || return 1
+    [[ "$port" =~ ^19[0-9]{3}$ ]] || return 1
+    site="/etc/apache2/sites-available/mirza-docker-$slug.conf"
+    acme_root="/var/www/mirza-acme"
+    cert_dir="/etc/letsencrypt/live/$domain"
+    mkdir -p "$acme_root/.well-known/acme-challenge"
+
+    cat > "$site" <<EOF
+<VirtualHost *:80>
+    ServerName $domain
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass /.well-known/acme-challenge/ !
+    Alias /.well-known/acme-challenge/ $acme_root/.well-known/acme-challenge/
+    <Directory "$acme_root/.well-known/acme-challenge/">
+        Require all granted
+    </Directory>
+    RequestHeader unset X-Forwarded-For early
+    ProxyPass / http://127.0.0.1:$port/ connectiontimeout=5 timeout=120
+    ProxyPassReverse / http://127.0.0.1:$port/
+</VirtualHost>
+EOF
+    a2ensite "mirza-docker-$slug.conf" >/dev/null 2>&1 || return 1
+    apache2ctl configtest >/dev/null 2>&1 || return 1
+    systemctl reload apache2 || return 1
+
+    if [ ! -s "$cert_dir/fullchain.pem" ] || [ ! -s "$cert_dir/privkey.pem" ] \
+        || ! openssl x509 -checkend 604800 -noout -in "$cert_dir/fullchain.pem" >/dev/null 2>&1; then
+        certbot certonly --webroot -w "$acme_root" -d "$domain" \
+            --non-interactive --agree-tos --register-unsafely-without-email || return 1
+    fi
+
+    cat > "$site" <<EOF
+<VirtualHost *:80>
+    ServerName $domain
+    ProxyPass /.well-known/acme-challenge/ !
+    Alias /.well-known/acme-challenge/ $acme_root/.well-known/acme-challenge/
+    <Directory "$acme_root/.well-known/acme-challenge/">
+        Require all granted
+    </Directory>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/.well-known/acme-challenge/
+    RewriteRule ^ https://$domain%{REQUEST_URI} [R=301,L,NE]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName $domain
+    SSLEngine On
+    SSLCertificateFile $cert_dir/fullchain.pem
+    SSLCertificateKeyFile $cert_dir/privkey.pem
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+    RequestHeader unset X-Forwarded-For early
+    RequestHeader set X-Forwarded-Proto "https"
+    ProxyPass / http://127.0.0.1:$port/ connectiontimeout=5 timeout=120
+    ProxyPassReverse / http://127.0.0.1:$port/
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+</VirtualHost>
+EOF
+    apache2ctl configtest >/dev/null 2>&1 || return 1
+    systemctl reload apache2 || return 1
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    cat > /etc/letsencrypt/renewal-hooks/deploy/mirza-apache-reload <<'EOF'
+#!/bin/sh
+systemctl reload apache2
+EOF
+    chmod 750 /etc/letsencrypt/renewal-hooks/deploy/mirza-apache-reload
+}
+
+docker_remove_apache_route() {
+    local slug="$1" site="/etc/apache2/sites-available/mirza-docker-$1.conf"
+    valid_bot_slug "$slug" || return 1
+    a2dissite "mirza-docker-$slug.conf" >/dev/null 2>&1 || true
+    rm -f "$site"
+    apache2ctl configtest >/dev/null 2>&1 && systemctl reload apache2 >/dev/null 2>&1 || true
+}
+
 docker_install_engine() {
-    local current_script missing_tools=0 tool
+    local current_script missing_tools=0 tool gateway_mode
     mkdir -p "$DOCKER_INSTANCES" "$DOCKER_BACKUPS" "$DOCKER_GATEWAY"
     chmod 700 "$DOCKER_ROOT" "$DOCKER_INSTANCES" "$DOCKER_BACKUPS" 2>/dev/null || true
 
@@ -1044,6 +1168,25 @@ docker_install_engine() {
             || DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1 \
             || DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose >/dev/null 2>&1 \
             || return 1
+    fi
+
+    gateway_mode=$(docker_gateway_mode) || return 1
+    printf '%s\n' "$gateway_mode" > "$DOCKER_GATEWAY/mode"
+
+    if [ "$gateway_mode" = "apache" ]; then
+        if [ -f "$DOCKER_GATEWAY/compose.yml" ]; then
+            docker_compose -f "$DOCKER_GATEWAY/compose.yml" down >/dev/null 2>&1 || true
+        else
+            docker rm -f mirza-gateway >/dev/null 2>&1 || true
+        fi
+        if ! command -v certbot >/dev/null 2>&1; then
+            apt-get update || return 1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y certbot || return 1
+        fi
+        a2enmod proxy proxy_http headers ssl rewrite >/dev/null 2>&1 || return 1
+        systemctl enable --now apache2 >/dev/null 2>&1 || return 1
+        echo -e "${C_OK}Apache detected; Docker bots will use Apache without taking ports 80/443.${CR}"
+        return 0
     fi
 
     docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK" >/dev/null
@@ -1079,13 +1222,6 @@ volumes:
     name: mirza-caddy-config
 EOF
 
-    if ! docker inspect mirza-gateway >/dev/null 2>&1; then
-        if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)(80|443)$'; then
-            echo -e "${C_BAD}Ports 80 or 443 are already in use. Stop the current web server before enabling the Docker gateway.${CR}"
-            return 1
-        fi
-    fi
-
     [ -s "$DOCKER_GATEWAY/Caddyfile" ] || printf ':80 {\n    respond "Mirza gateway is ready" 200\n}\n' > "$DOCKER_GATEWAY/Caddyfile"
     docker_compose -f "$DOCKER_GATEWAY/compose.yml" up -d >/dev/null || return 1
     if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
@@ -1096,8 +1232,25 @@ EOF
 }
 
 docker_refresh_gateway() {
-    local tmp env_file slug domain edge_network found=0
+    local tmp env_file slug domain port edge_network found=0 gateway_mode
     mkdir -p "$DOCKER_GATEWAY"
+    gateway_mode=$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null || printf 'direct')
+    if [ "$gateway_mode" = "apache" ]; then
+        for env_file in "$DOCKER_INSTANCES"/*/.env; do
+            [ -f "$env_file" ] || continue
+            slug=$(docker_env_value BOT_SLUG "$env_file")
+            domain=$(docker_env_value DOMAIN "$env_file")
+            port=$(docker_env_value APP_PORT "$env_file")
+            valid_bot_slug "$slug" || continue
+            validate_domain "$domain" || continue
+            [[ "$port" =~ ^19[0-9]{3}$ ]] || { echo "Invalid app port for '$slug'."; return 1; }
+            docker_configure_apache_route "$slug" "$domain" "$port" || {
+                echo "Apache/SSL route setup failed for '$slug'."
+                return 1
+            }
+        done
+        return 0
+    fi
     tmp=$(mktemp "$DOCKER_GATEWAY/Caddyfile.XXXXXX") || return 1
     for env_file in "$DOCKER_INSTANCES"/*/.env; do
         [ -f "$env_file" ] || continue
@@ -1192,7 +1345,8 @@ docker_fetch_source() {
 
 docker_write_instance_files() {
     local dir="$1" slug="$2" domain="$3" token="$4" admin_id="$5" bot_name="$6"
-    local db_user="$7" db_pass="$8" db_root_pass="$9" source_url
+    local db_user="$7" db_pass="$8" db_root_pass="$9" app_port="${10}" source_url
+    [[ "$app_port" =~ ^19[0-9]{3}$ ]] || return 1
     source_url=$(docker_source_url)
 
     cat > "$dir/.env" <<EOF
@@ -1202,6 +1356,7 @@ DOMAIN=$domain
 BOT_TOKEN=$token
 ADMIN_ID=$admin_id
 BOT_USERNAME=$bot_name
+APP_PORT=$app_port
 DB_NAME=VpnBot
 DB_USER=$db_user
 DB_PASSWORD=$db_pass
@@ -1324,6 +1479,8 @@ services:
     volumes:
       - ./app:/var/www/html
       - ./updater-backups:/var/backups/therealbot
+    ports:
+      - "127.0.0.1:\${APP_PORT}:80"
     depends_on:
       db:
         condition: service_healthy
@@ -1377,7 +1534,7 @@ docker_prompt_slug() {
 }
 
 docker_bot_add() {
-    local slug domain token admin_id bot_name dir db_user db_pass db_root_pass schedule answer webhook_response
+    local slug domain token admin_id bot_name dir db_user db_pass db_root_pass app_port schedule answer webhook_response
     docker_install_engine || { echo "Docker gateway setup failed."; return 1; }
 
     slug="${ARG_ID:-}"
@@ -1391,6 +1548,12 @@ docker_bot_add() {
     validate_domain "$domain" || { echo "Invalid domain."; return 1; }
     if grep -Rqx "DOMAIN=$domain" "$DOCKER_INSTANCES"/*/.env 2>/dev/null; then
         echo "This domain is already assigned to another bot."
+        return 1
+    fi
+    if [ "$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null)" = "apache" ] \
+        && grep -RhsE '^[[:space:]]*ServerName[[:space:]]+' /etc/apache2/sites-enabled 2>/dev/null \
+            | awk -v expected="$domain" '$1 == "ServerName" && $2 == expected { found=1 } END { exit !found }'; then
+        echo "This domain already belongs to an existing Apache site. Use a new subdomain for this bot."
         return 1
     fi
 
@@ -1428,7 +1591,9 @@ docker_bot_add() {
     db_user="u_$(openssl rand -hex 6)"
     db_pass=$(openssl rand -hex 16)
     db_root_pass=$(openssl rand -hex 20)
-    docker_write_instance_files "$dir" "$slug" "$domain" "$token" "$admin_id" "$bot_name" "$db_user" "$db_pass" "$db_root_pass"
+    app_port=$(docker_allocate_app_port) || { rm -rf "$dir"; return 1; }
+    docker_write_instance_files "$dir" "$slug" "$domain" "$token" "$admin_id" "$bot_name" "$db_user" "$db_pass" "$db_root_pass" "$app_port" \
+        || { rm -rf "$dir"; return 1; }
 
     echo "Building isolated containers for $slug..."
     if ! docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d --build; then
@@ -1470,7 +1635,10 @@ docker_bot_add() {
             return 1
         }
 
-    docker_refresh_gateway || return 1
+    if ! docker_refresh_gateway; then
+        echo "Containers are installed, but the domain/SSL route is not ready. Fix DNS or Apache, then run: mirza bot-restart --id $slug"
+        return 1
+    fi
     sleep 3
     webhook_response=$(curl -fsS --retry 4 --retry-delay 3 \
         -F "url=https://$domain/index.php" "https://api.telegram.org/bot$token/setWebhook" 2>/dev/null || true)
@@ -1685,8 +1853,9 @@ docker_bot_update() {
     docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app php /var/www/html/table.php >/dev/null || {
         echo "Database migration failed; restoring the pre-update backup."
         docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
-        return 1
+            return 1
     }
+    docker_refresh_gateway || { echo "Gateway refresh failed after update."; return 1; }
     local domain token response
     domain=$(docker_env_value DOMAIN "$dir/.env")
     token=$(docker_env_value BOT_TOKEN "$dir/.env")
@@ -1720,7 +1889,7 @@ docker_bot_schedule_backup() {
 }
 
 docker_bot_remove() {
-    local slug="${1:-${ARG_ID:-}}" dir answer
+    local slug="${1:-${ARG_ID:-}}" dir answer gateway_mode
     valid_bot_slug "$slug" || { echo "Invalid or missing --id."; return 1; }
     dir=$(docker_instance_dir "$slug") || return 1
     [ -f "$dir/.env" ] || { echo "Bot '$slug' not found."; return 1; }
@@ -1735,6 +1904,8 @@ docker_bot_remove() {
         docker network connect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
         return 1
     fi
+    gateway_mode=$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null || printf 'direct')
+    [ "$gateway_mode" = "apache" ] && docker_remove_apache_route "$slug"
     rm -f "/etc/cron.d/mirza-$slug-backup"
     rm -rf "$dir"
     docker_refresh_gateway || true
@@ -1746,7 +1917,8 @@ docker_bot_restart() {
     valid_bot_slug "$slug" || return 1
     dir=$(docker_instance_dir "$slug") || return 1
     [ -f "$dir/.env" ] || return 1
-    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" restart
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" restart || return 1
+    docker_refresh_gateway
 }
 
 docker_bot_logs() {
