@@ -2050,20 +2050,17 @@ class ManagePanel
                 "expiry" => $time_new
             );
         } elseif ($panel['type'] == "pasarguard_reseller") {
-            $settings = $code_product === 'custom_volume'
-                ? [
-                    'role_id' => max(1, (int) ($data_user['role_id'] ?? $panel['inboundid'] ?? 1)),
-                    'max_users' => max(0, (int) ($data_user['max_users'] ?? 0)),
-                ]
-                : pasarguardProductSettings($product, $panel);
             $data = [
                 'status' => 'active',
                 'data_limit' => $data_limit_new > 0 ? $data_limit_new : null,
-                'role_id' => $settings['role_id'],
-                'permission_overrides' => $settings['max_users'] > 0
-                    ? ['max_users' => $settings['max_users']]
-                    : null,
             ];
+            if ($code_product !== 'custom_volume') {
+                $settings = pasarguardProductSettings($product, $panel);
+                $data['role_id'] = $settings['role_id'];
+                $data['permission_overrides'] = $settings['max_users'] > 0
+                    ? ['max_users' => $settings['max_users']]
+                    : null;
+            }
         }
         $extend = $this->Modifyuser($username, $panel['name_panel'], $data);
         if ($extend['status'] == false) {

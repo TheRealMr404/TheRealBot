@@ -2472,6 +2472,7 @@ $textconnect
                 'back_callback' => 'my_pasarguard_panel_' . $nameloc['id_invoice'],
                 'is_extension' => true,
                 'username' => $nameloc['username'],
+                'colored_adjustments' => false,
             ]
         );
         savedata('save', 'price_product', $renewalInvoice['unit_price']);
@@ -2622,6 +2623,7 @@ $textconnect
             'back_callback' => 'my_pasarguard_panel_' . $extensionInvoice['id_invoice'],
             'is_extension' => true,
             'username' => $extensionInvoice['username'],
+            'colored_adjustments' => false,
         ]
     );
     savedata('save', 'price_product', $renewalInvoice['unit_price']);

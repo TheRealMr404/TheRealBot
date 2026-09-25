@@ -1675,6 +1675,7 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $confirmCallback = (string) ($options['confirm_callback'] ?? 'confirmandgetservice');
     $backCallback = (string) ($options['back_callback'] ?? 'backuser');
     $isExtension = !empty($options['is_extension']);
+    $coloredAdjustments = !array_key_exists('colored_adjustments', $options) || !empty($options['colored_adjustments']);
     $accountUsername = htmlspecialchars((string) ($options['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $count = customServiceOrderCount($panel, $count);
     $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
@@ -1700,16 +1701,27 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     }
     $text .= "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ:</b> " . number_format($total) . " تومان";
 
+    $decreaseVolumeButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_v_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
+    $increaseVolumeButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_v_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
+    $decreaseDaysButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_d_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
+    $increaseDaysButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_d_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
+    if ($coloredAdjustments) {
+        $decreaseVolumeButton['style'] = 'danger';
+        $increaseVolumeButton['style'] = 'success';
+        $decreaseDaysButton['style'] = 'danger';
+        $increaseDaysButton['style'] = 'success';
+    }
+
     $keyboardRows = [
             [
-                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_v_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
+                $decreaseVolumeButton,
                 applyPanelAppearanceToButton(['text' => "{$volume} گیگابایت", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
-                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_v_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
+                $increaseVolumeButton,
             ],
             [
-                ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_d_dec", 'style' => 'danger', 'icon_custom_emoji_id' => '5382261056078881010'],
+                $decreaseDaysButton,
                 applyPanelAppearanceToButton(['text' => "{$days} روز", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
-                ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_d_inc", 'style' => 'success', 'icon_custom_emoji_id' => '5393194986252542669'],
+                $increaseDaysButton,
             ],
     ];
     if (!$isPasarguard) {
