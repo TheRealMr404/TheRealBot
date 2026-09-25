@@ -372,13 +372,10 @@ class ManagePanel
                 $Output['configs'] = [];
             }
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
-            if ($code_product == "usertest") {
-                return [
-                    'status' => 'Unsuccessful',
-                    'msg' => 'ساخت اکانت تست برای نمایندگی پاسارگارد پشتیبانی نمی‌شود.'
-                ];
-            }
             $settings = pasarguardProductSettings($Get_Data_Product, $Get_Data_Panel);
+            if ($code_product == "usertest") {
+                $settings['max_users'] = 1;
+            }
             $password = pasarguardGeneratePassword($usernameC);
             $create = pasarguardCreateAdmin(
                 $Get_Data_Panel,
@@ -933,9 +930,10 @@ class ManagePanel
                 $expire = 0;
                 $password = '';
                 if (is_array($invoice)) {
+                    $durationSeconds = $invoice['name_product'] === 'سرویس تست' ? 3600 : 86400;
                     $expire = (int) $invoice['Service_time'] === 0
                         ? 0
-                        : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * 86400);
+                        : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * $durationSeconds);
                     $password = (string) ($invoice['user_info'] ?? '');
                 }
                 $status = strtolower((string) ($admin['status'] ?? 'active'));

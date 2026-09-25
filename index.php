@@ -4128,6 +4128,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $stmt->close();
     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], "usertest", $username_ac, $datac);
     if ($dataoutput['username'] == null) {
+        if ($marzban_list_get['type'] === 'pasarguard_reseller') {
+            update("user", "limit_usertest", $userlimit['limit_usertest'], "id", $from_id);
+        }
         $dataoutput['msg'] = json_encode($dataoutput['msg']);
         sendmessage($from_id, $textbotlang['users']['usertest']['errorcreat'], $keyboard, 'html');
         $texterros = "
@@ -4188,6 +4191,15 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     if ($marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
+    }
+    if ($marzban_list_get['type'] === 'pasarguard_reseller') {
+        update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
+        $textcreatuser = pasarguardBuildTestDeliveryText(
+            $marzban_list_get,
+            $dataoutput,
+            $marzban_list_get['time_usertest'],
+            $marzban_list_get['val_usertest']
+        );
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $usertestinfo, $textcreatuser, $randomString);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');

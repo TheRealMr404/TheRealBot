@@ -870,23 +870,10 @@ while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         continue;
     }
 
-    $btn = [
+    $btn = applyPanelAppearanceToButton([
         'text' => $result['name_panel'],
         'callback_data' => "locationtest_{$result['code_panel']}",
-        'style' => 'primary'
-    ];
-
-    if (!empty($result['panel_color']) && in_array($result['panel_color'], ['primary', 'success', 'danger', 'secondary'])) {
-        $btn['style'] = $result['panel_color'];
-    }
-
-    if (!empty($result['panel_emoji'])) {
-        if (preg_match('/emoji-id="(\d+)"/', $result['panel_emoji'], $matches)) {
-            $btn['icon_custom_emoji_id'] = (string) $matches[1];
-        } elseif (preg_match('/(\d{15,22})/', $result['panel_emoji'], $matches)) {
-            $btn['icon_custom_emoji_id'] = (string) $matches[1];
-        }
-    }
+    ], $result);
 
     $list_marzban_panel_usertest['inline_keyboard'][] = [$btn];
 }
@@ -1076,6 +1063,7 @@ $change_product = json_encode([
 $optionPasarguardReseller = json_encode([
     'keyboard' => [
         [['text' => "⚙️ مدیریت نمایندگی"]],
+        [['text' => "⚙️ قابلیت‌های پنل"]],
         [['text' => "👥 فهرست نماینده‌ها"], ['text' => "📊 گزارش فروش"]],
         [['text' => "📦 پلن‌های نمایندگی"]],
         [['text' => "⏳ بررسی سرویس‌های منقضی"], ['text' => "🔄 تازه‌سازی اتصال"]],
@@ -1666,8 +1654,14 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     }
 
     if ($statuscustom) {
+        $customButton = [
+            'text' => $textbotlang['users']['customsellvolume']['title'],
+            'callback_data' => $customvolume,
+        ];
+        $customPanel = select('marzban_panel', '*', 'name_panel', $location, 'select');
+        $customButton = applyPanelAppearanceToButton($customButton, $customPanel);
         $product['inline_keyboard'][] = [
-            ['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => $customvolume, 'style' => 'primary']
+            $customButton
         ];
     }
 
@@ -1778,8 +1772,15 @@ function keyboardTimeCategory($name_panel, $agent, $callback_data = "producttime
     }
     if ($statusbtnextend)
         $monthkeyboard['inline_keyboard'][] = [['text' => "♻️ تمدید پلن فعلی", 'callback_data' => "exntedagei"]];
-    if ($statuscustomvolume == true)
-        $monthkeyboard['inline_keyboard'][] = [['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => "customsellvolume"]];
+    if ($statuscustomvolume == true) {
+        $customButton = [
+            'text' => $textbotlang['users']['customsellvolume']['title'],
+            'callback_data' => 'customsellvolume',
+        ];
+        $customPanel = select('marzban_panel', '*', 'name_panel', $name_panel, 'select');
+        $customButton = applyPanelAppearanceToButton($customButton, $customPanel);
+        $monthkeyboard['inline_keyboard'][] = [$customButton];
+    }
     $monthkeyboard['inline_keyboard'][] = [
         ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $callback_data_back]
     ];

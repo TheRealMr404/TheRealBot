@@ -354,3 +354,22 @@ function pasarguardBuildDeliveryText($panel, $output, $product)
         . "👥 <b>حداکثر کاربران:</b> {$users}\n\n"
         . "⚠️ برای امنیت بیشتر، پس از اولین ورود رمز عبور را تغییر دهید.";
 }
+
+function pasarguardBuildTestDeliveryText($panel, $output, $hours, $volumeMb)
+{
+    $url = htmlspecialchars(pasarguardDashboardUrl($panel['url_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $username = htmlspecialchars((string) ($output['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $password = htmlspecialchars((string) ($output['subscription_url'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $hours = max(1, (int) $hours);
+    $volumeMb = max(0, (int) $volumeMb);
+    $traffic = $volumeMb > 0 ? number_format($volumeMb) . ' مگابایت' : 'نامحدود';
+
+    return "✅ <b>نمایندگی آزمایشی پاسارگارد ساخته شد</b>\n\n"
+        . "🌐 <b>آدرس ورود:</b> <code>{$url}</code>\n"
+        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "🔑 <b>رمز عبور:</b> <code>{$password}</code>\n\n"
+        . "⏳ <b>مدت اعتبار:</b> {$hours} ساعت\n"
+        . "💾 <b>سقف ترافیک:</b> {$traffic}\n"
+        . "👥 <b>حداکثر کاربران:</b> 1 کاربر\n\n"
+        . "⚠️ این حساب آزمایشی است و پس از پایان زمان تعیین‌شده غیرفعال می‌شود.";
+}

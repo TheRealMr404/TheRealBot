@@ -1516,6 +1516,30 @@ function customServiceAgentNumber($panel, $field, $agent, $fallback = 0)
     return is_numeric($value) ? (int)$value : (int)$fallback;
 }
 
+function applyPanelAppearanceToButton(array $button, $panel)
+{
+    if (!is_array($panel)) {
+        return $button;
+    }
+
+    $color = (string) ($panel['panel_color'] ?? '');
+    if (in_array($color, ['primary', 'success', 'danger'], true)) {
+        $button['style'] = $color;
+    } else {
+        unset($button['style']);
+    }
+
+    $emoji = (string) ($panel['panel_emoji'] ?? '');
+    if (preg_match('/emoji-id=["\']?(\d+)["\']?/', $emoji, $matches)
+        || preg_match('/(\d{15,22})/', $emoji, $matches)) {
+        $button['icon_custom_emoji_id'] = (string) $matches[1];
+    } else {
+        unset($button['icon_custom_emoji_id']);
+    }
+
+    return $button;
+}
+
 function customServiceLimits($panel, $agent)
 {
     $minVolume = max(1, customServiceAgentNumber($panel, 'mainvolume', $agent, 1));

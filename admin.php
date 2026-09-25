@@ -87,6 +87,56 @@ function pasarguardAdminDashboardData($panel)
     return ['text' => $text, 'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE)];
 }
 
+function pasarguardPanelCapabilitiesData($panel)
+{
+    $custom = json_decode((string) ($panel['customvolume'] ?? ''), true);
+    $custom = is_array($custom) ? $custom : [];
+    foreach (['f', 'n', 'n2'] as $agent) {
+        $custom[$agent] = (string) ($custom[$agent] ?? '0') === '1' ? '1' : '0';
+    }
+
+    $panelStatus = ($panel['status'] ?? '') === 'active' ? 'active' : 'disable';
+    $testStatus = ($panel['TestAccount'] ?? '') === 'ONTestAccount' ? 'ONTestAccount' : 'OFFTestAccount';
+    $extendStatus = ($panel['status_extend'] ?? '') === 'on_extend' ? 'on_extend' : 'off_extend';
+    $stateText = static fn($enabled) => $enabled ? 'روشن' : 'خاموش';
+
+    $keyboard = ['inline_keyboard' => [
+        [
+            ['text' => $stateText($panelStatus === 'active'), 'callback_data' => "editpanel-statusbuy-{$panelStatus}-{$panel['code_panel']}"],
+            ['text' => 'نمایش پنل', 'callback_data' => 'none'],
+        ],
+        [
+            ['text' => $stateText($testStatus === 'ONTestAccount'), 'callback_data' => "editpanel-statustest-{$testStatus}-{$panel['code_panel']}"],
+            ['text' => 'نمایش تست', 'callback_data' => 'none'],
+        ],
+        [
+            ['text' => $stateText($extendStatus === 'on_extend'), 'callback_data' => "editpanel-stautsextend-{$extendStatus}-{$panel['code_panel']}"],
+            ['text' => 'وضعیت تمدید', 'callback_data' => 'none'],
+        ],
+        [
+            ['text' => $stateText($custom['f'] === '1'), 'callback_data' => "editpanel-customstatusf-{$custom['f']}-{$panel['code_panel']}"],
+            ['text' => 'سرویس دلخواه گروه عادی', 'callback_data' => 'none'],
+        ],
+        [
+            ['text' => $stateText($custom['n'] === '1'), 'callback_data' => "editpanel-customstatusn-{$custom['n']}-{$panel['code_panel']}"],
+            ['text' => 'سرویس دلخواه گروه نماینده', 'callback_data' => 'none'],
+        ],
+        [
+            ['text' => $stateText($custom['n2'] === '1'), 'callback_data' => "editpanel-customstatusn2-{$custom['n2']}-{$panel['code_panel']}"],
+            ['text' => 'سرویس دلخواه گروه ویژه', 'callback_data' => 'none'],
+        ],
+    ]];
+
+    $panelName = htmlspecialchars((string) ($panel['name_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $text = "⚙️ <b>قابلیت‌های پنل {$panelName}</b>\n\n"
+        . "برای روشن یا خاموش کردن هر قابلیت، دکمه وضعیت همان ردیف را انتخاب کنید.";
+
+    return [
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
+    ];
+}
+
 function pasarguardAdminListData($panel, $offset = 0)
 {
     $offset = max(0, (int) $offset);
@@ -158,9 +208,10 @@ function pasarguardAdminDetailData($panel, $admin, $offset = 0)
     $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
     $expiresText = 'خارج از فروش ربات';
     if ($invoice) {
+        $durationSeconds = $invoice['name_product'] === 'سرویس تست' ? 3600 : 86400;
         $expiresAt = (int) $invoice['Service_time'] === 0
             ? 0
-            : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * 86400);
+            : (int) $invoice['time_sell'] + ((int) $invoice['Service_time'] * $durationSeconds);
         $expiresText = $expiresAt > 0 ? jdate('Y/m/d H:i', $expiresAt) : 'نامحدود';
     }
     $text = "👤 <b>اطلاعات نماینده</b>\n\n"
@@ -899,7 +950,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $statusextend = "on_extend";
     $subvip = "offsubvip";
     $stauts_on_holed = "1";
-    $stmt = $pdo->prepare("INSERT INTO marzban_panel (code_panel,name_panel,sublink,config,MethodUsername,TestAccount,status,limit_panel,namecustom,Methodextend,type,conecton,inboundid,agent,inbound_deactive,inboundstatus,url_panel,username_panel,password_panel,time_usertest,val_usertest,linksubx,priceextravolume,priceextratime,pricecustomvolume,pricecustomtime,mainvolume,maxvolume,maintime,maxtime,status_extend,subvip,changeloc,customvolume,on_hold_test,version_panel) VALUES (:code_panel,:name_panel,:sublink,:config,:MethodUsername,:TestAccount,:status,:limit_panel,:namecustom,:Methodextend,:type,:conecton,:inboundid,:agent,:inbound_deactive,:inboundstatus,:url_panel,:username_panel,:password_panel,:val_usertest,:time_usertest,:linksubx,:priceextravolume,:priceextratime,:pricecustomvolume,:pricecustomtime,:mainvolume,:maxvolume,:maintime,:maxtime,:status_extend,:subvip,:changeloc,:customvolume,:on_hold_test,'0')");
+    $stmt = $pdo->prepare("INSERT INTO marzban_panel (code_panel,name_panel,sublink,config,MethodUsername,TestAccount,status,limit_panel,namecustom,Methodextend,type,conecton,inboundid,agent,inbound_deactive,inboundstatus,url_panel,username_panel,password_panel,time_usertest,val_usertest,linksubx,priceextravolume,priceextratime,pricecustomvolume,pricecustomtime,mainvolume,maxvolume,maintime,maxtime,status_extend,subvip,changeloc,customvolume,on_hold_test,version_panel) VALUES (:code_panel,:name_panel,:sublink,:config,:MethodUsername,:TestAccount,:status,:limit_panel,:namecustom,:Methodextend,:type,:conecton,:inboundid,:agent,:inbound_deactive,:inboundstatus,:url_panel,:username_panel,:password_panel,:time_usertest,:val_usertest,:linksubx,:priceextravolume,:priceextratime,:pricecustomvolume,:pricecustomtime,:mainvolume,:maxvolume,:maintime,:maxtime,:status_extend,:subvip,:changeloc,:customvolume,:on_hold_test,'0')");
     $stmt->bindParam(':code_panel', $randomString);
     $stmt->bindParam(':name_panel', $userdata['namepanel'], PDO::PARAM_STR);
     $stmt->bindParam(':sublink', $sublink);
@@ -5004,7 +5055,7 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
         sendmessage($from_id, "❌ پنل نمایندگی پیدا نشد.", $keyboardadmin, 'HTML');
         return;
     }
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Service_location = :panel AND CAST(Service_time AS UNSIGNED) > 0 AND (CAST(time_sell AS UNSIGNED) + CAST(Service_time AS UNSIGNED) * 86400) <= :now AND Status IN ('active','sendedwarn','send_on_hold','disablebyadmin') ORDER BY CAST(time_sell AS UNSIGNED) ASC LIMIT 50");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE Service_location = :panel AND CAST(Service_time AS UNSIGNED) > 0 AND (CAST(time_sell AS UNSIGNED) + CAST(Service_time AS UNSIGNED) * CASE WHEN name_product = 'سرویس تست' THEN 3600 ELSE 86400 END) <= :now AND Status IN ('active','sendedwarn','send_on_hold','disablebyadmin') ORDER BY CAST(time_sell AS UNSIGNED) ASC LIMIT 50");
     $stmt->execute([':panel' => $panel['name_panel'], ':now' => time()]);
     $expiredInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $synced = 0;
@@ -9314,9 +9365,18 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     step('getlocoption', $from_id);
 } elseif ($user['step'] == "getlocoption") {
     update("user", "Processing_value", $text, "id", $from_id);
-    $typepanel = select("marzban_panel", "*", "name_panel", $text, "select")['type'];
+    $selectedPanel = select("marzban_panel", "*", "name_panel", $text, "select");
+    if (!$selectedPanel) {
+        sendmessage($from_id, "❌ پنل انتخاب‌شده پیدا نشد.", $keyboardadmin, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+    $typepanel = $selectedPanel['type'];
     if ($typepanel == "marzban") {
         sendmessage($from_id, $textbotlang['users']['selectoption'], $optionathmarzban, 'HTML');
+    } elseif ($typepanel == "pasarguard_reseller") {
+        $capabilities = pasarguardPanelCapabilitiesData($selectedPanel);
+        sendmessage($from_id, $capabilities['text'], $capabilities['keyboard'], 'HTML');
     } elseif ($typepanel == "x-ui_single") {
         sendmessage($from_id, $textbotlang['users']['selectoption'], $optionathx_ui, 'HTML');
     } elseif ($typepanel == "hiddify") {
@@ -12340,8 +12400,17 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
 
     $text_msg = "⚙️ لطفا پروتکل مورد نظر برای این پنل را انتخاب کنید:\n\n⚠️ نکته: اگر شادوساکس را انتخاب می‌کنید، حتماً تنظیمات اینباند در سرور باید روی Shadowsocks باشد.";
     sendmessage($from_id, $text_msg, $keyboard, 'HTML');
-} elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
+} elseif (in_array($text, ["⚙️ قابلیت‌های پنل", "⚙️ وضعیت قابلیت ها پنل"], true) && $adminrulecheck['rule'] == "administrator") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!$panel) {
+        sendmessage($from_id, "❌ ابتدا یک پنل را انتخاب کنید.", $keyboardadmin, 'HTML');
+        return;
+    }
+    if ($panel['type'] === 'pasarguard_reseller') {
+        $capabilities = pasarguardPanelCapabilitiesData($panel);
+        sendmessage($from_id, $capabilities['text'], $capabilities['keyboard'], 'HTML');
+        return;
+    }
     if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
         update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
         $panel = select("marzban_panel", "*", "code_panel", $panel['code_panel'], "select");
@@ -12491,7 +12560,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     $Bot_Status['inline_keyboard'] = array_values($Bot_Status['inline_keyboard']);
     $Bot_Status = json_encode($Bot_Status);
     sendmessage($from_id, $textbotlang['Admin']['Status']['BotTitle'], $Bot_Status, 'HTML');
-} elseif (preg_match('/^editpanel-(.*)-(.*)-(.*)/', $datain, $dataget)) {
+} elseif (preg_match('/^editpanel-([^-]+)-([^-]+)-([^-]+)$/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
     $type = $dataget[1];
     $value = $dataget[2];
     $code_panel = $dataget[3];
@@ -12561,6 +12630,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     } elseif ($type == "customstatusf") {
         $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
         $customvlume = json_decode($panel['customvolume'], true);
+        $customvlume = is_array($customvlume) ? $customvlume : [];
         if ($value == "1") {
             $valuenew = "0";
         } else {
@@ -12571,6 +12641,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     } elseif ($type == "customstatusn") {
         $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
         $customvlume = json_decode($panel['customvolume'], true);
+        $customvlume = is_array($customvlume) ? $customvlume : [];
         if ($value == "1") {
             $valuenew = "0";
         } else {
@@ -12581,6 +12652,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     } elseif ($type == "customstatusn2") {
         $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
         $customvlume = json_decode($panel['customvolume'], true);
+        $customvlume = is_array($customvlume) ? $customvlume : [];
         if ($value == "1") {
             $valuenew = "0";
         } else {
@@ -12604,6 +12676,15 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         update("marzban_panel", "version_panel", $valuenew, "code_panel", $code_panel);
     }
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
+    if (!$panel) {
+        Editmessagetext($from_id, $message_id, "❌ پنل موردنظر پیدا نشد.", null, 'HTML');
+        return;
+    }
+    if ($panel['type'] === 'pasarguard_reseller') {
+        $capabilities = pasarguardPanelCapabilitiesData($panel);
+        Editmessagetext($from_id, $message_id, $capabilities['text'], $capabilities['keyboard'], 'HTML');
+        return;
+    }
     $customvlume = json_decode($panel['customvolume'], true);
     $statusconfig = [
         'onconfig' => $textbotlang['Admin']['Status']['statuson'],
