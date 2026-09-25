@@ -1992,6 +1992,24 @@ function checktelegramip()
         return false;
     }
 
+    // Docker/reverse-proxy deployments expose the gateway address as
+    // REMOTE_ADDR. Trust X-Forwarded-For only when that direct peer is local
+    // or private, so public clients cannot spoof Telegram source addresses.
+    $isTrustedProxy = $clientIp === '127.0.0.1'
+        || $clientIp === '::1'
+        || filter_var(
+            $clientIp,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        ) === false;
+    if ($isTrustedProxy && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwarded = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $forwardedIp = trim($forwarded[0] ?? '');
+        if (filter_var($forwardedIp, FILTER_VALIDATE_IP)) {
+            $clientIp = $forwardedIp;
+        }
+    }
+
     $telegramIpRanges = [
         ['lower' => '149.154.160.0', 'upper' => '149.154.175.255'],
         ['lower' => '91.108.4.0', 'upper' => '91.108.7.255'],
