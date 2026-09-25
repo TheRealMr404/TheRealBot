@@ -1577,6 +1577,8 @@ function purchasedServiceDisplayName($invoice, $isReseller = false, $includeNote
     $productName = trim((string) ($invoice['name_product'] ?? ''));
     if ($productName === 'سرویس تست') {
         $productName = $isReseller ? 'نمایندگی آزمایشی' : 'سرویس آزمایشی';
+    } elseif (preg_match('/(?:سرویس|حجم)\s+دلخواه/u', $productName)) {
+        $productName = customServiceButtonText($productName);
     } elseif ($isReseller && $productName !== '') {
         $productName = 'پلن ' . preg_replace('/^پلن\s+/u', '', $productName);
     }

@@ -599,7 +599,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 'text' => "پنل نمایندگی من",
                 'callback_data' => "my_pasarguard_panels",
                 'style' => 'primary',
-                'icon_custom_emoji_id' => 5350295774863311434,
+                'icon_custom_emoji_id' => 5359719332542718652,
             ]];
         }
         if ($has_tunnel > 0) {

@@ -1869,7 +1869,7 @@ class ManagePanel
         $invoice = select("invoice", "*", "username", $username, "select");
         if ($code_product == "custom_volume")
             $product = [];
-        if ($panel == false || $product == false) {
+        if ($panel === false || $product === false) {
             return array(
                 'status' => false,
                 'msg' => 'data not found'
@@ -1898,7 +1898,7 @@ class ManagePanel
         //inboud and proxies 
         $inbound_id = isset($panel['inboundid']) ? $panel['inboundid'] : 1;
         $inbounds = is_string($panel['inbounds']) ? json_decode($panel['inbounds']) : "{}";
-        $inbounds = $product['inbounds'] != null ? json_decode($product['inbounds']) : $inbounds;
+        $inbounds = ($product['inbounds'] ?? null) != null ? json_decode($product['inbounds']) : $inbounds;
         if (!in_array($panel['type'], ["WGDashboard", "pasarguard_reseller"], true)) {
             update("invoice", 'user_info', null, "username", $username);
         }
