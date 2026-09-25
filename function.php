@@ -1540,6 +1540,23 @@ function applyPanelAppearanceToButton(array $button, $panel)
     return $button;
 }
 
+function customServiceButtonText($title)
+{
+    $title = trim((string) $title);
+    $plainTitle = preg_replace('/^[\x{200D}\x{2600}-\x{27BF}\x{FE0F}\x{1F000}-\x{1FAFF}\s]+/u', '', $title);
+
+    return trim((string) $plainTitle) !== '' ? trim($plainTitle) : $title;
+}
+
+function customServiceOrderCount($panel, $count)
+{
+    if (is_array($panel) && ($panel['type'] ?? '') === 'pasarguard_reseller') {
+        return 1;
+    }
+
+    return max(1, min(15, (int) $count));
+}
+
 function customServiceLimits($panel, $agent)
 {
     $minVolume = max(1, customServiceAgentNumber($panel, 'mainvolume', $agent, 1));
@@ -1595,7 +1612,8 @@ function customServiceNextVolume($volume, $direction, $minVolume, $maxVolume)
 
 function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0)
 {
-    $count = max(1, min(15, (int)$count));
+    $isPasarguard = is_array($panel) && ($panel['type'] ?? '') === 'pasarguard_reseller';
+    $count = customServiceOrderCount($panel, $count);
     $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
     $dayPrice = customServiceAgentNumber($panel, 'pricecustomtime', $agent, 0);
     $unitPrice = ($volume * $volumePrice) + ($days * $dayPrice);
@@ -1607,14 +1625,15 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
 $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکتور خرید [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
     $text .= "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم:</b> {$volume} گیگابایت\n\n";
     $text .= "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان:</b> {$days} روز\n\n";
-    $text .= "<tg-emoji emoji-id=\"5348421451135336104\">⚙️</tg-emoji> <b>تعداد سفارش:</b> {$count} عدد\n\n";
+    if (!$isPasarguard) {
+        $text .= "<tg-emoji emoji-id=\"5348421451135336104\">⚙️</tg-emoji> <b>تعداد سفارش:</b> {$count} عدد\n\n";
+    }
     if ($discountPercent > 0) {
         $text .= "<tg-emoji emoji-id=\"5348470692935384957\">🏷</tg-emoji> <b>تخفیف:</b> {$discountPercent} درصد\n\n";
     }
     $text .= "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ:</b> " . number_format($total) . " تومان";
 
-    $keyboard = [
-        'inline_keyboard' => [
+    $keyboardRows = [
             [
                 ['text' => 'کاهش', 'callback_data' => 'csi_v_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$volume} گیگابایت", 'callback_data' => 'csi_none', 'style' => 'primary'],
@@ -1625,18 +1644,22 @@ $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکت�
                 ['text' => "{$days} روز", 'callback_data' => 'csi_none', 'style' => 'primary'],
                 ['text' => 'افزایش', 'callback_data' => 'csi_d_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
             ],
-            [
+    ];
+    if (!$isPasarguard) {
+        $keyboardRows[] = [
                 ['text' => 'کاهش', 'callback_data' => 'csi_c_dec', 'icon_custom_emoji_id' => '5382261056078881010'],
                 ['text' => "{$count} عدد", 'callback_data' => 'csi_none', 'style' => 'primary'],
                 ['text' => 'افزایش', 'callback_data' => 'csi_c_inc', 'icon_custom_emoji_id' => '5393194986252542669'],
-            ],
-            [
+        ];
+    }
+    $keyboardRows[] = [
                 ['text' => 'تأیید و پرداخت', 'callback_data' => 'confirmandgetservice', 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
-            ],
-            [
+    ];
+    $keyboardRows[] = [
                 ['text' => 'بازگشت', 'callback_data' => 'backuser', 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
-            ],
-        ],
+    ];
+    $keyboard = [
+        'inline_keyboard' => $keyboardRows,
     ];
 
     return [
@@ -1644,6 +1667,7 @@ $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>فاکت�
         'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
         'unit_price' => $unitPrice,
         'total' => $total,
+        'count' => $count,
     ];
 }
 

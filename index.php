@@ -4889,7 +4889,7 @@ $textinvite
     $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
     $days = $selection['days'];
     $volume = $selection['volume'];
-    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
     $limits = $selection['limits'];
     $direction = $customInvoiceAction[2] == 'inc' ? 1 : -1;
     $notice = null;
@@ -4906,6 +4906,14 @@ $textinvite
             $notice = "زمان مجاز بین {$limits['min_days']} تا {$limits['max_days']} روز است.";
         }
         $days = $newDays;
+    } elseif (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
+        update("user", "Processing_value_four", 1, "id", $from_id);
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => "تعداد سرویس دلخواه پاسارگارد ثابت و برابر یک است.",
+            'show_alert' => true,
+        ]);
+        return;
     } else {
         $newCount = max(1, min(15, $count + $direction));
         if ($newCount == $count) {
@@ -4947,7 +4955,8 @@ $textinvite
         return;
     }
     $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
-    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
+    update("user", "Processing_value_four", $count, "id", $from_id);
     $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, $text, $ManagePanel, $usernameinvoice ?? []);
     update("user", "Processing_value_tow", $username_ac, "id", $from_id);
     $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], $count, $user['pricediscount']);
@@ -6237,7 +6246,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
     }
 
     $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
-    $count = max(1, min(15, (int)$user['Processing_value_four']));
+    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
     update("user", "Processing_value_one", $selection['code'], "id", $from_id);
     update("user", "Processing_value_four", $count, "id", $from_id);
 

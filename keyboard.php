@@ -1062,7 +1062,6 @@ $change_product = json_encode([
 
 $optionPasarguardReseller = json_encode([
     'keyboard' => [
-        [['text' => "⚙️ مدیریت نمایندگی"]],
         [['text' => "⚙️ قابلیت‌های پنل"]],
         [['text' => "👥 فهرست نماینده‌ها"], ['text' => "📊 گزارش فروش"]],
         [['text' => "📦 پلن‌های نمایندگی"]],
@@ -1655,7 +1654,7 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
 
     if ($statuscustom) {
         $customButton = [
-            'text' => $textbotlang['users']['customsellvolume']['title'],
+            'text' => customServiceButtonText($textbotlang['users']['customsellvolume']['title']),
             'callback_data' => $customvolume,
         ];
         $customPanel = select('marzban_panel', '*', 'name_panel', $location, 'select');
@@ -1774,7 +1773,7 @@ function keyboardTimeCategory($name_panel, $agent, $callback_data = "producttime
         $monthkeyboard['inline_keyboard'][] = [['text' => "♻️ تمدید پلن فعلی", 'callback_data' => "exntedagei"]];
     if ($statuscustomvolume == true) {
         $customButton = [
-            'text' => $textbotlang['users']['customsellvolume']['title'],
+            'text' => customServiceButtonText($textbotlang['users']['customsellvolume']['title']),
             'callback_data' => 'customsellvolume',
         ];
         $customPanel = select('marzban_panel', '*', 'name_panel', $name_panel, 'select');

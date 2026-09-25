@@ -4771,18 +4771,8 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "pasarguard_reseller") {
-        $connection = pasarguardCheckConnection($marzban_list_get);
-        if ($connection['ok']) {
-            $roles = pasarguardGetRoles($marzban_list_get);
-            $roleCount = $roles['ok'] ? count($roles['items']) : 0;
-            $salesCount = select('invoice', '*', 'Service_location', $marzban_list_get['name_panel'], 'count');
-            $owner = htmlspecialchars((string) ($connection['data']['username'] ?? $marzban_list_get['username_panel']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $panelName = htmlspecialchars((string) $marzban_list_get['name_panel'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            sendmessage($from_id, "✅ <b>ارتباط با پنل پاسارگارد برقرار است</b>\n\n🖥 <b>نام پنل:</b> {$panelName}\n👤 <b>حساب متصل:</b> <code>{$owner}</code>\n🧩 <b>نقش پیش‌فرض فروش:</b> <code>{$marzban_list_get['inboundid']}</code>\n📋 <b>تعداد نقش‌های پنل:</b> {$roleCount}\n🛍 <b>خریدهای ثبت‌شده:</b> {$salesCount}\n\nگزینه موردنظر را از منوی مدیریت انتخاب کنید.", $optionPasarguardReseller, 'HTML');
-        } else {
-            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            sendmessage($from_id, "❌ <b>ارتباط با پنل پاسارگارد برقرار نشد</b>\n\nجزئیات خطا: <code>{$reason}</code>\n\nاطلاعات ورود یا آدرس پنل را بررسی کنید.", $optionPasarguardReseller, 'HTML');
-        }
+        $dashboard = pasarguardAdminDashboardData($marzban_list_get);
+        sendmessage($from_id, $dashboard['text'], $optionPasarguardReseller, 'HTML');
     } elseif ($marzban_list_get['type'] == "WGDashboard") {
         sendmessage($from_id, $textbotlang['users']['selectoption'], $optionwg, 'HTML');
     } elseif ($marzban_list_get['type'] == "s_ui") {
