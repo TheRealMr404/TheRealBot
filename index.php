@@ -820,13 +820,13 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
             'style' => 'success',
         ], $resellerPanel)];
     }
-    $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
+    $resellerButtons['inline_keyboard'][] = [applyPanelColorToButton([
         'text' => 'تازه‌سازی اطلاعات',
         'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
         'style' => 'primary',
     ], $resellerPanel)];
     if ($resellerInvoice['name_product'] !== 'سرویس تست' && $resellerPanel['status_extend'] === 'on_extend') {
-        $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
+        $resellerButtons['inline_keyboard'][] = [applyPanelColorToButton([
             'text' => 'تمدید نمایندگی',
             'callback_data' => 'extend_' . $resellerInvoice['id_invoice'],
             'style' => 'success',
@@ -2473,6 +2473,7 @@ $textconnect
                 'is_extension' => true,
                 'username' => $nameloc['username'],
                 'colored_adjustments' => false,
+                'value_button_emoji' => false,
             ]
         );
         savedata('save', 'price_product', $renewalInvoice['unit_price']);
@@ -2624,6 +2625,7 @@ $textconnect
             'is_extension' => true,
             'username' => $extensionInvoice['username'],
             'colored_adjustments' => false,
+            'value_button_emoji' => false,
         ]
     );
     savedata('save', 'price_product', $renewalInvoice['unit_price']);

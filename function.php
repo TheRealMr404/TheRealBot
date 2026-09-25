@@ -1567,6 +1567,23 @@ function applyPanelAppearanceToButton(array $button, $panel)
     return $button;
 }
 
+function applyPanelColorToButton(array $button, $panel)
+{
+    if (!is_array($panel)) {
+        return $button;
+    }
+
+    $color = (string) ($panel['panel_color'] ?? '');
+    if (in_array($color, ['primary', 'success', 'danger'], true)) {
+        $button['style'] = $color;
+    } else {
+        unset($button['style']);
+    }
+    unset($button['icon_custom_emoji_id']);
+
+    return $button;
+}
+
 function purchasedServiceDisplayName($invoice, $isReseller = false, $includeNote = false)
 {
     if (!is_array($invoice)) {
@@ -1576,7 +1593,7 @@ function purchasedServiceDisplayName($invoice, $isReseller = false, $includeNote
     $username = trim((string) ($invoice['username'] ?? ''));
     $productName = trim((string) ($invoice['name_product'] ?? ''));
     if ($productName === 'سرویس تست') {
-        $productName = $isReseller ? 'نمایندگی آزمایشی' : 'سرویس آزمایشی';
+        $productName = $isReseller ? 'نمایندگی آزمایشی' : 'سرویس تست';
     } elseif (preg_match('/(?:سرویس|حجم)\s+دلخواه/u', $productName)) {
         $productName = customServiceButtonText($productName);
     } elseif ($isReseller && $productName !== '') {
@@ -1676,6 +1693,7 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
     $backCallback = (string) ($options['back_callback'] ?? 'backuser');
     $isExtension = !empty($options['is_extension']);
     $coloredAdjustments = !array_key_exists('colored_adjustments', $options) || !empty($options['colored_adjustments']);
+    $valueButtonEmoji = !array_key_exists('value_button_emoji', $options) || !empty($options['value_button_emoji']);
     $accountUsername = htmlspecialchars((string) ($options['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $count = customServiceOrderCount($panel, $count);
     $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
@@ -1712,15 +1730,21 @@ function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountP
         $increaseDaysButton['style'] = 'success';
     }
 
+    $volumeValueButton = applyPanelAppearanceToButton(['text' => "{$volume} گیگابایت", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
+    $daysValueButton = applyPanelAppearanceToButton(['text' => "{$days} روز", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
+    if (!$valueButtonEmoji) {
+        unset($volumeValueButton['icon_custom_emoji_id'], $daysValueButton['icon_custom_emoji_id']);
+    }
+
     $keyboardRows = [
             [
                 $decreaseVolumeButton,
-                applyPanelAppearanceToButton(['text' => "{$volume} گیگابایت", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
+                $volumeValueButton,
                 $increaseVolumeButton,
             ],
             [
                 $decreaseDaysButton,
-                applyPanelAppearanceToButton(['text' => "{$days} روز", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel),
+                $daysValueButton,
                 $increaseDaysButton,
             ],
     ];
