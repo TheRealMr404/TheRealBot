@@ -373,3 +373,65 @@ function pasarguardBuildTestDeliveryText($panel, $output, $hours, $volumeMb)
         . "👥 <b>حداکثر کاربران:</b> 1 کاربر\n\n"
         . "⚠️ این حساب آزمایشی است و پس از پایان زمان تعیین‌شده غیرفعال می‌شود.";
 }
+
+function pasarguardBuildCustomerPanelText($panel, $invoice, $data)
+{
+    $panelName = htmlspecialchars((string) ($panel['name_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $dashboardUrl = htmlspecialchars(pasarguardDashboardUrl($panel['url_panel'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $username = htmlspecialchars((string) ($invoice['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $password = htmlspecialchars((string) ($invoice['user_info'] ?? $data['subscription_url'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $productName = htmlspecialchars((string) ($invoice['name_product'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $isTest = ($invoice['name_product'] ?? '') === 'سرویس تست';
+    $accountType = $isTest ? 'آزمایشی' : 'خریداری‌شده';
+
+    $status = (string) ($data['status'] ?? $invoice['Status'] ?? 'Unknown');
+    $statusText = htmlspecialchars(pasarguardStatusLabel($status), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    if ($status === 'Unsuccessful') {
+        $statusText = 'عدم دسترسی به پنل';
+    }
+
+    $expire = (int) ($data['expire'] ?? 0);
+    if ($expire <= 0 && (int) ($invoice['Service_time'] ?? 0) > 0) {
+        $durationSeconds = $isTest ? 3600 : 86400;
+        $expire = (int) ($invoice['time_sell'] ?? 0) + ((int) $invoice['Service_time'] * $durationSeconds);
+    }
+    if ($expire > 0) {
+        $remainingSeconds = max(0, $expire - time());
+        $remainingHours = (int) ceil($remainingSeconds / 3600);
+        $remainingText = $remainingHours >= 24
+            ? (int) ceil($remainingHours / 24) . ' روز'
+            : $remainingHours . ' ساعت';
+        $expireText = date('Y/m/d H:i', $expire) . " ({$remainingText} باقی‌مانده)";
+    } else {
+        $expireText = 'نامحدود';
+    }
+
+    $dataLimit = max(0, (int) ($data['data_limit'] ?? 0));
+    $usedTraffic = max(0, (int) ($data['used_traffic'] ?? 0));
+    $remainingTraffic = $dataLimit > 0 ? max(0, $dataLimit - $usedTraffic) : 0;
+    $limitText = pasarguardHumanBytes($dataLimit);
+    $usedText = pasarguardHumanBytes($usedTraffic, '0 B');
+    $remainingTrafficText = $dataLimit > 0 ? pasarguardHumanBytes($remainingTraffic, '0 B') : 'نامحدود';
+    $maxUsers = (int) ($data['max_users'] ?? 0);
+    $maxUsersText = $maxUsers > 0 ? $maxUsers . ' کاربر' : 'مطابق نقش نمایندگی';
+
+    $text = "🧩 <b>پنل نمایندگی من</b>\n\n"
+        . "🖥 <b>پنل:</b> {$panelName}\n"
+        . "🛍 <b>پلن:</b> {$productName}\n"
+        . "🏷 <b>نوع حساب:</b> {$accountType}\n"
+        . "📊 <b>وضعیت:</b> {$statusText}\n\n"
+        . "🌐 <b>آدرس ورود:</b> <code>{$dashboardUrl}</code>\n"
+        . "👤 <b>نام کاربری:</b> <code>{$username}</code>\n"
+        . "🔑 <b>رمز عبور:</b> <code>{$password}</code>\n\n"
+        . "⏳ <b>اعتبار:</b> {$expireText}\n"
+        . "💾 <b>سقف ترافیک:</b> {$limitText}\n"
+        . "📥 <b>مصرف‌شده:</b> {$usedText}\n"
+        . "📤 <b>باقی‌مانده:</b> {$remainingTrafficText}\n"
+        . "👥 <b>حداکثر کاربران:</b> {$maxUsersText}";
+
+    if ($status === 'Unsuccessful') {
+        $text .= "\n\n⚠️ دریافت اطلاعات زنده ممکن نشد؛ اطلاعات ورود ذخیره‌شده همچنان نمایش داده شده است.";
+    }
+
+    return $text;
+}

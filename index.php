@@ -574,36 +574,48 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $stmt_tun->execute([$from_id]);
     $has_tunnel = $stmt_tun->fetchColumn();
 
-    // اگر پورت تانل خریده باشد و هنوز بین منوها انتخاب نکرده باشد
-    if ($has_tunnel > 0 && $datain != "my_configs_list") {
-        $select_menu = json_encode([
-            'inline_keyboard' => [
-                [
-                    [
-                        'text' => "کانفیگ‌های من",
-                        'callback_data' => "my_configs_list",
-                        'style' => 'primary',
-                        'icon_custom_emoji_id' => 5359719332542718652
-                    ]
-                ],
-                [
-                    [
-                        'text' => "پورت‌های تانل من",
-                        'callback_data' => "my_tunnels_list",
-                        'style' => 'primary',
-                        'icon_custom_emoji_id' => 5359719332542718652
-                    ]
-                ],
-                [
-                    [
-                        'text' => "بازگشت به منوی اصلی",
-                        'callback_data' => 'backuser',
-                        'style' => 'danger',
-                        'icon_custom_emoji_id' => 5258236805890710909
-                    ]
-                ]
-            ]
-        ]);
+    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
+    $stmt_reseller = $pdo->prepare("SELECT COUNT(*) FROM invoice i INNER JOIN marzban_panel p ON p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller' WHERE i.id_user = ? AND LOWER(i.Status) IN ({$resellerStatuses})");
+    $stmt_reseller->execute([$from_id]);
+    $has_pasarguard_reseller = (int) $stmt_reseller->fetchColumn();
+
+    $stmt_configs = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND LOWER(i.Status) IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
+    $stmt_configs->execute([$from_id]);
+    $has_configs = (int) $stmt_configs->fetchColumn();
+
+    // سرویس‌های تخصصی در منوی جدا نمایش داده می‌شوند.
+    if (($has_tunnel > 0 || $has_pasarguard_reseller > 0) && $datain != "my_configs_list") {
+        $serviceMenuRows = [];
+        if ($has_configs > 0) {
+            $serviceMenuRows[] = [[
+                'text' => "کانفیگ‌های من",
+                'callback_data' => "my_configs_list",
+                'style' => 'primary',
+                'icon_custom_emoji_id' => 5359719332542718652,
+            ]];
+        }
+        if ($has_pasarguard_reseller > 0) {
+            $serviceMenuRows[] = [[
+                'text' => "پنل نمایندگی من",
+                'callback_data' => "my_pasarguard_panels",
+                'style' => 'primary',
+            ]];
+        }
+        if ($has_tunnel > 0) {
+            $serviceMenuRows[] = [[
+                'text' => "پورت‌های تانل من",
+                'callback_data' => "my_tunnels_list",
+                'style' => 'primary',
+                'icon_custom_emoji_id' => 5359719332542718652,
+            ]];
+        }
+        $serviceMenuRows[] = [[
+            'text' => "بازگشت به منوی اصلی",
+            'callback_data' => 'backuser',
+            'style' => 'danger',
+            'icon_custom_emoji_id' => 5258236805890710909,
+        ]];
+        $select_menu = json_encode(['inline_keyboard' => $serviceMenuRows], JSON_UNESCAPED_UNICODE);
 
         if ($datain == "backorder") {
             Editmessagetext($from_id, $message_id, "📂 لطفاً بخش مورد نظر خود را جهت مشاهده سرویس‌ها انتخاب کنید:", $select_menu, 'HTML');
@@ -614,7 +626,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     }
 
     // ۲. کد دقیق، اصلی و دست‌نخورده نمایش کانفیگ‌های ربات شما
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
+    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = :id_user AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.Status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
     $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -631,7 +643,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -698,7 +710,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -751,6 +763,80 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboard_json = json_encode($keyboardlists);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
+} elseif ($datain == "my_pasarguard_panels") {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
+    $stmt = $pdo->prepare("SELECT i.*, p.panel_color, p.panel_emoji FROM invoice i INNER JOIN marzban_panel p ON p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller' WHERE i.id_user = :id_user AND LOWER(i.Status) IN ({$resellerStatuses}) ORDER BY i.time_sell DESC");
+    $stmt->execute([':id_user' => $from_id]);
+    $resellerInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$resellerInvoices) {
+        Editmessagetext($from_id, $message_id, "ℹ️ پنل نمایندگی خریداری‌شده‌ای برای حساب شما پیدا نشد.", json_encode([
+            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backorder']]],
+        ], JSON_UNESCAPED_UNICODE), 'HTML');
+        return;
+    }
+
+    $resellerKeyboard = ['inline_keyboard' => []];
+    foreach ($resellerInvoices as $resellerInvoice) {
+        $accountLabel = $resellerInvoice['name_product'] === 'سرویس تست' ? 'تست' : $resellerInvoice['name_product'];
+        $button = applyPanelAppearanceToButton([
+            'text' => $accountLabel . ' | ' . $resellerInvoice['username'],
+            'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
+        ], $resellerInvoice);
+        $resellerKeyboard['inline_keyboard'][] = [$button];
+    }
+    $resellerKeyboard['inline_keyboard'][] = [[
+        'text' => 'بازگشت به سرویس‌های من',
+        'callback_data' => 'backorder',
+        'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909,
+    ]];
+    Editmessagetext($from_id, $message_id, "🧩 <b>پنل‌های نمایندگی من</b>\n\nبرای مشاهده اطلاعات و مدیریت هر نمایندگی، آن را انتخاب کنید.", json_encode($resellerKeyboard, JSON_UNESCAPED_UNICODE), 'HTML');
+} elseif (preg_match('/^my_pasarguard_panel_([a-zA-Z0-9]+)$/', $datain, $resellerMatch)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
+    $stmt = $pdo->prepare("SELECT i.* FROM invoice i WHERE i.id_invoice = :invoice AND i.id_user = :id_user AND LOWER(i.Status) IN ({$resellerStatuses}) AND EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') LIMIT 1");
+    $stmt->execute([':invoice' => $resellerMatch[1], ':id_user' => $from_id]);
+    $resellerInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$resellerInvoice) {
+        Editmessagetext($from_id, $message_id, "❌ این پنل نمایندگی پیدا نشد یا متعلق به حساب شما نیست.", json_encode([
+            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'my_pasarguard_panels']]],
+        ], JSON_UNESCAPED_UNICODE), 'HTML');
+        return;
+    }
+    $resellerPanel = select('marzban_panel', '*', 'name_panel', $resellerInvoice['Service_location'], 'select');
+    if (!$resellerPanel || $resellerPanel['type'] !== 'pasarguard_reseller') {
+        Editmessagetext($from_id, $message_id, "❌ پنل نمایندگی در دسترس نیست.", null, 'HTML');
+        return;
+    }
+    $resellerData = $ManagePanel->DataUser($resellerInvoice['Service_location'], $resellerInvoice['username']);
+    $resellerText = pasarguardBuildCustomerPanelText($resellerPanel, $resellerInvoice, $resellerData);
+    $resellerButtons = ['inline_keyboard' => []];
+    $dashboardUrl = pasarguardDashboardUrl($resellerPanel['url_panel']);
+    if (filter_var($dashboardUrl, FILTER_VALIDATE_URL)) {
+        $resellerButtons['inline_keyboard'][] = [[
+            'text' => 'ورود به پنل نمایندگی',
+            'url' => $dashboardUrl,
+            'style' => 'success',
+        ]];
+    }
+    $resellerButtons['inline_keyboard'][] = [[
+        'text' => 'تازه‌سازی اطلاعات',
+        'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
+        'style' => 'primary',
+    ]];
+    if ($resellerInvoice['name_product'] !== 'سرویس تست' && $resellerPanel['status_extend'] === 'on_extend') {
+        $resellerButtons['inline_keyboard'][] = [[
+            'text' => 'تمدید نمایندگی',
+            'callback_data' => 'extend_' . $resellerInvoice['id_invoice'],
+        ]];
+    }
+    $resellerButtons['inline_keyboard'][] = [[
+        'text' => 'بازگشت به پنل‌های من',
+        'callback_data' => 'my_pasarguard_panels',
+        'style' => 'danger',
+    ]];
+    Editmessagetext($from_id, $message_id, $resellerText, json_encode($resellerButtons, JSON_UNESCAPED_UNICODE), 'HTML');
 } elseif ($datain == "my_tunnels_list") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE user_id = ? AND status != 'removed' ORDER BY id DESC");
     $stmt->execute([$from_id]);
@@ -1370,7 +1456,9 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         }
     }
 } elseif ($datain == 'next_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
+    $countStmt->execute([$from_id]);
+    $numpage = (int) $countStmt->fetchColumn();
     $page = $user['pagenumber'];
     $items_per_page = 20;
     $sum = $user['pagenumber'] * $items_per_page;
@@ -1383,7 +1471,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1443,7 +1531,9 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 } elseif ($datain == 'previous_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
+    $countStmt->execute([$from_id]);
+    $numpage = (int) $countStmt->fetchColumn();
     $page = $user['pagenumber'];
     $items_per_page = 20;
     $sum = $user['pagenumber'] * $items_per_page;
@@ -1456,7 +1546,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $previous_page, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $previous_page, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1637,7 +1727,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
 } elseif (preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
     if ($user['step'] == "getuseragnetservice") {
         $username = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
-        $sql = "SELECT * FROM invoice WHERE (username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%') OR Volume LIKE CONCAT('%',:Volume, '%') OR Service_time LIKE CONCAT('%',:Service_time, '%')) AND id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')";
+        $sql = "SELECT * FROM invoice i WHERE (i.username LIKE CONCAT('%', :username, '%') OR i.note LIKE CONCAT('%', :notes, '%') OR i.Volume LIKE CONCAT('%',:Volume, '%') OR i.Service_time LIKE CONCAT('%',:Service_time, '%')) AND i.id_user = :id_user AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.Status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')";
         $stmt = $pdo->prepare($sql);
         $stmt->bindParam(':username', $username, PDO::PARAM_STR);
         $stmt->bindParam(':Service_time', $username, PDO::PARAM_STR);
@@ -2323,7 +2413,9 @@ $textconnect
     }
 } elseif (preg_match('/extend_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :invoice AND id_user = :id_user LIMIT 1");
+    $stmt->execute([':invoice' => $id_invoice, ':id_user' => $from_id]);
+    $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($nameloc == false) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;

@@ -963,6 +963,8 @@ class ManagePanel
                     'sub_last_user_agent' => null,
                     'uuid' => null,
                     'data_limit_reset' => 'no_reset',
+                    'role_id' => (int) ($admin['role_id'] ?? 0),
+                    'max_users' => (int) ($admin['permission_overrides']['max_users'] ?? $admin['max_users'] ?? 0),
                 ];
             }
         } else {
