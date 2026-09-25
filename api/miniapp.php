@@ -82,6 +82,23 @@ if (!$usercheck || $usercheck['token'] != $tokencheck) {
     http_response_code(403);
     return;
 }
+
+$isUserAllowedPanel = static function ($panel, $user) {
+    if (!is_array($panel) || !is_array($user)) {
+        return false;
+    }
+
+    if (($panel['status'] ?? '') !== 'active' || ($panel['type'] ?? '') === 'Manualsale') {
+        return false;
+    }
+
+    if (!in_array((string)($panel['agent'] ?? ''), [(string)($user['agent'] ?? ''), 'all'], true)) {
+        return false;
+    }
+
+    $hiddenUsers = json_decode((string)($panel['hide_user'] ?? ''), true);
+    return !is_array($hiddenUsers) || !in_array((string)$user['id'], array_map('strval', $hiddenUsers), true);
+};
 switch ($data['actions']) {
     case 'invoices':
         if ($method !== "GET") {
@@ -97,19 +114,29 @@ switch ($data['actions']) {
         $user_id =  $data['user_id'];
         $username = $data['q'];
         $offset = ($page - 1) * $limit;
-        if ($username != null) {
-            $querywhere = " AND username LIKE '%$username%'";
+        $querywhere = '';
+        $searchValue = null;
+        if ($username !== null && $username !== '') {
+            $querywhere = " AND username LIKE :username_search";
+            $searchValue = '%' . $username . '%';
         } else {
-            $querywhere = "";
+            $username = null;
         }
-        $countStmt = $pdo->prepare("SELECT COUNT(*) as total FROM invoice WHERE id_user = '$user_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere");
+        $countStmt = $pdo->prepare("SELECT COUNT(*) as total FROM invoice WHERE id_user = :user_id AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere");
+        $countStmt->bindValue(':user_id', $user_id, PDO::PARAM_INT);
+        if ($searchValue !== null) {
+            $countStmt->bindValue(':username_search', $searchValue, PDO::PARAM_STR);
+        }
         $countStmt->execute();
         $totalItems = $countStmt->fetchColumn();
         $totalPages = ceil($totalItems / $limit);
-        $stmt = $pdo->prepare("SELECT username,note,Service_location FROM invoice WHERE id_user = :user_id AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere  ORDER BY time_sell DESC LIMIT :limit OFFSET :offset ");
+        $stmt = $pdo->prepare("SELECT username,note,Service_location FROM invoice WHERE id_user = :user_id AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') $querywhere ORDER BY time_sell DESC LIMIT :limit OFFSET :offset");
         $stmt->bindValue(':user_id', $user_id, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        if ($searchValue !== null) {
+            $stmt->bindValue(':username_search', $searchValue, PDO::PARAM_STR);
+        }
         $stmt->execute();
         $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $datauser = [];
@@ -396,10 +423,10 @@ switch ($data['actions']) {
             $stmt->execute();
             $category_list = [];
             $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-            if (empty($panel)) {
+            if (!$isUserAllowedPanel($panel, $user_info)) {
                 echo json_encode(array(
                     'status' => false,
-                    'msg' => "panel not fonud!(invalid id_panel)"
+                    'msg' => "panel not available"
                 ));
                 return;
             }
@@ -449,14 +476,16 @@ switch ($data['actions']) {
             }
             $category_time_list = [];
             $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-            if (empty($panel)) {
+            if (!$isUserAllowedPanel($panel, $user_info)) {
                 echo json_encode(array(
                     'status' => false,
-                    'msg' => "panel not fonud!(invalid id_panel)"
+                    'msg' => "panel not available"
                 ));
                 return;
             }
-            $stmt = $pdo->prepare("SELECT (Service_time) FROM product WHERE (Location = '{$panel['name_panel']}' OR Location = '/all') AND  agent = '{$user_info['agent']}'");
+            $stmt = $pdo->prepare("SELECT Service_time FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent");
+            $stmt->bindValue(':location', $panel['name_panel'], PDO::PARAM_STR);
+            $stmt->bindValue(':agent', $user_info['agent'], PDO::PARAM_STR);
             $stmt->execute();
             $montheproduct = array_flip(array_flip($stmt->fetchAll(PDO::FETCH_COLUMN)));
             if (in_array("1", $montheproduct)) {
@@ -582,10 +611,10 @@ switch ($data['actions']) {
         $user_info = select("user", "*", "token", $tokencheck, "select");
         if ($user_info) {
             $panel = select("marzban_panel", "*", "code_panel", $data['id_panel'], "select");
-            if (empty($panel)) {
+            if (!$isUserAllowedPanel($panel, $user_info)) {
                 echo json_encode(array(
                     'status' => false,
-                    'msg' => "panel not fonud!(invalid id_panel)"
+                    'msg' => "panel not available"
                 ));
                 return;
             }
@@ -601,11 +630,27 @@ switch ($data['actions']) {
                     ]);
                     return;
                 }
-                $category_remarks = "AND category = '{$category_remark['remark']}'";
+                $category_remarks = "AND category = :category";
                 $selected_category_id = $category_remark['id'];
             }
-            $time_range_day = $data['time_range_day'] == 0 ? "" : "AND Service_time = '{$data['time_range_day']}'";
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = '{$panel['name_panel']}' OR Location = '/all')AND agent= '{$user_info['agent']}' $category_remarks $time_range_day");
+            $timeRangeDay = (string)$data['time_range_day'];
+            if ($timeRangeDay !== '0' && !ctype_digit($timeRangeDay)) {
+                echo json_encode([
+                    'status' => false,
+                    'msg' => "invalid time range"
+                ]);
+                return;
+            }
+            $time_range_day = $timeRangeDay === '0' ? '' : "AND Service_time = :service_time";
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent $category_remarks $time_range_day");
+            $stmt->bindValue(':location', $panel['name_panel'], PDO::PARAM_STR);
+            $stmt->bindValue(':agent', $user_info['agent'], PDO::PARAM_STR);
+            if (!empty($data['category_id'])) {
+                $stmt->bindValue(':category', $category_remark['remark'], PDO::PARAM_STR);
+            }
+            if ($timeRangeDay !== '0') {
+                $stmt->bindValue(':service_time', (int)$timeRangeDay, PDO::PARAM_INT);
+            }
             $stmt->execute();
             $product_list = [];
             while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -614,9 +659,10 @@ switch ($data['actions']) {
                     $hide_panel = [];
                 }
                 if (in_array($panel['name_panel'], $hide_panel)) continue;
-                $stmts2 = $pdo->prepare("SELECT * FROM invoice WHERE Status != 'Unpaid' AND id_user = '{$user_info['id']}'");
+                $stmts2 = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status != 'Unpaid' AND id_user = :id_user");
+                $stmts2->bindValue(':id_user', $user_info['id'], PDO::PARAM_INT);
                 $stmts2->execute();
-                $countorder = $stmts2->rowCount();
+                $countorder = (int)$stmts2->fetchColumn();
                 if ($result['one_buy_status'] == "1" && $countorder != 0) continue;
                 if (intval($user_info['pricediscount']) != 0) {
                     $resultper = ($result['price_product'] * $user_info['pricediscount']) / 100;
@@ -712,26 +758,42 @@ switch ($data['actions']) {
             return;
         }
         $panel = select("marzban_panel", "*", "code_panel", $data['country_id'], "select");
-        if (empty($panel)) {
+        if (!$isUserAllowedPanel($panel, $usercheck)) {
             http_response_code(500);
             echo json_encode(array(
                 'status' => false,
-                'msg' => "پنل انتخابی موجود نیست."
-            ));
-            return;
-        }
-        if ($panel['status'] == "disable") {
-            http_response_code(500);
-            echo json_encode(array(
-                'status' => false,
-                'msg' => "پنل انتخابی درحال حاضر فعال نیست"
+                'msg' => "پنل انتخابی در دسترس شما نیست."
             ));
             return;
         }
         $user_info = select("user", "*", "token", $tokencheck, "select");
+        if (!$user_info) {
+            http_response_code(403);
+            echo json_encode(['status' => false, 'msg' => "Token invalid"]);
+            return;
+        }
         $usernameinvoice = select("invoice", "username", null, null, "FETCH_COLUMN");
         if (empty($data['custom_service'])) {
-            $product = select("product", "*", "code_product", $data['service_id'], "select");
+            $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') AND agent = :agent LIMIT 1");
+            $productStmt->execute([
+                ':code_product' => (string)$data['service_id'],
+                ':location' => $panel['name_panel'],
+                ':agent' => $user_info['agent'],
+            ]);
+            $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+            if ($product && !empty($product['hide_panel'])) {
+                $hiddenPanels = json_decode($product['hide_panel'], true);
+                if (is_array($hiddenPanels) && in_array($panel['name_panel'], $hiddenPanels, true)) {
+                    $product = false;
+                }
+            }
+            if ($product && $product['one_buy_status'] == '1') {
+                $orderStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status != 'Unpaid' AND id_user = :id_user");
+                $orderStmt->execute([':id_user' => $user_info['id']]);
+                if ((int)$orderStmt->fetchColumn() !== 0) {
+                    $product = false;
+                }
+            }
         } else {
             $statuscustomvolume = json_decode($panel['customvolume'], true)[$user_info['agent']];
             $mainvolume = json_decode($panel['mainvolume'], true);
@@ -742,6 +804,11 @@ switch ($data['actions']) {
             $maintime = $maintime[$user_info['agent']];
             $maxtime = json_decode($panel['maxtime'], true);
             $maxtime = $maxtime[$user_info['agent']];
+            if (intval($statuscustomvolume) !== 1) {
+                http_response_code(403);
+                echo json_encode(['status' => false, 'msg' => "خدمات دلخواه این پنل فعال نیست"]);
+                return;
+            }
             $customsrvice = $data['custom_service'];
             $eextraprice = json_decode($panel['pricecustomvolume'], true);
             $custompricevalue = $eextraprice[$user_info['agent']];

@@ -182,8 +182,35 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     global $pdo, $textbotlang;
     $product = ['inline_keyboard' => []];
     $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
-    $stmt = $pdo->prepare($query);
-    $stmt->execute();
+    $agent = null;
+    $category = null;
+    $serviceTime = null;
+    if (is_string($query) && preg_match("/\\bagent\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+        $agent = $matches[1];
+        if (preg_match("/\\bcategory\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+            $category = $matches[1];
+        }
+        if (preg_match("/\\bService_time\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+            $serviceTime = $matches[1];
+        }
+    }
+    if ($agent === null) {
+        return json_encode(['inline_keyboard' => [[
+            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $backuser, 'style' => 'danger'],
+        ]]]);
+    }
+    $sql = "SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent";
+    $params = [':location' => (string)$location, ':agent' => $agent];
+    if ($category !== null) {
+        $sql .= " AND category = :category";
+        $params[':category'] = $category;
+    }
+    if ($serviceTime !== null) {
+        $sql .= " AND Service_time = :service_time";
+        $params[':service_time'] = $serviceTime;
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $valuetow = $valuetow != null ? "-$valuetow" : "";
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $productlist = json_decode(file_get_contents('product.json'), true);

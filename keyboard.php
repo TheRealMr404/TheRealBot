@@ -1616,8 +1616,45 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     $product = ['inline_keyboard' => []];
     $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
 
-    $stmt = $pdo->prepare($query);
-    $stmt->execute();
+    // Keep the legacy query argument for compatibility, but never execute it
+    // as SQL. Extract only the supported product filters and bind them.
+    $agent = null;
+    $category = null;
+    $serviceTime = null;
+    if (is_string($query) && preg_match("/\\bagent\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+        $agent = $matches[1];
+        if (preg_match("/\\bcategory\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+            $category = $matches[1];
+        }
+        if (preg_match("/\\bService_time\\s*=\\s*'([^']*)'/i", $query, $matches)) {
+            $serviceTime = $matches[1];
+        }
+    }
+
+    if ($agent === null) {
+        return json_encode([
+            'inline_keyboard' => [[
+                ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $backuser, 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909],
+            ]],
+        ]);
+    }
+
+    $sql = "SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent";
+    $params = [
+        ':location' => (string)$location,
+        ':agent' => $agent,
+    ];
+    if ($category !== null) {
+        $sql .= " AND category = :category";
+        $params[':category'] = $category;
+    }
+    if ($serviceTime !== null) {
+        $sql .= " AND Service_time = :service_time";
+        $params[':service_time'] = $serviceTime;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
 
     $valuetow = ($valuetow !== null) ? "-$valuetow" : "";
 
@@ -1697,8 +1734,11 @@ function KeyboardCategory($location, $agent, $backuser = "backuser")
 function keyboardTimeCategory($name_panel, $agent, $callback_data = "producttime_", $callback_data_back = "backuser", $statuscustomvolume = false, $statusbtnextend = false)
 {
     global $pdo, $textbotlang;
-    $stmt = $pdo->prepare("SELECT (Service_time) FROM product WHERE (Location = '$name_panel' OR Location = '/all') AND  agent = '$agent'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT Service_time FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent");
+    $stmt->execute([
+        ':location' => (string)$name_panel,
+        ':agent' => (string)$agent,
+    ]);
     $montheproduct = array_flip(array_flip($stmt->fetchAll(PDO::FETCH_COLUMN)));
     $monthkeyboard = ['inline_keyboard' => []];
     if (in_array("1", $montheproduct)) {

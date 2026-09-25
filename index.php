@@ -5394,7 +5394,12 @@ $textinvite
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '$loc' AND (Location = '{$userdate['name_panel']}'or Location = '/all') LIMIT 1"));
+        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
+        $productStmt->execute([
+            ':code_product' => $loc,
+            ':location' => $userdate['name_panel'],
+        ]);
+        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
     }
     if (!isset($info_product['price_product'])) {
         sendmessage($from_id, "❌ خطایی در تایید  انجام شده است لطفا مراحل پرداخت را مجددا انجام دهید", $keyboard, 'HTML');
@@ -6417,7 +6422,12 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '{$user['Processing_value_one']}' AND (Location = '{$userdate['name_panel']}'or Location = '/all') LIMIT 1"));
+        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
+        $productStmt->execute([
+            ':code_product' => $user['Processing_value_one'],
+            ':location' => $userdate['name_panel'],
+        ]);
+        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
     }
     $result = ($SellDiscountlimit['price'] / 100) * $info_product['price_product'];
 
@@ -6641,7 +6651,12 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '$loc' AND (Location = '{$user['Processing_value']}'or Location = '/all') LIMIT 1"));
+        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
+        $productStmt->execute([
+            ':code_product' => $loc,
+            ':location' => $user['Processing_value'],
+        ]);
+        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
     }
     $randomString = bin2hex(random_bytes(2));
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
@@ -6690,7 +6705,12 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
         $info_product['data_limit_reset'] = "no_reset";
     } else {
-        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '{$user['Processing_value_one']}' AND (Location = '{$user['Processing_value']}'  or Location = '/all') LIMIT 1"));
+        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
+        $productStmt->execute([
+            ':code_product' => $user['Processing_value_one'],
+            ':location' => $user['Processing_value'],
+        ]);
+        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
     }
     if (empty($info_product['price_product']) || empty($info_product['price_product']))
         return;
@@ -8252,7 +8272,13 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
             $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
-            $prodcut = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND agent= '{$user['agent']}' AND code_product = '$codeproduct'"));
+            $productStmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent AND code_product = :code_product LIMIT 1");
+            $productStmt->execute([
+                ':location' => $nameloc['Service_location'],
+                ':agent' => $user['agent'],
+                ':code_product' => $codeproduct,
+            ]);
+            $prodcut = $productStmt->fetch(PDO::FETCH_ASSOC);
         }
         $Confirm_pay = json_encode([
             'inline_keyboard' => [
@@ -8448,7 +8474,13 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
             $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
-            $prodcut = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND agent= '{$user['agent']}' AND code_product = '$codeproduct'"));
+            $productStmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent AND code_product = :code_product LIMIT 1");
+            $productStmt->execute([
+                ':location' => $nameloc['Service_location'],
+                ':agent' => $user['agent'],
+                ':code_product' => $codeproduct,
+            ]);
+            $prodcut = $productStmt->fetch(PDO::FETCH_ASSOC);
         }
         $Confirm_pay = json_encode([
             'inline_keyboard' => [
