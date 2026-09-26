@@ -290,7 +290,8 @@ IP_CACHE="/tmp/.mirza_server_ip"
 
 # ── Telegram panel auto-updater ──────────────────────────────
 # Creates the updater used by the admin-panel button. It synchronizes the
-# installed bot with GitHub main and preserves only config.php.
+# installed bot with GitHub main and preserves only config.php. The bot root is
+# supplied by the calling admin.php, so every installation updates itself.
 install_bot_auto_updater() {
     local updater="/usr/local/sbin/therealbot-update"
     local sudoers="/etc/sudoers.d/therealbot-update"
@@ -299,28 +300,55 @@ install_bot_auto_updater() {
 #!/bin/bash
 set -Eeuo pipefail
 
-BOT_DIR="/var/www/html/mirzaprobotconfig"
 ZIP_URL="https://github.com/TheRealMr404/TheRealBot/archive/refs/heads/main.zip"
-BACKUP_DIR="/var/backups/therealbot"
-LOCK_FILE="/run/lock/therealbot-update.lock"
+WEB_ROOT="/var/www/html"
+REQUESTED_BOT_DIR="${1:-}"
 
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-    echo "UPDATE_ALREADY_RUNNING"
-    exit 20
+[ -n "$REQUESTED_BOT_DIR" ] || {
+    echo "BOT_DIRECTORY_NOT_PROVIDED"
+    exit 22
+}
+
+WEB_ROOT_REAL="$(readlink -f -- "$WEB_ROOT" 2>/dev/null || true)"
+BOT_DIR="$(readlink -f -- "$REQUESTED_BOT_DIR" 2>/dev/null || true)"
+
+[ -n "$WEB_ROOT_REAL" ] && [ -n "$BOT_DIR" ] && [ -d "$BOT_DIR" ] || {
+    echo "BOT_DIRECTORY_NOT_FOUND"
+    exit 22
+}
+
+# Native installations must be direct children of /var/www/html. Resolving the
+# path first also prevents a symlink from escaping the web root.
+BOT_PARENT="$(dirname -- "$BOT_DIR")"
+BOT_NAME="$(basename -- "$BOT_DIR")"
+if [ "$BOT_PARENT" != "$WEB_ROOT_REAL" ] || ! [[ "$BOT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "INVALID_BOT_DIRECTORY"
+    exit 26
 fi
 
-for cmd in curl unzip rsync php tar; do
+for required_file in index.php config.php table.php; do
+    [ -f "$BOT_DIR/$required_file" ] || {
+        echo "INVALID_BOT_INSTALLATION:$required_file"
+        exit 27
+    }
+done
+
+INSTANCE_KEY="$(printf '%s' "$BOT_NAME" | tr -c 'A-Za-z0-9._-' '_')"
+BACKUP_DIR="/var/backups/therealbot/$INSTANCE_KEY"
+LOCK_FILE="/run/lock/therealbot-update-$INSTANCE_KEY.lock"
+
+for cmd in curl unzip rsync php tar flock; do
     command -v "$cmd" >/dev/null 2>&1 || {
         echo "MISSING_COMMAND:$cmd"
         exit 21
     }
 done
 
-[ -d "$BOT_DIR" ] || {
-    echo "BOT_DIRECTORY_NOT_FOUND"
-    exit 22
-}
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "UPDATE_ALREADY_RUNNING"
+    exit 20
+fi
 
 TMP_DIR="$(mktemp -d /tmp/therealbot-update.XXXXXX)"
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -1403,7 +1431,7 @@ EOF
 FROM php:8.2-apache
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cron curl unzip rsync sudo ca-certificates git \
+    cron curl unzip rsync sudo ca-certificates git util-linux \
     libcurl4-openssl-dev libfreetype6-dev libicu-dev libjpeg62-turbo-dev \
     libonig-dev libpng-dev libssh2-1-dev libxml2-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -1428,9 +1456,30 @@ EOF
 #!/bin/bash
 set -Eeuo pipefail
 SOURCE_URL="${MIRZA_SOURCE_URL:?missing source url}"
-BOT_DIR=/var/www/html
+REQUESTED_BOT_DIR="${1:-/var/www/html}"
+BOT_DIR=$(readlink -f -- "$REQUESTED_BOT_DIR" 2>/dev/null || true)
+[ "$BOT_DIR" = "/var/www/html" ] || {
+    echo INVALID_BOT_DIRECTORY
+    exit 26
+}
+for required_file in index.php config.php table.php; do
+    [ -f "$BOT_DIR/$required_file" ] || {
+        echo "INVALID_BOT_INSTALLATION:$required_file"
+        exit 27
+    }
+done
 TMP_DIR=$(mktemp -d /tmp/mirza-container-update.XXXXXX)
 BACKUP_DIR=/var/backups/therealbot
+LOCK_FILE=/run/lock/therealbot-update.lock
+command -v flock >/dev/null 2>&1 || {
+    echo MISSING_COMMAND:flock
+    exit 21
+}
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo UPDATE_ALREADY_RUNNING
+    exit 20
+fi
 STAMP=$(date +%Y%m%d_%H%M%S)
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
@@ -2015,6 +2064,7 @@ function show_help_screen() {
     _kv "remove" "${C_DIM}Remove Mirza and its services${CR}"
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
+    _kv "updater-refresh" "${C_DIM}Reinstall the admin-panel auto-updater${CR}"
     _kv "bot-add" "${C_DIM}Install a new isolated Docker bot${CR}"
     _kv "bot-list" "${C_DIM}List Docker bot instances${CR}"
     _kv "bot-update" "${C_DIM}Backup and update one Docker bot${CR}"
@@ -3274,6 +3324,7 @@ print_usage() {
     remove             Remove Mirza
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
+    updater-refresh    Reinstall the admin-panel auto-updater
     bot-add            Add an isolated Docker bot
     bot-list           List Docker bots
     bot-update         Backup and update a Docker bot
@@ -3307,6 +3358,7 @@ print_usage() {
     mirza install --name myvpnbot --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
     mirza update --channel release
     mirza update --version 0.1.6
+    mirza updater-refresh
     mirza bot-add --id shop1 --name ShopBot --token TOKEN --admin 111 --domain shop.example.com
     mirza bot-add --id shop2 --name ShopBot2 --token TOKEN --admin 111 --domain shop2.example.com --source-dir /path/to/custom-source
     mirza bot-backup --id shop1 --retention 14
@@ -3319,7 +3371,7 @@ process_arguments() {
     local cmd="menu"
     # First non-flag token is the command
     case "$1" in
-        install|update|remove|migrate|renew|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
+        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
         -h|--help) print_usage; exit 0 ;;
         "") cmd="menu" ;;
         --*) cmd="menu" ;;            # only flags given -> menu, but still parse flags
@@ -3359,6 +3411,11 @@ process_arguments() {
         remove)  remove_bot ;;
         migrate) migrate_to_pro ;;
         renew)   renew_ssl ;;
+        updater-refresh)
+            install_bot_auto_updater \
+                && echo "Admin-panel auto-updater refreshed successfully." \
+                || { echo "Failed to refresh the admin-panel auto-updater."; return 1; }
+            ;;
         bot-add) docker_bot_add ;;
         bot-list) docker_bot_list ;;
         bot-update) docker_bot_update "$ARG_ID" ;;

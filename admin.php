@@ -9335,9 +9335,36 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
         'HTML'
     );
 
+    $botRoot = realpath(__DIR__);
+    $requiredBotFiles = ['index.php', 'config.php', 'table.php'];
+    $invalidBotRoot = $botRoot === false;
+
+    if (!$invalidBotRoot) {
+        foreach ($requiredBotFiles as $requiredBotFile) {
+            if (!is_file($botRoot . DIRECTORY_SEPARATOR . $requiredBotFile)) {
+                $invalidBotRoot = true;
+                break;
+            }
+        }
+    }
+
+    if ($invalidBotRoot) {
+        sendmessage(
+            $from_id,
+            "❌ مسیر نصب این ربات قابل تشخیص نیست. فایل‌های اصلی ربات را بررسی کنید.",
+            $keyboardadmin,
+            'HTML'
+        );
+        step('home', $from_id);
+        return;
+    }
+
     $updateOutput = [];
     $updateExitCode = 0;
-    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
+    $updateCommand = 'sudo -n /usr/local/sbin/therealbot-update '
+        . escapeshellarg($botRoot)
+        . ' 2>&1';
+    exec($updateCommand, $updateOutput, $updateExitCode);
 
     $updateResult = trim(implode("\n", $updateOutput));
     $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
