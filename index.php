@@ -9644,5 +9644,4 @@ if (isset($update['message']['successful_payment'])) {
 if (in_array($from_id, $admin_ids))
     require_once 'admin.php';
 
-$pdo = null;
-$connect->close();
+mirzaCloseDatabaseConnections();

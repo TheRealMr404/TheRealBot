@@ -4,20 +4,28 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 
-set_time_limit(0);
+set_time_limit(55);
 ini_set('memory_limit', '256M');
 
 $info_path = __DIR__ . '/info';
 $users_path = __DIR__ . '/users.json';
+$lock_path = __DIR__ . '/.sendmessage.lock';
+$lock_handle = fopen($lock_path, 'c');
+if ($lock_handle === false || !flock($lock_handle, LOCK_EX | LOCK_NB)) {
+    return;
+}
+register_shutdown_function(static function () use ($lock_handle) {
+    flock($lock_handle, LOCK_UN);
+    fclose($lock_handle);
+});
+$deadline = microtime(true) + 45;
 
-while (true) {
-    if (is_file($info_path) && is_file($users_path)) {
+if (is_file($info_path) && is_file($users_path)) {
         $info = json_decode(file_get_contents($info_path), true);
         $userid = json_decode(file_get_contents($users_path), true);
 
         if (!is_array($info)) {
-            sleep(2);
-            continue;
+            return;
         }
 
         if (!isset($info['count_success'])) $info['count_success'] = 0;
@@ -40,8 +48,7 @@ while (true) {
                 sendmessage($info['id_admin'], $final_report, null, 'HTML');
                 @unlink($users_path);
             }
-            sleep(2);
-            continue;
+            return;
         }
 
         $datatextbotget = select("textbot", "*", null, null, "fetchAll");
@@ -91,10 +98,15 @@ while (true) {
             ]);
         }
 
-        $batch_size = min(200, $count_remein);
+        $batch_size = min(50, $count_remein);
         $current_batch = array_slice($userid, 0, $batch_size);
+        $processed_count = 0;
 
         foreach ($current_batch as $item) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            $processed_count++;
             $target_chat_id = is_array($item) ? ($item['id'] ?? null) : (is_object($item) ? ($item->id ?? null) : $item);
             if (empty($target_chat_id)) continue;
 
@@ -161,7 +173,7 @@ while (true) {
             usleep(50000);
         }
 
-        array_splice($userid, 0, $batch_size);
+        array_splice($userid, 0, $processed_count);
 
         if (count($userid) > 0) {
             file_put_contents($users_path, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
@@ -185,7 +197,4 @@ while (true) {
             file_put_contents($info_path, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             @unlink($users_path);
         }
-    } else {
-        sleep(2);
-    }
 }
