@@ -302,7 +302,9 @@ set -Eeuo pipefail
 
 ZIP_URL="https://github.com/TheRealMr404/TheRealBot/archive/refs/heads/main.zip"
 WEB_ROOT="/var/www/html"
-REQUESTED_BOT_DIR="${1:-}"
+# Older admin.php versions do not pass a target argument. Apache/PHP starts the
+# command in that bot's directory, so its working directory bootstraps the first update.
+REQUESTED_BOT_DIR="${1:-$(pwd -P)}"
 
 [ -n "$REQUESTED_BOT_DIR" ] || {
     echo "BOT_DIRECTORY_NOT_PROVIDED"
