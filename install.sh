@@ -302,28 +302,130 @@ set -Eeuo pipefail
 
 ZIP_URL="https://github.com/TheRealMr404/TheRealBot/archive/refs/heads/main.zip"
 WEB_ROOT="/var/www/html"
-# Older admin.php versions do not pass a target argument. Apache/PHP starts the
-# command in that bot's directory, so its working directory bootstraps the first update.
-REQUESTED_BOT_DIR="${1:-$(pwd -P)}"
+
+for cmd in awk basename curl cut dirname find flock grep php readlink rsync sha256sum tar tr unzip; do
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "MISSING_COMMAND:$cmd"
+        exit 21
+    }
+done
+
+bot_installation_exists() {
+    local candidate="$1"
+    [ -n "$candidate" ] && [ -d "$candidate" ] \
+        && [ -f "$candidate/index.php" ] \
+        && [ -f "$candidate/config.php" ] \
+        && [ -f "$candidate/table.php" ]
+}
+
+apache_document_roots() {
+    local config
+    [ -d /etc/apache2/sites-enabled ] || return 0
+    while IFS= read -r config; do
+        awk '
+            tolower($1) == "documentroot" {
+                root = $2
+                gsub(/^"|"$/, "", root)
+                if (root != "") print root
+            }
+        ' "$config" 2>/dev/null
+    done < <(find -L /etc/apache2/sites-enabled -maxdepth 1 -type f -name '*.conf' -print 2>/dev/null)
+}
+
+apache_document_root_for_host() {
+    local requested_host="${1%%:*}" config
+    [ -n "$requested_host" ] && [ -d /etc/apache2/sites-enabled ] || return 1
+    while IFS= read -r config; do
+        awk -v wanted="$requested_host" '
+            function clean(value) { gsub(/^"|"$/, "", value); return value }
+            tolower($1) ~ /^<virtualhost/ { inside = 1; matched = 0; root = ""; next }
+            inside && tolower($1) == "servername" && tolower(clean($2)) == tolower(wanted) { matched = 1 }
+            inside && tolower($1) == "serveralias" {
+                for (i = 2; i <= NF; i++) if (tolower(clean($i)) == tolower(wanted)) matched = 1
+            }
+            inside && tolower($1) == "documentroot" { root = clean($2) }
+            inside && tolower($1) == "</virtualhost>" {
+                if (matched && root != "") print root
+                inside = 0
+            }
+        ' "$config" 2>/dev/null
+    done < <(find -L /etc/apache2/sites-enabled -maxdepth 1 -type f -name '*.conf' -print 2>/dev/null)
+}
+
+is_allowed_bot_directory() {
+    local target="$1" configured configured_real web_root_real
+    web_root_real="$(readlink -f -- "$WEB_ROOT" 2>/dev/null || true)"
+    if [ -n "$web_root_real" ]; then
+        case "$target" in
+            "$web_root_real"/*) return 0 ;;
+        esac
+    fi
+
+    while IFS= read -r configured; do
+        configured_real="$(readlink -f -- "$configured" 2>/dev/null || true)"
+        [ -n "$configured_real" ] && [ "$configured_real" = "$target" ] && return 0
+    done < <(apache_document_roots)
+    return 1
+}
+
+REQUESTED_BOT_DIR="${1:-}"
+
+# Compatibility for bots whose old admin.php still invokes the updater without
+# a path. Request variables are preferred, then Apache's host mapping, then cwd.
+if [ -z "$REQUESTED_BOT_DIR" ]; then
+    if [ -n "${SCRIPT_FILENAME:-}" ]; then
+        candidate="$(dirname -- "$SCRIPT_FILENAME")"
+        bot_installation_exists "$candidate" && REQUESTED_BOT_DIR="$candidate"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ] && bot_installation_exists "${DOCUMENT_ROOT:-}"; then
+        REQUESTED_BOT_DIR="$DOCUMENT_ROOT"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ] && [ -n "${HTTP_HOST:-${SERVER_NAME:-}}" ]; then
+        while IFS= read -r candidate; do
+            if bot_installation_exists "$candidate"; then
+                REQUESTED_BOT_DIR="$candidate"
+                break
+            fi
+        done < <(apache_document_root_for_host "${HTTP_HOST:-${SERVER_NAME:-}}")
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ]; then
+        legacy_candidate=""
+        legacy_count=0
+        declare -A seen_legacy_roots=()
+        while IFS= read -r candidate; do
+            candidate="$(readlink -f -- "$candidate" 2>/dev/null || true)"
+            [ -n "$candidate" ] || continue
+            [ -z "${seen_legacy_roots[$candidate]:-}" ] || continue
+            seen_legacy_roots["$candidate"]=1
+            if bot_installation_exists "$candidate" \
+                && [ -f "$candidate/admin.php" ] \
+                && ! grep -qF '$botRoot = realpath(__DIR__);' "$candidate/admin.php"; then
+                legacy_candidate="$candidate"
+                legacy_count=$((legacy_count + 1))
+            fi
+        done < <(apache_document_roots)
+        [ "$legacy_count" -eq 1 ] && REQUESTED_BOT_DIR="$legacy_candidate"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ]; then
+        candidate="$(pwd -P)"
+        bot_installation_exists "$candidate" && REQUESTED_BOT_DIR="$candidate"
+    fi
+fi
 
 [ -n "$REQUESTED_BOT_DIR" ] || {
-    echo "BOT_DIRECTORY_NOT_PROVIDED"
+    echo "BOT_DIRECTORY_NOT_DETECTED"
     exit 22
 }
 
-WEB_ROOT_REAL="$(readlink -f -- "$WEB_ROOT" 2>/dev/null || true)"
 BOT_DIR="$(readlink -f -- "$REQUESTED_BOT_DIR" 2>/dev/null || true)"
 
-[ -n "$WEB_ROOT_REAL" ] && [ -n "$BOT_DIR" ] && [ -d "$BOT_DIR" ] || {
+[ -n "$BOT_DIR" ] && [ -d "$BOT_DIR" ] || {
     echo "BOT_DIRECTORY_NOT_FOUND"
     exit 22
 }
 
-# Native installations must be direct children of /var/www/html. Resolving the
-# path first also prevents a symlink from escaping the web root.
-BOT_PARENT="$(dirname -- "$BOT_DIR")"
 BOT_NAME="$(basename -- "$BOT_DIR")"
-if [ "$BOT_PARENT" != "$WEB_ROOT_REAL" ] || ! [[ "$BOT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+if ! is_allowed_bot_directory "$BOT_DIR"; then
     echo "INVALID_BOT_DIRECTORY"
     exit 26
 fi
@@ -335,16 +437,11 @@ for required_file in index.php config.php table.php; do
     }
 done
 
-INSTANCE_KEY="$(printf '%s' "$BOT_NAME" | tr -c 'A-Za-z0-9._-' '_')"
+INSTANCE_SLUG="$(printf '%s' "$BOT_NAME" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-48)"
+INSTANCE_HASH="$(printf '%s' "$BOT_DIR" | sha256sum | cut -c1-12)"
+INSTANCE_KEY="${INSTANCE_SLUG}_${INSTANCE_HASH}"
 BACKUP_DIR="/var/backups/therealbot/$INSTANCE_KEY"
 LOCK_FILE="/run/lock/therealbot-update-$INSTANCE_KEY.lock"
-
-for cmd in curl unzip rsync php tar flock; do
-    command -v "$cmd" >/dev/null 2>&1 || {
-        echo "MISSING_COMMAND:$cmd"
-        exit 21
-    }
-done
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
