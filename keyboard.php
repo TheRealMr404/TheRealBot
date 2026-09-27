@@ -440,19 +440,19 @@ $step_payment['inline_keyboard'][] = [
     ['text' => "بستن لیست", 'callback_data' => "colselist", 'style' => 'danger', 'icon_custom_emoji_id' => 5875082500023258804]
 ];
 $payment_gateway_catalog = [
-    [['text' => $datatextbot['carttocart'] ?: 'کارت به کارت', 'callback_data' => 'cart_to_offline', 'style' => 'primary', 'icon_custom_emoji_id' => '5789532541102855208', 'gateway_key' => 'cart_to_offline']],
-    [['text' => $datatextbot['textnowpayment'] ?: 'Plisio', 'callback_data' => 'plisio', 'style' => 'primary']],
-    [['text' => $datatextbot['textsnowpayment'] ?: 'NowPayments', 'callback_data' => 'nowpayment', 'style' => 'primary']],
-    [['text' => $datatextbot['textnowpaymenttron'] ?: 'ارز دیجیتال آفلاین', 'callback_data' => 'offline_crypto_pay', 'style' => 'primary']],
-    [['text' => $datatextbot['iranpay2'] ?: 'تتراپی', 'callback_data' => 'iranpay1', 'style' => 'primary']],
-    [['text' => $datatextbot['iranpay3'] ?: 'ترونادو', 'callback_data' => 'iranpay2', 'style' => 'primary']],
-    [['text' => $datatextbot['iranpay1'] ?: 'درگاه ارزی ریالی سوم', 'callback_data' => 'iranpay3', 'style' => 'primary']],
-    [['text' => $datatextbot['aqayepardakht'] ?: 'آقای پرداخت', 'callback_data' => 'aqayepardakht', 'style' => 'primary']],
-    [['text' => $datatextbot['zarinpal'] ?: 'زرین‌پال', 'callback_data' => 'zarinpal', 'style' => 'primary']],
-    [['text' => $datatextbot['textpaymentnotverify'] ?: 'درگاه مستقیم', 'callback_data' => 'paymentnotverify', 'style' => 'primary']],
-    [['text' => $datatextbot['text_star_telegram'] ?: 'استارز تلگرام', 'callback_data' => 'startelegrams', 'style' => 'primary']],
-    [['text' => $aban_gateway_title, 'callback_data' => 'pay_abangateway', 'style' => 'primary']],
-    [['text' => $cubepay_title, 'callback_data' => 'pay_cubepay', 'style' => 'primary']],
+    [['text' => ($datatextbot['carttocart'] ?? '') ?: 'کارت به کارت', 'callback_data' => 'cart_to_offline', 'style' => 'primary', 'icon_custom_emoji_id' => '5789532541102855208', 'gateway_key' => 'cart_to_offline', 'gateway_enabled' => $PaySettingcard === 'oncard']],
+    [['text' => ($datatextbot['textnowpayment'] ?? '') ?: 'Plisio', 'callback_data' => 'plisio', 'style' => 'primary', 'gateway_enabled' => $PaySettingnow === 'onnowpayment']],
+    [['text' => ($datatextbot['textsnowpayment'] ?? '') ?: 'NowPayments', 'callback_data' => 'nowpayment', 'style' => 'primary', 'gateway_enabled' => $payment_status_nowpayment === '1']],
+    [['text' => ($datatextbot['textnowpaymenttron'] ?? '') ?: 'ارز دیجیتال آفلاین', 'callback_data' => 'offline_crypto_pay', 'style' => 'primary', 'gateway_enabled' => $affilnecurrency === 'ondigi']],
+    [['text' => ($datatextbot['iranpay2'] ?? '') ?: 'تتراپی', 'callback_data' => 'iranpay1', 'style' => 'primary', 'gateway_enabled' => $Swapino === 'onSwapinoBot']],
+    [['text' => ($datatextbot['iranpay3'] ?? '') ?: 'ترونادو', 'callback_data' => 'iranpay2', 'style' => 'primary', 'gateway_enabled' => $trnadoo === 'onternado']],
+    [['text' => ($datatextbot['iranpay1'] ?? '') ?: 'درگاه ارزی ریالی سوم', 'callback_data' => 'iranpay3', 'style' => 'primary', 'gateway_enabled' => $arzireyali3 === 'oniranpay3']],
+    [['text' => ($datatextbot['aqayepardakht'] ?? '') ?: 'آقای پرداخت', 'callback_data' => 'aqayepardakht', 'style' => 'primary', 'gateway_enabled' => $PaySettingaqayepardakht === 'onaqayepardakht']],
+    [['text' => ($datatextbot['zarinpal'] ?? '') ?: 'زرین‌پال', 'callback_data' => 'zarinpal', 'style' => 'primary', 'gateway_enabled' => $zarinpal === 'onzarinpal']],
+    [['text' => ($datatextbot['textpaymentnotverify'] ?? '') ?: 'درگاه مستقیم', 'callback_data' => 'paymentnotverify', 'style' => 'primary', 'gateway_enabled' => $paymentstatussnotverify === 'onverifypay']],
+    [['text' => ($datatextbot['text_star_telegram'] ?? '') ?: 'استارز تلگرام', 'callback_data' => 'startelegrams', 'style' => 'primary', 'gateway_enabled' => (int)$paymentsstartelegram === 1]],
+    [['text' => $aban_gateway_title, 'callback_data' => 'pay_abangateway', 'style' => 'primary', 'gateway_enabled' => $statusabangateway === 'onabangateway']],
+    [['text' => $cubepay_title, 'callback_data' => 'pay_cubepay', 'style' => 'primary', 'gateway_enabled' => $statuscubepay === 'oncubepay']],
 ];
 $step_payment['inline_keyboard'] = applyPaymentGatewayAppearance(
     $step_payment['inline_keyboard'],

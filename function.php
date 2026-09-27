@@ -1633,6 +1633,33 @@ function flattenPaymentGatewayButtons(array $items)
     return $buttons;
 }
 
+function paymentGatewayKeysFromButtons(array $items)
+{
+    $keys = [];
+    foreach (flattenPaymentGatewayButtons($items) as $button) {
+        if (($button['callback_data'] ?? '') === 'colselist') {
+            continue;
+        }
+        $gatewayKey = paymentGatewayButtonKey($button);
+        if ($gatewayKey !== '') {
+            $keys[$gatewayKey] = true;
+        }
+    }
+    return $keys;
+}
+
+function setActivePaymentGatewayButtons(array $items)
+{
+    $GLOBALS['payment_gateway_active_keys'] = paymentGatewayKeysFromButtons($items);
+}
+
+function getActivePaymentGatewayKeys()
+{
+    return array_key_exists('payment_gateway_active_keys', $GLOBALS)
+        ? $GLOBALS['payment_gateway_active_keys']
+        : null;
+}
+
 function registerPaymentGatewayButtons(array $items)
 {
     global $pdo;
@@ -1728,15 +1755,26 @@ function registerPaymentGatewayButtons(array $items)
     }
 }
 
-function getPaymentGatewayAppearances()
+function getPaymentGatewayAppearances($activeOnly = false)
 {
     global $pdo;
     if (!ensurePaymentGatewayAppearanceTable()) {
         return [];
     }
     try {
-        return $pdo->query('SELECT * FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC')
+        $rows = $pdo->query('SELECT * FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC')
             ->fetchAll(PDO::FETCH_ASSOC);
+        if (!$activeOnly) {
+            return $rows;
+        }
+
+        $activeKeys = getActivePaymentGatewayKeys();
+        if ($activeKeys === null) {
+            return $rows;
+        }
+        return array_values(array_filter($rows, static function ($row) use ($activeKeys) {
+            return isset($activeKeys[$row['gateway_key']]);
+        }));
     } catch (Throwable $e) {
         error_log('Unable to load payment gateway appearances: ' . $e->getMessage());
         return [];
@@ -1794,9 +1832,18 @@ function movePaymentGatewayAppearance($id, $direction)
     }
     try {
         $pdo->beginTransaction();
-        $rows = $pdo->query('SELECT id FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC FOR UPDATE')
-            ->fetchAll(PDO::FETCH_COLUMN);
-        $currentIndex = array_search((string)(int)$id, array_map('strval', $rows), true);
+        $rows = $pdo->query('SELECT id, gateway_key, sort_order FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC FOR UPDATE')
+            ->fetchAll(PDO::FETCH_ASSOC);
+        $activeKeys = getActivePaymentGatewayKeys();
+        if ($activeKeys !== null) {
+            $rows = array_values(array_filter($rows, static function ($row) use ($activeKeys) {
+                return isset($activeKeys[$row['gateway_key']]);
+            }));
+        }
+        $rowIds = array_map(static function ($row) {
+            return (string)(int)$row['id'];
+        }, $rows);
+        $currentIndex = array_search((string)(int)$id, $rowIds, true);
         if ($currentIndex === false) {
             $pdo->rollBack();
             return false;
@@ -1806,13 +1853,11 @@ function movePaymentGatewayAppearance($id, $direction)
             $pdo->rollBack();
             return true;
         }
-        $moving = $rows[$currentIndex];
-        $rows[$currentIndex] = $rows[$targetIndex];
-        $rows[$targetIndex] = $moving;
+        $current = $rows[$currentIndex];
+        $target = $rows[$targetIndex];
         $stmt = $pdo->prepare('UPDATE payment_gateway_appearance SET sort_order = :sort_order WHERE id = :id');
-        foreach (array_values($rows) as $index => $rowId) {
-            $stmt->execute([':sort_order' => ($index + 1) * 10, ':id' => (int)$rowId]);
-        }
+        $stmt->execute([':sort_order' => (int)$target['sort_order'], ':id' => (int)$current['id']]);
+        $stmt->execute([':sort_order' => (int)$current['sort_order'], ':id' => (int)$target['id']]);
         $pdo->commit();
         return true;
     } catch (Throwable $e) {
@@ -1826,6 +1871,13 @@ function movePaymentGatewayAppearance($id, $direction)
 
 function applyPaymentGatewayAppearance(array $rows, array $catalog = [])
 {
+    $enabledCatalog = [];
+    foreach (flattenPaymentGatewayButtons($catalog) as $button) {
+        if (!empty($button['gateway_enabled'])) {
+            $enabledCatalog[] = $button;
+        }
+    }
+    setActivePaymentGatewayButtons(array_merge($rows, $enabledCatalog));
     registerPaymentGatewayButtons(array_merge($catalog, $rows));
 
     $appearanceMap = [];
@@ -1847,10 +1899,12 @@ function applyPaymentGatewayAppearance(array $rows, array $catalog = [])
             }
             if (($button['callback_data'] ?? '') === 'colselist') {
                 unset($button['gateway_key']);
+                unset($button['gateway_enabled']);
                 continue;
             }
             $gatewayKey = paymentGatewayButtonKey($button);
             unset($button['gateway_key']);
+            unset($button['gateway_enabled']);
             if ($gatewayKey === '' || !isset($appearanceMap[$gatewayKey])) {
                 continue;
             }

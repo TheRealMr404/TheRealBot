@@ -292,7 +292,7 @@ function pasarguardPlanOverviewData($panel)
 
 function paymentGatewayAppearanceListData()
 {
-    $gateways = getPaymentGatewayAppearances();
+    $gateways = getPaymentGatewayAppearances(true);
     $keyboard = ['inline_keyboard' => []];
     $lastIndex = count($gateways) - 1;
 
@@ -320,17 +320,17 @@ function paymentGatewayAppearanceListData()
     }
 
     $keyboard['inline_keyboard'][] = [[
-        'text' => 'بازگشت به پنل مدیریت',
+        'text' => '🔙 بازگشت به پنل مدیریت',
         'callback_data' => 'admin',
         'style' => 'danger',
     ]];
 
-    $text = "<b>شخصی‌سازی درگاه‌های پرداخت</b>\n\n"
-        . "برای تغییر رنگ یا ایموجی، نام درگاه را انتخاب کنید.\n"
-        . "با دکمه‌های بالا و پایین، ترتیب نمایش درگاه‌ها برای کاربران تغییر می‌کند.\n\n"
-        . "درگاه‌های جدید پس از اضافه‌شدن به فهرست پرداخت، خودکار در این بخش نمایش داده می‌شوند.";
+    $text = "🎨 <b>شخصی‌سازی درگاه‌های فعال</b>\n\n"
+        . "برای تغییر رنگ یا ایموجی، روی نام درگاه بزنید.\n"
+        . "با فلش‌ها می‌توانید ترتیب نمایش برای کاربران را تغییر دهید.\n\n"
+        . "فقط درگاه‌های روشن نمایش داده می‌شوند.";
     if (!$gateways) {
-        $text .= "\n\nهنوز هیچ درگاهی شناسایی نشده است.";
+        $text .= "\n\n⚠️ در حال حاضر هیچ درگاه فعالی وجود ندارد.";
     }
 
     return [
@@ -365,23 +365,19 @@ function paymentGatewayAppearanceDetailData($gateway)
     $keyboard = ['inline_keyboard' => [
         [$preview],
         [
-            ['text' => 'آبی', 'callback_data' => "pgcolor_{$gatewayId}_primary", 'style' => 'primary'],
-            ['text' => 'سبز', 'callback_data' => "pgcolor_{$gatewayId}_success", 'style' => 'success'],
+            ['text' => '🔵 آبی', 'callback_data' => "pgcolor_{$gatewayId}_primary", 'style' => 'primary'],
+            ['text' => '🟢 سبز', 'callback_data' => "pgcolor_{$gatewayId}_success", 'style' => 'success'],
         ],
         [
-            ['text' => 'بی‌رنگ', 'callback_data' => "pgcolor_{$gatewayId}_secondary"],
-            ['text' => 'قرمز', 'callback_data' => "pgcolor_{$gatewayId}_danger", 'style' => 'danger'],
+            ['text' => '⚪ بی‌رنگ', 'callback_data' => "pgcolor_{$gatewayId}_secondary"],
+            ['text' => '🔴 قرمز', 'callback_data' => "pgcolor_{$gatewayId}_danger", 'style' => 'danger'],
         ],
         [
-            ['text' => 'حذف ایموجی', 'callback_data' => "pgemoji_remove_{$gatewayId}"],
-            ['text' => 'تنظیم ایموجی پریمیوم', 'callback_data' => "pgemoji_{$gatewayId}"],
-        ],
-        [
-            ['text' => '⬇️', 'callback_data' => "pgmove_detail_down_{$gatewayId}"],
-            ['text' => '⬆️', 'callback_data' => "pgmove_detail_up_{$gatewayId}"],
+            ['text' => '🗑 حذف ایموجی', 'callback_data' => "pgemoji_remove_{$gatewayId}"],
+            ['text' => '✨ تنظیم ایموجی پریمیوم', 'callback_data' => "pgemoji_{$gatewayId}"],
         ],
         [[
-            'text' => 'بازگشت به فهرست درگاه‌ها',
+            'text' => '🔙 بازگشت به فهرست درگاه‌ها',
             'callback_data' => 'payment_gateway_styles',
             'style' => 'danger',
         ]],
@@ -391,10 +387,10 @@ function paymentGatewayAppearanceDetailData($gateway)
     $emoji = preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])
         ? '<code>' . htmlspecialchars((string)$gateway['emoji_id'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>'
         : 'تنظیم نشده';
-    $text = "<b>ظاهر درگاه {$name}</b>\n\n"
-        . "رنگ فعلی: <b>{$styleNames[$style]}</b>\n"
-        . "ایموجی پریمیوم: {$emoji}\n\n"
-        . "تغییرات فقط روی دکمه انتخاب درگاه اعمال می‌شود و تنظیمات پرداخت را تغییر نمی‌دهد.";
+    $text = "🎨 <b>شخصی‌سازی درگاه {$name}</b>\n\n"
+        . "🎯 رنگ فعلی: <b>{$styleNames[$style]}</b>\n"
+        . "✨ ایموجی پریمیوم: {$emoji}\n\n"
+        . "رنگ یا ایموجی موردنظر را انتخاب کنید. تغییرات فقط روی ظاهر دکمه درگاه اعمال می‌شود.";
 
     return [
         'text' => $text,
@@ -10026,28 +10022,6 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     }
     telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     $data = paymentGatewayAppearanceListData();
-    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
-} elseif (preg_match('/^pgmove_detail_(up|down)_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
-    $gatewayId = (int)$matches[2];
-    if (!movePaymentGatewayAppearance($gatewayId, $matches[1])) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'جابه‌جایی درگاه انجام نشد.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-    $gateway = getPaymentGatewayAppearance($gatewayId);
-    if (!$gateway) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'درگاه پیدا نشد.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $data = paymentGatewayAppearanceDetailData($gateway);
     Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
 } elseif ($text == "🎁 کش بک تمدید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "📌 مقدار درصدی که می خواهید حساب کاربر بعد از تمدید به عنوان هدیه شارژ شود را ارسال کنید.
