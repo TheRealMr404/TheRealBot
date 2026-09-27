@@ -1,0 +1,8 @@
+{
+  "name": "mirza-fragment-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fragment-tg": "1.0.1"
+  }
+}

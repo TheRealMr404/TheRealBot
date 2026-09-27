@@ -12,6 +12,7 @@ require_once 'function.php';
 require_once 'telegram_products.php';
 require_once 'telegram_products_features.php';
 require_once 'telegram_products_admin.php';
+require_once 'telegram_fragment.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -502,7 +503,10 @@ $isVirtualServicesAdminRoute = in_array((string) $from_id, array_map('strval', (
     && (
         in_array($virtualServicesIncomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
         || strpos((string) $datain, 'vsa_') === 0
+        || strpos((string) $datain, 'vsf_') === 0
         || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
+            && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
+        || (strpos((string) ($user['step'] ?? ''), 'vsf_') === 0
             && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
     );
 if ($isVirtualServicesAdminRoute) {
@@ -511,9 +515,12 @@ if ($isVirtualServicesAdminRoute) {
 }
 
 $isVirtualServicesUserRoute = strpos((string) $datain, 'tgp_') === 0
+    || strpos((string) $datain, 'tgf_') === 0
     || strpos((string) $text, '/tg_') === 0
     || strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0
     || strpos((string) ($user['step'] ?? ''), 'tgp_') === 0
+    || (strpos((string) ($user['step'] ?? ''), 'tgf_') === 0
+        && !in_array($virtualServicesIncomingText, ['/start', 'start'], true))
     || $virtualServicesIncomingText === telegramProductsPlainText(TELEGRAM_PRODUCTS_BUTTON)
     || ($virtualServicesButtonText !== '' && $virtualServicesIncomingText === $virtualServicesButtonText);
 if ($isVirtualServicesUserRoute) {
