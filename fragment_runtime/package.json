@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "fragment-tg": "1.0.1"
+    "fragment-tg": "1.0.0"
   }
 }
