@@ -290,6 +290,116 @@ function pasarguardPlanOverviewData($panel)
     return ['text' => $text, 'keyboard' => $keyboard];
 }
 
+function paymentGatewayAppearanceListData()
+{
+    $gateways = getPaymentGatewayAppearances();
+    $keyboard = ['inline_keyboard' => []];
+    $lastIndex = count($gateways) - 1;
+
+    foreach ($gateways as $index => $gateway) {
+        $preview = [
+            'text' => ($index + 1) . '. ' . (string)$gateway['display_name'],
+            'callback_data' => 'pgstyle_' . (int)$gateway['id'],
+        ];
+        if (in_array($gateway['button_style'], ['primary', 'success', 'danger', 'secondary'], true)) {
+            $preview['style'] = $gateway['button_style'];
+        }
+        if (preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])) {
+            $preview['icon_custom_emoji_id'] = (string)$gateway['emoji_id'];
+        }
+
+        $row = [];
+        if ($index < $lastIndex) {
+            $row[] = ['text' => '⬇️', 'callback_data' => 'pgmove_down_' . (int)$gateway['id']];
+        }
+        $row[] = $preview;
+        if ($index > 0) {
+            $row[] = ['text' => '⬆️', 'callback_data' => 'pgmove_up_' . (int)$gateway['id']];
+        }
+        $keyboard['inline_keyboard'][] = $row;
+    }
+
+    $keyboard['inline_keyboard'][] = [[
+        'text' => 'بازگشت به پنل مدیریت',
+        'callback_data' => 'admin',
+        'style' => 'danger',
+    ]];
+
+    $text = "<b>شخصی‌سازی درگاه‌های پرداخت</b>\n\n"
+        . "برای تغییر رنگ یا ایموجی، نام درگاه را انتخاب کنید.\n"
+        . "با دکمه‌های بالا و پایین، ترتیب نمایش درگاه‌ها برای کاربران تغییر می‌کند.\n\n"
+        . "درگاه‌های جدید پس از اضافه‌شدن به فهرست پرداخت، خودکار در این بخش نمایش داده می‌شوند.";
+    if (!$gateways) {
+        $text .= "\n\nهنوز هیچ درگاهی شناسایی نشده است.";
+    }
+
+    return [
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
+    ];
+}
+
+function paymentGatewayAppearanceDetailData($gateway)
+{
+    $styleNames = [
+        'primary' => 'آبی',
+        'success' => 'سبز',
+        'danger' => 'قرمز',
+        'secondary' => 'بی‌رنگ',
+    ];
+    $gatewayId = (int)$gateway['id'];
+    $style = in_array($gateway['button_style'], array_keys($styleNames), true)
+        ? $gateway['button_style']
+        : 'primary';
+    $preview = [
+        'text' => (string)$gateway['display_name'],
+        'callback_data' => 'none',
+        'style' => $style,
+    ];
+    if (preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])) {
+        $preview['icon_custom_emoji_id'] = (string)$gateway['emoji_id'];
+    }
+
+    $keyboard = ['inline_keyboard' => [
+        [$preview],
+        [
+            ['text' => 'آبی', 'callback_data' => "pgcolor_{$gatewayId}_primary", 'style' => 'primary'],
+            ['text' => 'سبز', 'callback_data' => "pgcolor_{$gatewayId}_success", 'style' => 'success'],
+        ],
+        [
+            ['text' => 'بی‌رنگ', 'callback_data' => "pgcolor_{$gatewayId}_secondary", 'style' => 'secondary'],
+            ['text' => 'قرمز', 'callback_data' => "pgcolor_{$gatewayId}_danger", 'style' => 'danger'],
+        ],
+        [
+            ['text' => 'حذف ایموجی', 'callback_data' => "pgemoji_remove_{$gatewayId}"],
+            ['text' => 'تنظیم ایموجی پریمیوم', 'callback_data' => "pgemoji_{$gatewayId}"],
+        ],
+        [
+            ['text' => '⬇️', 'callback_data' => "pgmove_detail_down_{$gatewayId}"],
+            ['text' => '⬆️', 'callback_data' => "pgmove_detail_up_{$gatewayId}"],
+        ],
+        [[
+            'text' => 'بازگشت به فهرست درگاه‌ها',
+            'callback_data' => 'payment_gateway_styles',
+            'style' => 'danger',
+        ]],
+    ]];
+
+    $name = htmlspecialchars((string)$gateway['display_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $emoji = preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])
+        ? '<code>' . htmlspecialchars((string)$gateway['emoji_id'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>'
+        : 'تنظیم نشده';
+    $text = "<b>ظاهر درگاه {$name}</b>\n\n"
+        . "رنگ فعلی: <b>{$styleNames[$style]}</b>\n"
+        . "ایموجی پریمیوم: {$emoji}\n\n"
+        . "تغییرات فقط روی دکمه انتخاب درگاه اعمال می‌شود و تنظیمات پرداخت را تغییر نمی‌دهد.";
+
+    return [
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
+    ];
+}
+
 if (isset($keyboardadmin) && is_string($keyboardadmin)) {
     $keyboardadmin = str_replace(
         "📬 گزارش ربات",
@@ -9758,6 +9868,9 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
                 ['text' => "💫Star Telegram", 'callback_data' => "none"],
             ],
             [
+                ['text' => "🎨 شخصی‌سازی درگاه‌ها", 'callback_data' => "payment_gateway_styles"],
+            ],
+            [
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],
                 ['text' => "⬇️ حداقل شارژ موجودی", 'callback_data' => "mainbalanceaccount"],
             ],
@@ -9769,6 +9882,171 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     sendmessage($from_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
 
 ⚠️   هیچ تضمینی برای درگاه ها نخواهد داشت و استفاده  و تمامی مسئولیت ها به عهده شما می باشد", $Bot_Status, 'HTML');
+} elseif ($datain === "payment_gateway_styles" && in_array($from_id, $admin_ids)) {
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    step('home', $from_id);
+    $data = paymentGatewayAppearanceListData();
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgstyle_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    step('home', $from_id);
+    $gateway = getPaymentGatewayAppearance((int)$matches[1]);
+    if (!$gateway) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'درگاه پیدا نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $data = paymentGatewayAppearanceDetailData($gateway);
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgcolor_(\d+)_(primary|success|danger|secondary)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    $gatewayId = (int)$matches[1];
+    if (!updatePaymentGatewayAppearance($gatewayId, 'button_style', $matches[2])) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'ذخیره رنگ انجام نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $gateway = getPaymentGatewayAppearance($gatewayId);
+    $data = paymentGatewayAppearanceDetailData($gateway);
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgemoji_remove_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    $gatewayId = (int)$matches[1];
+    if (!updatePaymentGatewayAppearance($gatewayId, 'emoji_id', '')) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'حذف ایموجی انجام نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    $gateway = getPaymentGatewayAppearance($gatewayId);
+    if (!$gateway) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'درگاه پیدا نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $data = paymentGatewayAppearanceDetailData($gateway);
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgemoji_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    $gateway = getPaymentGatewayAppearance((int)$matches[1]);
+    if (!$gateway) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'درگاه پیدا نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    savedata('clear', 'payment_gateway_appearance_id', (int)$gateway['id']);
+    step('payment_gateway_emoji', $from_id);
+    $cancelKeyboard = json_encode(['inline_keyboard' => [[[
+        'text' => 'انصراف و بازگشت',
+        'callback_data' => 'pgstyle_' . (int)$gateway['id'],
+        'style' => 'danger',
+    ]]]], JSON_UNESCAPED_UNICODE);
+    $gatewayName = htmlspecialchars((string)$gateway['display_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    Editmessagetext(
+        $from_id,
+        $message_id,
+        "<b>تنظیم ایموجی درگاه {$gatewayName}</b>\n\nیک ایموجی پریمیوم تلگرام یا شناسه عددی آن را ارسال کنید.\nبرای حذف ایموجی عدد <code>0</code> را بفرستید.",
+        $cancelKeyboard,
+        'HTML'
+    );
+} elseif ($user['step'] === 'payment_gateway_emoji' && in_array($from_id, $admin_ids)) {
+    $state = json_decode((string)$user['Processing_value'], true);
+    $gatewayId = (int)($state['payment_gateway_appearance_id'] ?? 0);
+    $gateway = getPaymentGatewayAppearance($gatewayId);
+    if (!$gateway) {
+        step('home', $from_id);
+        sendmessage($from_id, '❌ درگاه انتخاب‌شده پیدا نشد.', $keyboardadmin, 'HTML');
+        return;
+    }
+
+    $emojiId = null;
+    $trimmedText = trim((string)$text);
+    if ($trimmedText === '0') {
+        $emojiId = '';
+    }
+    $rawMessage = $update['message'] ?? [];
+    if ($emojiId === null && !empty($rawMessage['entities']) && is_array($rawMessage['entities'])) {
+        foreach ($rawMessage['entities'] as $entity) {
+            if (($entity['type'] ?? '') === 'custom_emoji' && !empty($entity['custom_emoji_id'])) {
+                $emojiId = (string)$entity['custom_emoji_id'];
+                break;
+            }
+        }
+    }
+    if ($emojiId === null && function_exists('convertCustomEmojiToHTML')) {
+        $emojiHtml = convertCustomEmojiToHTML($rawMessage);
+        if (preg_match('/emoji-id="(\d+)"/', (string)$emojiHtml, $emojiMatch)) {
+            $emojiId = (string)$emojiMatch[1];
+        }
+    }
+    if ($emojiId === null && preg_match('/^\d{15,22}$/', $trimmedText)) {
+        $emojiId = $trimmedText;
+    }
+    if ($emojiId === null) {
+        sendmessage(
+            $from_id,
+            "❌ ایموجی پریمیوم شناسایی نشد. یک ایموجی پریمیوم، شناسه عددی یا عدد <code>0</code> ارسال کنید.",
+            $backadmin,
+            'HTML'
+        );
+        return;
+    }
+    if (!updatePaymentGatewayAppearance($gatewayId, 'emoji_id', $emojiId)) {
+        sendmessage($from_id, '❌ ذخیره ایموجی انجام نشد.', $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    $gateway = getPaymentGatewayAppearance($gatewayId);
+    $data = paymentGatewayAppearanceDetailData($gateway);
+    sendmessage($from_id, '✅ ظاهر درگاه با موفقیت به‌روزرسانی شد.', $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgmove_(up|down)_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    if (!movePaymentGatewayAppearance((int)$matches[2], $matches[1])) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'جابه‌جایی درگاه انجام نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $data = paymentGatewayAppearanceListData();
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
+} elseif (preg_match('/^pgmove_detail_(up|down)_(\d+)$/', (string)$datain, $matches) && in_array($from_id, $admin_ids)) {
+    $gatewayId = (int)$matches[2];
+    if (!movePaymentGatewayAppearance($gatewayId, $matches[1])) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'جابه‌جایی درگاه انجام نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    $gateway = getPaymentGatewayAppearance($gatewayId);
+    if (!$gateway) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => 'درگاه پیدا نشد.',
+            'show_alert' => true,
+        ]);
+        return;
+    }
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    $data = paymentGatewayAppearanceDetailData($gateway);
+    Editmessagetext($from_id, $message_id, $data['text'], $data['keyboard'], 'HTML');
 } elseif ($text == "🎁 کش بک تمدید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, "📌 مقدار درصدی که می خواهید حساب کاربر بعد از تمدید به عنوان هدیه شارژ شود را ارسال کنید.
 ⚠️ در صورتی که میخواهید غیرفعال باشد عدد 0 را ارسال کنید", $backadmin, 'HTML');
@@ -10012,6 +10290,9 @@ n2", $backadmin, 'HTML');
                 ['text' => "⚙️ تنظیمات", 'callback_data' => "startelegram"],
                 ['text' => $paymentstar, 'callback_data' => "editpayment-startelegram-$paymentsstartelegram"],
                 ['text' => "💫Star Telegram", 'callback_data' => "none"],
+            ],
+            [
+                ['text' => "🎨 شخصی‌سازی درگاه‌ها", 'callback_data' => "payment_gateway_styles"],
             ],
             [
                 ['text' => "⬆️ حداکثر شارژ موجودی", 'callback_data' => "maxbalanceaccount"],

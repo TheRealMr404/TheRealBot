@@ -907,6 +907,24 @@ try {
 } catch (Exception $e) {
     file_put_contents('error_log offline_crypto', $e->getMessage());
 }
+
+try {
+    $connect->query("CREATE TABLE IF NOT EXISTS payment_gateway_appearance (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        gateway_key VARCHAR(191) NOT NULL UNIQUE,
+        display_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        action_type VARCHAR(20) NOT NULL DEFAULT 'callback',
+        action_value VARCHAR(500) NOT NULL DEFAULT '',
+        button_style VARCHAR(20) NOT NULL DEFAULT 'primary',
+        emoji_id VARCHAR(50) NOT NULL DEFAULT '',
+        sort_order INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_payment_gateway_sort (sort_order, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Exception $e) {
+    file_put_contents('error_log payment_gateway_appearance', $e->getMessage());
+}
+
 try {
     $result = $connect->query("SHOW TABLES LIKE 'PaySetting'");
     $table_exists = ($result->num_rows > 0);

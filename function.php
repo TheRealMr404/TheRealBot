@@ -1566,6 +1566,331 @@ function customServiceAgentNumber($panel, $field, $agent, $fallback = 0)
     return is_numeric($value) ? (int)$value : (int)$fallback;
 }
 
+function ensurePaymentGatewayAppearanceTable()
+{
+    global $pdo;
+    static $ready = false;
+
+    if ($ready) {
+        return true;
+    }
+    if (!($pdo instanceof PDO)) {
+        return false;
+    }
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS payment_gateway_appearance (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            gateway_key VARCHAR(191) NOT NULL UNIQUE,
+            display_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            action_type VARCHAR(20) NOT NULL DEFAULT 'callback',
+            action_value VARCHAR(500) NOT NULL DEFAULT '',
+            button_style VARCHAR(20) NOT NULL DEFAULT 'primary',
+            emoji_id VARCHAR(50) NOT NULL DEFAULT '',
+            sort_order INT NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_payment_gateway_sort (sort_order, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $ready = true;
+        return true;
+    } catch (Throwable $e) {
+        error_log('Unable to prepare payment gateway appearance table: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function paymentGatewayButtonKey(array $button)
+{
+    $explicitKey = trim((string)($button['gateway_key'] ?? ''));
+    if ($explicitKey !== '') {
+        $key = 'gateway:' . $explicitKey;
+    } elseif (!empty($button['callback_data'])) {
+        $key = 'callback:' . trim((string)$button['callback_data']);
+    } elseif (!empty($button['url'])) {
+        $key = 'url:' . hash('sha256', trim((string)$button['url']));
+    } else {
+        return '';
+    }
+
+    return strlen($key) <= 191 ? $key : 'hash:' . hash('sha256', $key);
+}
+
+function flattenPaymentGatewayButtons(array $items)
+{
+    $buttons = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        if (array_key_exists('text', $item)) {
+            $buttons[] = $item;
+            continue;
+        }
+        foreach (flattenPaymentGatewayButtons($item) as $button) {
+            $buttons[] = $button;
+        }
+    }
+    return $buttons;
+}
+
+function registerPaymentGatewayButtons(array $items)
+{
+    global $pdo;
+    if (!ensurePaymentGatewayAppearanceTable()) {
+        return false;
+    }
+
+    $buttons = flattenPaymentGatewayButtons($items);
+    if (!$buttons) {
+        return true;
+    }
+
+    try {
+        $existingRows = $pdo->query('SELECT gateway_key, display_name, action_type, action_value FROM payment_gateway_appearance')
+            ->fetchAll(PDO::FETCH_ASSOC);
+        $existing = [];
+        foreach ($existingRows as $row) {
+            $existing[$row['gateway_key']] = $row;
+        }
+        $nextOrder = (int)$pdo->query('SELECT COALESCE(MAX(sort_order), 0) FROM payment_gateway_appearance')->fetchColumn();
+        $insertStmt = $pdo->prepare("INSERT IGNORE INTO payment_gateway_appearance
+            (gateway_key, display_name, action_type, action_value, button_style, emoji_id, sort_order)
+            VALUES (:gateway_key, :display_name, :action_type, :action_value, :button_style, :emoji_id, :sort_order)
+        ");
+        $updateStmt = $pdo->prepare("UPDATE payment_gateway_appearance
+            SET display_name = :display_name, action_type = :action_type, action_value = :action_value
+            WHERE gateway_key = :gateway_key");
+
+        $seen = [];
+        foreach ($buttons as $button) {
+            if (($button['callback_data'] ?? '') === 'colselist') {
+                continue;
+            }
+            $gatewayKey = paymentGatewayButtonKey($button);
+            if ($gatewayKey === '' || isset($seen[$gatewayKey])) {
+                continue;
+            }
+            $seen[$gatewayKey] = true;
+            $displayName = trim((string)($button['text'] ?? ''));
+            if (function_exists('mb_substr')) {
+                $displayName = mb_substr($displayName, 0, 255, 'UTF-8');
+            } else {
+                $displayName = substr($displayName, 0, 255);
+            }
+            $actionType = !empty($button['callback_data']) ? 'callback' : 'url';
+            $actionValue = (string)($button['callback_data'] ?? $button['url'] ?? '');
+            $style = (string)($button['style'] ?? 'primary');
+            if (!in_array($style, ['primary', 'success', 'danger', 'secondary'], true)) {
+                $style = 'primary';
+            }
+            $emojiId = preg_match('/^\d{15,22}$/', (string)($button['icon_custom_emoji_id'] ?? ''))
+                ? (string)$button['icon_custom_emoji_id']
+                : '';
+            $displayName = $displayName !== '' ? $displayName : $gatewayKey;
+            if (!isset($existing[$gatewayKey])) {
+                $nextOrder += 10;
+                $insertStmt->execute([
+                    ':gateway_key' => $gatewayKey,
+                    ':display_name' => $displayName,
+                    ':action_type' => $actionType,
+                    ':action_value' => $actionValue,
+                    ':button_style' => $style,
+                    ':emoji_id' => $emojiId,
+                    ':sort_order' => $nextOrder,
+                ]);
+                $existing[$gatewayKey] = [
+                    'gateway_key' => $gatewayKey,
+                    'display_name' => $displayName,
+                    'action_type' => $actionType,
+                    'action_value' => $actionValue,
+                ];
+                continue;
+            }
+            $current = $existing[$gatewayKey];
+            if ((string)$current['display_name'] !== $displayName
+                || (string)$current['action_type'] !== $actionType
+                || (string)$current['action_value'] !== $actionValue) {
+                $updateStmt->execute([
+                    ':gateway_key' => $gatewayKey,
+                    ':display_name' => $displayName,
+                    ':action_type' => $actionType,
+                    ':action_value' => $actionValue,
+                ]);
+                $existing[$gatewayKey]['display_name'] = $displayName;
+                $existing[$gatewayKey]['action_type'] = $actionType;
+                $existing[$gatewayKey]['action_value'] = $actionValue;
+            }
+        }
+        return true;
+    } catch (Throwable $e) {
+        error_log('Unable to register payment gateway buttons: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function getPaymentGatewayAppearances()
+{
+    global $pdo;
+    if (!ensurePaymentGatewayAppearanceTable()) {
+        return [];
+    }
+    try {
+        return $pdo->query('SELECT * FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC')
+            ->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('Unable to load payment gateway appearances: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function getPaymentGatewayAppearance($id)
+{
+    global $pdo;
+    if (!ensurePaymentGatewayAppearanceTable()) {
+        return null;
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT * FROM payment_gateway_appearance WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => (int)$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (Throwable $e) {
+        error_log('Unable to load payment gateway appearance: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function updatePaymentGatewayAppearance($id, $field, $value)
+{
+    global $pdo;
+    $columns = [
+        'button_style' => 'button_style',
+        'emoji_id' => 'emoji_id',
+    ];
+    if (!isset($columns[$field]) || !ensurePaymentGatewayAppearanceTable()) {
+        return false;
+    }
+    if ($field === 'button_style' && !in_array($value, ['primary', 'success', 'danger', 'secondary'], true)) {
+        return false;
+    }
+    if ($field === 'emoji_id' && $value !== '' && !preg_match('/^\d{15,22}$/', (string)$value)) {
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare("UPDATE payment_gateway_appearance SET {$columns[$field]} = :value WHERE id = :id");
+        $stmt->execute([':value' => (string)$value, ':id' => (int)$id]);
+        return $stmt->rowCount() > 0 || getPaymentGatewayAppearance($id) !== null;
+    } catch (Throwable $e) {
+        error_log('Unable to update payment gateway appearance: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function movePaymentGatewayAppearance($id, $direction)
+{
+    global $pdo;
+    if (!in_array($direction, ['up', 'down'], true) || !ensurePaymentGatewayAppearanceTable()) {
+        return false;
+    }
+    try {
+        $pdo->beginTransaction();
+        $rows = $pdo->query('SELECT id FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC FOR UPDATE')
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $currentIndex = array_search((string)(int)$id, array_map('strval', $rows), true);
+        if ($currentIndex === false) {
+            $pdo->rollBack();
+            return false;
+        }
+        $targetIndex = $direction === 'up' ? $currentIndex - 1 : $currentIndex + 1;
+        if (!isset($rows[$targetIndex])) {
+            $pdo->rollBack();
+            return true;
+        }
+        $moving = $rows[$currentIndex];
+        $rows[$currentIndex] = $rows[$targetIndex];
+        $rows[$targetIndex] = $moving;
+        $stmt = $pdo->prepare('UPDATE payment_gateway_appearance SET sort_order = :sort_order WHERE id = :id');
+        foreach (array_values($rows) as $index => $rowId) {
+            $stmt->execute([':sort_order' => ($index + 1) * 10, ':id' => (int)$rowId]);
+        }
+        $pdo->commit();
+        return true;
+    } catch (Throwable $e) {
+        if ($pdo instanceof PDO && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Unable to reorder payment gateways: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function applyPaymentGatewayAppearance(array $rows, array $catalog = [])
+{
+    registerPaymentGatewayButtons(array_merge($catalog, $rows));
+
+    $appearanceMap = [];
+    foreach (getPaymentGatewayAppearances() as $appearance) {
+        $appearanceMap[$appearance['gateway_key']] = $appearance;
+    }
+
+    $gatewayRows = [];
+    $fixedRows = [];
+    foreach (array_values($rows) as $index => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $rowOrder = PHP_INT_MAX;
+        $isGatewayRow = false;
+        foreach ($row as &$button) {
+            if (!is_array($button)) {
+                continue;
+            }
+            if (($button['callback_data'] ?? '') === 'colselist') {
+                unset($button['gateway_key']);
+                continue;
+            }
+            $gatewayKey = paymentGatewayButtonKey($button);
+            unset($button['gateway_key']);
+            if ($gatewayKey === '' || !isset($appearanceMap[$gatewayKey])) {
+                continue;
+            }
+            $isGatewayRow = true;
+            $appearance = $appearanceMap[$gatewayKey];
+            $rowOrder = min($rowOrder, (int)$appearance['sort_order']);
+            $style = (string)$appearance['button_style'];
+            if (in_array($style, ['primary', 'success', 'danger', 'secondary'], true)) {
+                $button['style'] = $style;
+            } else {
+                unset($button['style']);
+            }
+            $emojiId = (string)$appearance['emoji_id'];
+            if (preg_match('/^\d{15,22}$/', $emojiId)) {
+                $button['icon_custom_emoji_id'] = $emojiId;
+            } else {
+                unset($button['icon_custom_emoji_id']);
+            }
+        }
+        unset($button);
+        if ($isGatewayRow) {
+            $gatewayRows[] = ['row' => $row, 'order' => $rowOrder, 'index' => $index];
+        } else {
+            $fixedRows[] = ['row' => $row, 'index' => $index];
+        }
+    }
+
+    usort($gatewayRows, static function ($left, $right) {
+        if ($left['order'] === $right['order']) {
+            return $left['index'] <=> $right['index'];
+        }
+        return $left['order'] <=> $right['order'];
+    });
+
+    return array_merge(
+        array_column($gatewayRows, 'row'),
+        array_column($fixedRows, 'row')
+    );
+}
+
 function applyPanelAppearanceToButton(array $button, $panel)
 {
     if (!is_array($panel)) {

@@ -356,17 +356,21 @@ $paymentsstartelegram = getPaySettingValue("statusstar");
 $payment_status_nowpayment = getPaySettingValue("statusnowpayment");
 $statusabangateway = getPaySettingValue("statusabangateway");
 $statuscubepay = getPaySettingValue("statuscubepay");
+$aban_text_query = select("textbot", "text", "id_text", "abangateway", "select");
+$aban_gateway_title = !empty($aban_text_query['text']) ? $aban_text_query['text'] : 'آبان‌پی';
+$cubepay_row = select("textbot", "text", "id_text", "cubepay", "select");
+$cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
 $step_payment = [
     'inline_keyboard' => []
 ];
 if ($PaySettingcard == "oncard" && intval($users['cardpayment']) == 1) {
     if ($PaySettingpv == "oncardpv") {
         $step_payment['inline_keyboard'][] = [
-            ['text' => $datatextbot['carttocart'], 'url' => "https://t.me/$usernamecart", 'style' => "primary"],
+            ['text' => $datatextbot['carttocart'], 'url' => "https://t.me/$usernamecart", 'style' => "primary", 'gateway_key' => 'cart_to_offline'],
         ];
     } else {
         $step_payment['inline_keyboard'][] = [
-            ['text' => $datatextbot['carttocart'], 'callback_data' => "cart_to_offline", 'style' => 'primary', 'icon_custom_emoji_id' => 5789532541102855208],
+            ['text' => $datatextbot['carttocart'], 'callback_data' => "cart_to_offline", 'style' => 'primary', 'icon_custom_emoji_id' => 5789532541102855208, 'gateway_key' => 'cart_to_offline'],
         ];
     }
 }
@@ -423,15 +427,11 @@ if (intval($paymentsstartelegram) == 1) {
     ];
 }
 if ($statusabangateway == "onabangateway") {
-    $aban_text_query = select("textbot", "text", "id_text", "abangateway", "select");
     $step_payment['inline_keyboard'][] = [
-        ['text' => $aban_text_query['text'], 'callback_data' => "pay_abangateway", 'style' => 'primary']
+        ['text' => $aban_gateway_title, 'callback_data' => "pay_abangateway", 'style' => 'primary']
     ];
 }
 if ($statuscubepay == "oncubepay") {
-    $cubepay_row = select("textbot", "text", "id_text", "cubepay", "select");
-    $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
-    
     $step_payment['inline_keyboard'][] = [
         ['text' => $cubepay_title, 'callback_data' => "pay_cubepay", 'style' => 'primary']
     ];
@@ -439,6 +439,25 @@ if ($statuscubepay == "oncubepay") {
 $step_payment['inline_keyboard'][] = [
     ['text' => "بستن لیست", 'callback_data' => "colselist", 'style' => 'danger', 'icon_custom_emoji_id' => 5875082500023258804]
 ];
+$payment_gateway_catalog = [
+    [['text' => $datatextbot['carttocart'] ?: 'کارت به کارت', 'callback_data' => 'cart_to_offline', 'style' => 'primary', 'icon_custom_emoji_id' => '5789532541102855208', 'gateway_key' => 'cart_to_offline']],
+    [['text' => $datatextbot['textnowpayment'] ?: 'Plisio', 'callback_data' => 'plisio', 'style' => 'primary']],
+    [['text' => $datatextbot['textsnowpayment'] ?: 'NowPayments', 'callback_data' => 'nowpayment', 'style' => 'primary']],
+    [['text' => $datatextbot['textnowpaymenttron'] ?: 'ارز دیجیتال آفلاین', 'callback_data' => 'offline_crypto_pay', 'style' => 'primary']],
+    [['text' => $datatextbot['iranpay2'] ?: 'تتراپی', 'callback_data' => 'iranpay1', 'style' => 'primary']],
+    [['text' => $datatextbot['iranpay3'] ?: 'ترونادو', 'callback_data' => 'iranpay2', 'style' => 'primary']],
+    [['text' => $datatextbot['iranpay1'] ?: 'درگاه ارزی ریالی سوم', 'callback_data' => 'iranpay3', 'style' => 'primary']],
+    [['text' => $datatextbot['aqayepardakht'] ?: 'آقای پرداخت', 'callback_data' => 'aqayepardakht', 'style' => 'primary']],
+    [['text' => $datatextbot['zarinpal'] ?: 'زرین‌پال', 'callback_data' => 'zarinpal', 'style' => 'primary']],
+    [['text' => $datatextbot['textpaymentnotverify'] ?: 'درگاه مستقیم', 'callback_data' => 'paymentnotverify', 'style' => 'primary']],
+    [['text' => $datatextbot['text_star_telegram'] ?: 'استارز تلگرام', 'callback_data' => 'startelegrams', 'style' => 'primary']],
+    [['text' => $aban_gateway_title, 'callback_data' => 'pay_abangateway', 'style' => 'primary']],
+    [['text' => $cubepay_title, 'callback_data' => 'pay_cubepay', 'style' => 'primary']],
+];
+$step_payment['inline_keyboard'] = applyPaymentGatewayAppearance(
+    $step_payment['inline_keyboard'],
+    $payment_gateway_catalog
+);
 $step_payment = json_encode($step_payment);
 $keyboardhelpadmin = json_encode([
     'keyboard' => [
