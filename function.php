@@ -1858,7 +1858,7 @@ function applyPaymentGatewayAppearance(array $rows, array $catalog = [])
             $appearance = $appearanceMap[$gatewayKey];
             $rowOrder = min($rowOrder, (int)$appearance['sort_order']);
             $style = (string)$appearance['button_style'];
-            if (in_array($style, ['primary', 'success', 'danger', 'secondary'], true)) {
+            if (in_array($style, ['primary', 'success', 'danger'], true)) {
                 $button['style'] = $style;
             } else {
                 unset($button['style']);

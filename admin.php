@@ -301,7 +301,7 @@ function paymentGatewayAppearanceListData()
             'text' => ($index + 1) . '. ' . (string)$gateway['display_name'],
             'callback_data' => 'pgstyle_' . (int)$gateway['id'],
         ];
-        if (in_array($gateway['button_style'], ['primary', 'success', 'danger', 'secondary'], true)) {
+        if (in_array($gateway['button_style'], ['primary', 'success', 'danger'], true)) {
             $preview['style'] = $gateway['button_style'];
         }
         if (preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])) {
@@ -354,8 +354,10 @@ function paymentGatewayAppearanceDetailData($gateway)
     $preview = [
         'text' => (string)$gateway['display_name'],
         'callback_data' => 'none',
-        'style' => $style,
     ];
+    if (in_array($style, ['primary', 'success', 'danger'], true)) {
+        $preview['style'] = $style;
+    }
     if (preg_match('/^\d{15,22}$/', (string)$gateway['emoji_id'])) {
         $preview['icon_custom_emoji_id'] = (string)$gateway['emoji_id'];
     }
@@ -367,7 +369,7 @@ function paymentGatewayAppearanceDetailData($gateway)
             ['text' => 'سبز', 'callback_data' => "pgcolor_{$gatewayId}_success", 'style' => 'success'],
         ],
         [
-            ['text' => 'بی‌رنگ', 'callback_data' => "pgcolor_{$gatewayId}_secondary", 'style' => 'secondary'],
+            ['text' => 'بی‌رنگ', 'callback_data' => "pgcolor_{$gatewayId}_secondary"],
             ['text' => 'قرمز', 'callback_data' => "pgcolor_{$gatewayId}_danger", 'style' => 'danger'],
         ],
         [
