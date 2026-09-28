@@ -369,6 +369,7 @@ function telegramFragmentStartLogin()
     }
     telegramFragmentSetSetting('login_job', $job);
     telegramFragmentSetSetting('login_started_at', (string) time());
+    telegramFragmentSetSetting('login_qr_sent_key', '');
     $command = 'nohup ' . escapeshellarg($python) . ' ' . escapeshellarg($script) . ' '
         . escapeshellarg($inputPath) . ' ' . escapeshellarg($outputPath) . ' >/dev/null 2>&1 &';
     @exec($command, $unused, $exitCode);
@@ -392,6 +393,7 @@ function telegramFragmentCancelLogin($job)
     @unlink($prefix . '.input.json');
     @unlink($prefix . '.json');
     telegramFragmentSetSetting('login_job', '');
+    telegramFragmentSetSetting('login_qr_sent_key', '');
     return true;
 }
 
@@ -428,6 +430,7 @@ function telegramFragmentReadLogin($job)
                 telegramFragmentSetSecret('cookies', json_encode($parsed['cookies'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 telegramFragmentSetSetting('session_saved_at', date('Y-m-d H:i:s'));
                 telegramFragmentSetSetting('login_job', '');
+                telegramFragmentSetSetting('login_qr_sent_key', '');
                 @unlink($path);
                 @unlink($inputPath);
                 return ['status' => 'success'];
@@ -436,6 +439,7 @@ function telegramFragmentReadLogin($job)
     }
     if (($data['status'] ?? '') === 'error') {
         telegramFragmentSetSetting('login_job', '');
+        telegramFragmentSetSetting('login_qr_sent_key', '');
         @unlink($path);
         @unlink($inputPath);
         return $data;
@@ -455,9 +459,88 @@ function telegramFragmentButton($text, $callback, $style = null, $emojiId = null
     return telegramProductsStyledButton($label, $callback, $style, $emojiId);
 }
 
-function telegramFragmentUrlButton($text, $url)
+function telegramFragmentCopyButton($text, $value)
 {
-    return ['text' => telegramProductsPlainText($text), 'url' => (string) $url];
+    $value = (string) $value;
+    if ($value === '' || strlen($value) > 256) {
+        return null;
+    }
+    return [
+        'text' => telegramProductsPlainText($text),
+        'copy_text' => ['text' => $value],
+    ];
+}
+
+function telegramFragmentLoginRows($job, $loginUrl)
+{
+    $rows = [];
+    $copyButton = telegramFragmentCopyButton('کپی لینک ورود', $loginUrl);
+    if ($copyButton !== null) {
+        $rows[] = [$copyButton];
+    }
+    $rows[] = [telegramFragmentButton('ارسال دوباره QR ورود', 'vsf_loginqr_' . $job)];
+    $rows[] = [telegramFragmentButton('بررسی تأیید', 'vsf_logincheck_' . $job, 'success')];
+    $rows[] = [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)];
+    return $rows;
+}
+
+function telegramFragmentSendLoginQr($job, $loginUrl)
+{
+    global $from_id;
+
+    $job = (string) $job;
+    $loginUrl = (string) $loginUrl;
+    if (!preg_match('/^[a-f0-9]{32}$/', $job)
+        || !preg_match('#^https://t\.me/oauth\?startapp=[A-Za-z0-9_-]{8,512}$#', $loginUrl)
+        || !function_exists('createqrcode')) {
+        return ['ok' => false, 'description' => 'INVALID_LOGIN_QR'];
+    }
+
+    $temporaryPath = @tempnam(sys_get_temp_dir(), 'mirza_fragment_qr_');
+    if ($temporaryPath === false) {
+        return ['ok' => false, 'description' => 'QR_TEMP_FILE_FAILED'];
+    }
+
+    try {
+        $qrCode = createqrcode($loginUrl);
+        if (@file_put_contents($temporaryPath, $qrCode->getString(), LOCK_EX) === false) {
+            return ['ok' => false, 'description' => 'QR_WRITE_FAILED'];
+        }
+        @chmod($temporaryPath, 0600);
+
+        $caption = "<b>تأیید ورود Fragment</b>\n\n";
+        $caption .= "روش اول: این QR را با دوربین گوشی اسکن و درخواست ورود را در تلگرام تأیید کنید.\n\n";
+        $caption .= "روش دوم برای همین گوشی: دکمه «کپی لینک ورود» را بزنید، سپس لینک را در Chrome یا Safari باز کنید. لینک ورود از داخل پیام تلگرام باز نمی‌شود.\n\n";
+        $caption .= "بعد از تأیید، دکمه «بررسی تأیید» را بزنید. این درخواست حداکثر پنج دقیقه اعتبار دارد.";
+        $rows = telegramFragmentLoginRows($job, $loginUrl);
+        $response = telegram('sendphoto', [
+            'chat_id' => $from_id,
+            'photo' => new CURLFile($temporaryPath, 'image/png', 'fragment-login.png'),
+            'caption' => $caption,
+            'parse_mode' => 'HTML',
+            'reply_markup' => virtualServicesAdminKeyboard($rows),
+        ]);
+
+        if (!telegramProductsApiSucceeded($response)) {
+            $fallbackRows = [
+                [telegramFragmentButton('بررسی تأیید', 'vsf_logincheck_' . $job)],
+                [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)],
+            ];
+            $response = telegram('sendphoto', [
+                'chat_id' => $from_id,
+                'photo' => new CURLFile($temporaryPath, 'image/png', 'fragment-login.png'),
+                'caption' => $caption . "\n\nلینک قابل کپی:\n<code>" . telegramProductsEscape($loginUrl) . '</code>',
+                'parse_mode' => 'HTML',
+                'reply_markup' => virtualServicesAdminKeyboard($fallbackRows),
+            ]);
+        }
+        return $response;
+    } catch (Throwable $exception) {
+        error_log('Fragment login QR failed: ' . $exception->getMessage());
+        return ['ok' => false, 'description' => 'QR_GENERATION_FAILED'];
+    } finally {
+        @unlink($temporaryPath);
+    }
 }
 
 function telegramFragmentLoginReply($job, array $result)
@@ -471,11 +554,23 @@ function telegramFragmentLoginReply($job, array $result)
         return;
     }
     if (in_array($status, ['waiting', 'refresh'], true) && !empty($result['login_url'])) {
-        virtualServicesAdminReply("<b>تأیید ورود تلگرام</b>\n\nدکمه زیر را بزنید، درخواست ورود Fragment را داخل تلگرام تأیید کنید و سپس «بررسی تأیید» را بزنید. این درخواست حداکثر پنج دقیقه اعتبار دارد.", [
-            [telegramFragmentUrlButton('باز کردن درخواست در تلگرام', $result['login_url'])],
-            [telegramFragmentButton('بررسی تأیید', 'vsf_logincheck_' . $job, 'success')],
-            [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)],
-        ]);
+        $loginUrl = (string) $result['login_url'];
+        $qrKey = hash('sha256', (string) $job . '|' . $loginUrl);
+        $sentKey = telegramFragmentSetting('login_qr_sent_key', '');
+        $qrWasSent = $sentKey !== '' && hash_equals($sentKey, $qrKey);
+        if (!$qrWasSent) {
+            $qrResponse = telegramFragmentSendLoginQr($job, $loginUrl);
+            if (telegramProductsApiSucceeded($qrResponse)) {
+                telegramFragmentSetSetting('login_qr_sent_key', $qrKey);
+                $qrWasSent = true;
+            }
+        }
+        if ($qrWasSent) {
+            $text = "<b>درخواست ورود آماده است</b>\n\nQR ورود در یک پیام جدا ارسال شد. آن را اسکن کنید؛ یا لینک را کپی کرده و در مرورگر خارج از تلگرام باز کنید. پس از تأیید درخواست، روی «بررسی تأیید» بزنید.";
+        } else {
+            $text = "<b>درخواست ورود آماده است</b>\n\nارسال QR انجام نشد. لینک زیر را کپی کنید و در Chrome یا Safari باز کنید:\n\n<code>" . telegramProductsEscape($loginUrl) . '</code>';
+        }
+        virtualServicesAdminReply($text, telegramFragmentLoginRows($job, $loginUrl));
         return;
     }
     if (in_array($status, ['consumed', 'confirmed'], true)) {
@@ -951,6 +1046,19 @@ function telegramFragmentAdminHandle()
     }
     if (preg_match('/^vsf_logincheck_([a-f0-9]{32})$/', $datain, $match)) {
         telegramFragmentLoginReply($match[1], telegramFragmentReadLogin($match[1]));
+        return true;
+    }
+    if (preg_match('/^vsf_loginqr_([a-f0-9]{32})$/', $datain, $match)) {
+        $job = $match[1];
+        $result = telegramFragmentReadLogin($job);
+        if (in_array((string) ($result['status'] ?? ''), ['waiting', 'refresh'], true) && !empty($result['login_url'])) {
+            $response = telegramFragmentSendLoginQr($job, (string) $result['login_url']);
+            if (!telegramProductsApiSucceeded($response)) {
+                virtualServicesAdminReply("<b>ارسال QR انجام نشد</b>\n\nلینک زیر را کپی کنید و در Chrome یا Safari باز کنید:\n\n<code>" . telegramProductsEscape((string) $result['login_url']) . '</code>', telegramFragmentLoginRows($job, (string) $result['login_url']));
+            }
+            return true;
+        }
+        telegramFragmentLoginReply($job, $result);
         return true;
     }
     if (preg_match('/^vsf_logincancel_([a-f0-9]{32})$/', $datain, $match)) {
