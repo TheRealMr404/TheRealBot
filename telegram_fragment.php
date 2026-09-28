@@ -139,11 +139,10 @@ function telegramFragmentConfig()
 function telegramFragmentRuntimeStatus()
 {
     $script = __DIR__ . '/fragment_runtime/fragment_worker.py';
-    $loginScript = __DIR__ . '/fragment_runtime/fragment_login.mjs';
+    $authScript = __DIR__ . '/fragment_runtime/fragment_auth.py';
     return [
         'worker' => is_file($script),
-        'login_worker' => is_file($loginScript),
-        'node_modules' => is_dir(__DIR__ . '/fragment_runtime/node_modules/fragment-tg'),
+        'login_worker' => is_file($authScript),
     ];
 }
 
@@ -167,7 +166,7 @@ function telegramFragmentStatus()
         'wallet' => $walletReady,
         'api_key' => $apiReady,
         'runtime' => $runtimeReady,
-        'login_runtime' => $runtime['login_worker'] && $runtime['node_modules'],
+        'login_runtime' => $runtime['login_worker'] && $runtime['worker'],
         'ready' => $sessionReady && $walletReady && $apiReady && $runtimeReady,
     ];
 }
@@ -238,61 +237,211 @@ function telegramFragmentRunWorker(array $payload, $timeoutSeconds = 150)
     return $result;
 }
 
-function telegramFragmentStartLogin($phone)
+function telegramFragmentParseCookies($value)
 {
-    $phone = trim((string) $phone);
-    if (!preg_match('/^\+[1-9]\d{7,14}$/', $phone)) {
-        return ['ok' => false, 'message' => 'شماره باید با کد کشور و علامت + وارد شود.'];
+    $value = trim((string) $value);
+    if ($value === '' || strlen($value) > 20000) {
+        return ['ok' => false, 'code' => 'INVALID_COOKIES'];
     }
-    $script = __DIR__ . '/fragment_runtime/fragment_login.mjs';
-    if (!is_file($script) || !is_dir(__DIR__ . '/fragment_runtime/node_modules/fragment-tg') || !function_exists('exec')) {
-        return ['ok' => false, 'message' => 'وابستگی ورود فرگمنت نصب نشده است. ابتدا نصب‌کننده را بروزرسانی کنید.'];
+
+    if (substr($value, 0, 3) === '```' && substr($value, -3) === '```') {
+        $value = trim(preg_replace('/^```(?:json|text)?\s*|\s*```$/iu', '', $value));
     }
-    $job = bin2hex(random_bytes(16));
-    $path = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job . '.json';
-    $inputPath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job . '.input.json';
-    if (@file_put_contents($inputPath, json_encode(['phone' => $phone], JSON_UNESCAPED_SLASHES), LOCK_EX) === false) {
-        return ['ok' => false, 'message' => 'فایل موقت امن برای ورود ساخته نشد.'];
+    if (stripos($value, 'cookie:') === 0) {
+        $value = trim(substr($value, 7));
+    }
+
+    $decoded = json_decode($value, true);
+    $source = [];
+    if (is_array($decoded)) {
+        $isList = $decoded === [] || array_keys($decoded) === range(0, count($decoded) - 1);
+        if ($isList) {
+            foreach ($decoded as $cookie) {
+                if (is_array($cookie) && isset($cookie['name'], $cookie['value'])) {
+                    $source[(string) $cookie['name']] = $cookie['value'];
+                }
+            }
+        } else {
+            $source = $decoded;
+        }
+    } else {
+        foreach (explode(';', $value) as $part) {
+            $separator = strpos($part, '=');
+            if ($separator === false) continue;
+            $name = trim(substr($part, 0, $separator));
+            if ($name !== '') $source[$name] = trim(substr($part, $separator + 1));
+        }
+    }
+
+    $cookies = [];
+    foreach (['stel_ssid', 'stel_dt', 'stel_token', 'stel_ton_token'] as $name) {
+        if (!array_key_exists($name, $source) || !is_scalar($source[$name])) continue;
+        $cookieValue = trim((string) $source[$name]);
+        if ($cookieValue === '') continue;
+        if (strlen($cookieValue) > 4096 || preg_match('/[\x00-\x20\x7f;]/', $cookieValue)) {
+            return ['ok' => false, 'code' => 'INVALID_COOKIE_VALUE'];
+        }
+        $cookies[$name] = $cookieValue;
+    }
+
+    if (empty($cookies['stel_ssid']) || empty($cookies['stel_token'])) {
+        return ['ok' => false, 'code' => 'INCOMPLETE_COOKIES'];
+    }
+    if (empty($cookies['stel_dt'])) {
+        $cookies['stel_dt'] = '-210';
+    }
+    return ['ok' => true, 'cookies' => $cookies];
+}
+
+function telegramFragmentLoginErrorMessage($code)
+{
+    return [
+        'INVALID_COOKIES' => 'اطلاعات نشست قابل خواندن نیست. رشته Cookie یا JSON معتبر ارسال کنید.',
+        'INVALID_COOKIE_VALUE' => 'یکی از مقادیر نشست نامعتبر است. کوکی‌ها را دوباره و بدون تغییر از مرورگر دریافت کنید.',
+        'INCOMPLETE_COOKIES' => 'نشست ناقص است و باید حداقل شامل stel_ssid و stel_token باشد.',
+        'INVALID_SESSION' => 'این نشست منقضی شده یا به حساب Fragment وارد نیست. ابتدا داخل مرورگر وارد Fragment شوید و کوکی تازه بفرستید.',
+        'NETWORK_ERROR' => 'سرور ربات نتوانست به Fragment متصل شود. اینترنت و DNS سرور را بررسی و دوباره تلاش کنید.',
+        'RUNTIME_MISSING' => 'پردازشگر ورود Fragment نصب نیست. نصب‌کننده ربات را یک‌بار اجرا یا بروزرسانی کنید.',
+        'RUNTIME_START_FAILED' => 'پردازشگر ورود اجرا نشد. دسترسی اجرای PHP و Python را بررسی کنید.',
+        'SESSION_CHECK_TIMEOUT' => 'بررسی نشست بیش از حد طول کشید. اتصال سرور به Fragment را بررسی کنید.',
+        'PROVIDER_CHANGED' => 'پاسخ Fragment با ساختار مورد انتظار سازگار نیست. نسخه ربات را بروزرسانی کنید یا وضعیت دسترسی سرور به Fragment را بررسی کنید.',
+        'TELEGRAM_OAUTH_DEPRECATED' => 'ورود مستقیم با شماره از سمت تلگرام متوقف شده است. نشست مرورگر Fragment را ثبت کنید.',
+        'WALLET_REQUIRED' => 'برای ورود خودکار، ابتدا کیف پول TON را ثبت کنید.',
+        'INVALID_WALLET' => 'عبارت بازیابی کیف پول معتبر نیست. کیف پول را دوباره ثبت کنید.',
+        'INVALID_WALLET_VERSION' => 'نسخه کیف پول معتبر نیست. نسخه V4R2 یا V5R1 را انتخاب کنید.',
+        'LOGIN_TIMEOUT' => 'زمان تأیید ورود تمام شد. یک درخواست تازه بسازید و آن را حداکثر طی پنج دقیقه تأیید کنید.',
+        'AUTH_FAILED' => 'Fragment نتوانست ورود را کامل کند. کیف پول، نسخه آن و دسترسی سرور به Fragment را بررسی کنید.',
+        'INVALID_LOGIN_JOB' => 'درخواست ورود معتبر نیست یا قبلاً پایان یافته است. یک درخواست تازه بسازید.',
+    ][$code] ?? 'نشست Fragment تأیید نشد. کوکی تازه دریافت و دوباره ارسال کنید.';
+}
+
+function telegramFragmentValidateCookies(array $cookies, $timeoutSeconds = 30)
+{
+    $result = telegramFragmentRunWorker([
+        'action' => 'session',
+        'config' => ['cookies' => $cookies],
+    ], $timeoutSeconds);
+    if (!empty($result['ok'])) return ['ok' => true];
+    $code = (string) ($result['code'] ?? 'SESSION_CHECK_FAILED');
+    if (in_array($code, ['CookieError', 'VerificationError'], true)) {
+        $code = 'INVALID_SESSION';
+    } elseif (in_array($code, ['FragmentPageError', 'ParseError'], true)) {
+        $code = 'PROVIDER_CHANGED';
+    } elseif ($code === 'WORKER_TIMEOUT') {
+        $code = 'SESSION_CHECK_TIMEOUT';
+    }
+    return ['ok' => false, 'code' => $code];
+}
+
+function telegramFragmentStartLogin()
+{
+    $seed = telegramFragmentSecret('seed');
+    if (trim($seed) === '') {
+        return ['ok' => false, 'code' => 'WALLET_REQUIRED'];
+    }
+    $script = __DIR__ . '/fragment_runtime/fragment_auth.py';
+    if (!is_file($script) || !function_exists('exec')) {
+        return ['ok' => false, 'code' => 'RUNTIME_MISSING'];
+    }
+    try {
+        $job = bin2hex(random_bytes(16));
+    } catch (Throwable $exception) {
+        return ['ok' => false, 'code' => 'RUNTIME_START_FAILED'];
+    }
+    $previousJob = telegramFragmentSetting('login_job', '');
+    if ($previousJob !== '') telegramFragmentCancelLogin($previousJob);
+    $prefix = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job;
+    $inputPath = $prefix . '.input.json';
+    $outputPath = $prefix . '.json';
+    $payload = json_encode([
+        'seed' => $seed,
+        'wallet_version' => telegramFragmentSetting('wallet_version', 'V5R1'),
+    ], JSON_UNESCAPED_SLASHES);
+    if ($payload === false || @file_put_contents($inputPath, $payload, LOCK_EX) === false) {
+        return ['ok' => false, 'code' => 'RUNTIME_START_FAILED'];
     }
     @chmod($inputPath, 0600);
-    $node = getenv('MIRZA_FRAGMENT_NODE') ?: 'node';
-    $command = 'nohup ' . escapeshellarg($node) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($inputPath) . ' ' . escapeshellarg($path) . ' >/dev/null 2>&1 &';
-    @exec($command, $unused, $code);
+    $python = getenv('MIRZA_FRAGMENT_PYTHON');
+    if (!$python) {
+        $python = is_executable('/opt/mirza/fragment-venv/bin/python')
+            ? '/opt/mirza/fragment-venv/bin/python'
+            : 'python3';
+    }
     telegramFragmentSetSetting('login_job', $job);
     telegramFragmentSetSetting('login_started_at', (string) time());
+    $command = 'nohup ' . escapeshellarg($python) . ' ' . escapeshellarg($script) . ' '
+        . escapeshellarg($inputPath) . ' ' . escapeshellarg($outputPath) . ' >/dev/null 2>&1 &';
+    @exec($command, $unused, $exitCode);
+    if ((int) $exitCode !== 0) {
+        telegramFragmentSetSetting('login_job', '');
+        @unlink($inputPath);
+        return ['ok' => false, 'code' => 'RUNTIME_START_FAILED'];
+    }
     return ['ok' => true, 'job' => $job];
+}
+
+function telegramFragmentCancelLogin($job)
+{
+    $job = (string) $job;
+    if (!preg_match('/^[a-f0-9]{32}$/', $job)) return false;
+    $activeJob = telegramFragmentSetting('login_job', '');
+    if ($activeJob !== '' && !hash_equals($activeJob, $job)) return false;
+    $prefix = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job;
+    @file_put_contents($prefix . '.json.cancel', '1', LOCK_EX);
+    @chmod($prefix . '.json.cancel', 0600);
+    @unlink($prefix . '.input.json');
+    @unlink($prefix . '.json');
+    telegramFragmentSetSetting('login_job', '');
+    return true;
 }
 
 function telegramFragmentReadLogin($job)
 {
-    if (!preg_match('/^[a-f0-9]{32}$/', (string) $job) || !hash_equals(telegramFragmentSetting('login_job', ''), (string) $job)) {
-        return ['status' => 'error', 'error' => 'INVALID_LOGIN_JOB'];
+    $job = (string) $job;
+    $activeJob = telegramFragmentSetting('login_job', '');
+    if (!preg_match('/^[a-f0-9]{32}$/', $job) || $activeJob === '' || !hash_equals($activeJob, $job)) {
+        return ['status' => 'error', 'code' => 'INVALID_LOGIN_JOB'];
     }
-    $path = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job . '.json';
-    $inputPath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job . '.input.json';
+    $prefix = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job;
+    $path = $prefix . '.json';
+    $inputPath = $prefix . '.input.json';
     if (!is_file($path)) {
-        if (time() - (int) telegramFragmentSetting('login_started_at', '0') > 300) {
-            @unlink($inputPath);
-            return ['status' => 'error', 'error' => 'LOGIN_START_FAILED'];
+        if (time() - (int) telegramFragmentSetting('login_started_at', '0') > 330) {
+            telegramFragmentCancelLogin($job);
+            return ['status' => 'error', 'code' => 'LOGIN_TIMEOUT'];
         }
         return ['status' => 'starting'];
     }
     $data = json_decode((string) @file_get_contents($path), true);
-    if (!is_array($data)) {
-        return ['status' => 'waiting'];
-    }
-    if (($data['status'] ?? '') === 'success' && is_array($data['cookies'] ?? null) && $data['cookies']) {
-        telegramFragmentSetSecret('cookies', json_encode($data['cookies'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        telegramFragmentSetSetting('session_saved_at', date('Y-m-d H:i:s'));
-        telegramFragmentSetSetting('login_job', '');
-        @unlink($path);
-        @unlink($inputPath);
-        return ['status' => 'success', 'user' => $data['user'] ?? null];
+    if (!is_array($data)) return ['status' => 'starting'];
+
+    $status = (string) ($data['status'] ?? 'starting');
+    if ($status === 'success') {
+        $parsed = telegramFragmentParseCookies(json_encode($data['cookies'] ?? [], JSON_UNESCAPED_SLASHES));
+        if (empty($parsed['ok'])) {
+            $data = ['status' => 'error', 'code' => $parsed['code'] ?? 'INCOMPLETE_COOKIES'];
+        } else {
+            $validation = telegramFragmentValidateCookies($parsed['cookies'], 30);
+            if (empty($validation['ok'])) {
+                $data = ['status' => 'error', 'code' => $validation['code'] ?? 'INVALID_SESSION'];
+            } else {
+                telegramFragmentSetSecret('cookies', json_encode($parsed['cookies'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                telegramFragmentSetSetting('session_saved_at', date('Y-m-d H:i:s'));
+                telegramFragmentSetSetting('login_job', '');
+                @unlink($path);
+                @unlink($inputPath);
+                return ['status' => 'success'];
+            }
+        }
     }
     if (($data['status'] ?? '') === 'error') {
         telegramFragmentSetSetting('login_job', '');
         @unlink($path);
         @unlink($inputPath);
+        return $data;
+    }
+    if (!empty($data['login_url']) && !preg_match('#^https://t\.me/oauth\?startapp=[A-Za-z0-9_-]{8,512}$#', (string) $data['login_url'])) {
+        unset($data['login_url']);
     }
     return $data;
 }
@@ -304,6 +453,51 @@ function telegramFragmentButton($text, $callback, $style = null, $emojiId = null
         $label = rtrim(mb_substr($label, 0, 59, 'UTF-8')) . '…';
     }
     return telegramProductsStyledButton($label, $callback, $style, $emojiId);
+}
+
+function telegramFragmentUrlButton($text, $url)
+{
+    return ['text' => telegramProductsPlainText($text), 'url' => (string) $url];
+}
+
+function telegramFragmentLoginReply($job, array $result)
+{
+    $status = (string) ($result['status'] ?? 'starting');
+    if ($status === 'success') {
+        virtualServicesAdminReply("<b>حساب Fragment متصل شد</b>\n\nتأیید تلگرام انجام شد و نشست معتبر به‌صورت رمزگذاری‌شده ذخیره شد.", [
+            [telegramFragmentButton('بررسی کامل اتصال', 'vsf_test', 'success')],
+            [telegramFragmentButton('بازگشت', 'vsf_home')],
+        ]);
+        return;
+    }
+    if (in_array($status, ['waiting', 'refresh'], true) && !empty($result['login_url'])) {
+        virtualServicesAdminReply("<b>تأیید ورود تلگرام</b>\n\nدکمه زیر را بزنید، درخواست ورود Fragment را داخل تلگرام تأیید کنید و سپس «بررسی تأیید» را بزنید. این درخواست حداکثر پنج دقیقه اعتبار دارد.", [
+            [telegramFragmentUrlButton('باز کردن درخواست در تلگرام', $result['login_url'])],
+            [telegramFragmentButton('بررسی تأیید', 'vsf_logincheck_' . $job, 'success')],
+            [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)],
+        ]);
+        return;
+    }
+    if (in_array($status, ['consumed', 'confirmed'], true)) {
+        virtualServicesAdminReply('تأیید تلگرام دریافت شد و نشست Fragment در حال نهایی‌شدن است.', [
+            [telegramFragmentButton('بررسی دوباره', 'vsf_logincheck_' . $job, 'success')],
+            [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)],
+        ]);
+        return;
+    }
+    if ($status === 'error') {
+        $code = (string) ($result['code'] ?? $result['error'] ?? 'AUTH_FAILED');
+        virtualServicesAdminReply(telegramFragmentLoginErrorMessage($code), [
+            [telegramFragmentButton('شروع دوباره', 'vsf_login', 'primary')],
+            [telegramFragmentButton('ثبت نشست مرورگر', 'vsf_cookie')],
+            [telegramFragmentButton('بازگشت', 'vsf_home')],
+        ]);
+        return;
+    }
+    virtualServicesAdminReply('درخواست ورود در حال آماده‌سازی است. چند ثانیه دیگر دوباره بررسی کنید.', [
+        [telegramFragmentButton('دریافت لینک ورود', 'vsf_logincheck_' . $job, 'primary')],
+        [telegramFragmentButton('لغو ورود', 'vsf_logincancel_' . $job)],
+    ]);
 }
 
 function telegramFragmentTypeLabel($type)
@@ -350,7 +544,7 @@ function telegramFragmentAdminHome()
     $reviewCount = (int) $pdo->query("SELECT COUNT(*) FROM telegram_fragment_orders WHERE status = 'review'")->fetchColumn();
     $text = "<b>اتصال فرگمنت</b>\n\n";
     $text .= 'فروش خودکار: <b>' . ($status['enabled'] ? 'روشن' : 'خاموش') . "</b>\n";
-    $text .= 'ورود تلگرام: ' . ($status['session'] ? 'ثبت‌شده' : 'ثبت‌نشده') . "\n";
+    $text .= 'نشست Fragment: ' . ($status['session'] ? 'متصل' : 'ثبت‌نشده') . "\n";
     $text .= 'کیف پول: ' . ($status['wallet'] ? 'متصل' : 'تنظیم‌نشده') . "\n";
     $text .= 'کلید API شبکه TON: ' . ($status['api_key'] ? 'ثبت‌شده' : 'ثبت‌نشده') . "\n";
     $text .= 'پردازشگر خرید: ' . ($status['runtime'] ? 'آماده' : 'نصب‌نشده') . "\n";
@@ -366,7 +560,7 @@ function telegramFragmentAdminHome()
     $rows = [
         [telegramFragmentButton($status['enabled'] ? 'فروش خودکار روشن' : 'فروش خودکار خاموش', 'vsf_toggle', $status['enabled'] ? 'success' : 'danger')],
         [
-            telegramFragmentButton('ورود تلگرام', 'vsf_login'),
+            telegramFragmentButton('اتصال حساب Fragment', 'vsf_login'),
             telegramFragmentButton('اتصال کیف پول', 'vsf_seed'),
         ],
         [
@@ -519,14 +713,9 @@ function telegramFragmentAdminHandleState()
 
     if ($state === 'vsf_login_phone') {
         virtualServicesAdminClearState();
-        $result = telegramFragmentStartLogin($value);
-        if (empty($result['ok'])) {
-            virtualServicesAdminReply(telegramProductsEscape($result['message'] ?? 'شروع ورود ناموفق بود.'), [[telegramFragmentButton('تلاش دوباره', 'vsf_login')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
-            return true;
-        }
-        $job = $result['job'];
-        virtualServicesAdminReply("<b>درخواست ورود ارسال شد</b>\n\nاعلان ورود Fragment را داخل تلگرام تأیید کنید. سپس دکمه بررسی وضعیت را بزنید. این درخواست حدود چهار دقیقه اعتبار دارد.", [
-            [telegramFragmentButton('بررسی وضعیت ورود', 'vsf_logincheck_' . $job, 'success')],
+        virtualServicesAdminReply("<b>روش ورود بروزرسانی شده است</b>\n\nورود با شماره تلفن حذف شده است. اکنون ربات یک لینک رسمی تأیید تلگرام می‌سازد و پس از تأیید، نشست Fragment را خودکار ذخیره می‌کند.", [
+            [telegramFragmentButton('شروع ورود خودکار', 'vsf_login', 'primary')],
+            [telegramFragmentButton('ثبت نشست مرورگر', 'vsf_cookie', 'primary')],
             [telegramFragmentButton('بازگشت', 'vsf_home')],
         ]);
         return true;
@@ -534,19 +723,32 @@ function telegramFragmentAdminHandleState()
 
     if ($state === 'vsf_cookie_value') {
         telegramFragmentDeleteSecretMessage();
-        $cookies = json_decode($value, true);
-        $validCookies = is_array($cookies);
-        foreach (['stel_ssid', 'stel_dt', 'stel_token'] as $cookieKey) {
-            if (trim((string) ($cookies[$cookieKey] ?? '')) === '') $validCookies = false;
-        }
-        if (!$validCookies) {
-            virtualServicesAdminReply('JSON کوکی معتبر نیست. مقدار باید شامل stel_ssid، stel_dt و stel_token باشد.', [[telegramFragmentButton('انصراف', 'vsf_home')]]);
+        $parsed = telegramFragmentParseCookies($value);
+        if (empty($parsed['ok'])) {
+            virtualServicesAdminReply(telegramFragmentLoginErrorMessage($parsed['code'] ?? 'INVALID_COOKIES'), [
+                [telegramFragmentButton('راهنمای دریافت نشست', 'vsf_cookie_help')],
+                [telegramFragmentButton('انصراف', 'vsf_home')],
+            ]);
             return true;
         }
-        telegramFragmentSetSecret('cookies', json_encode($cookies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        virtualServicesAdminReply('در حال بررسی نشست با Fragment...', []);
+        $validation = telegramFragmentValidateCookies($parsed['cookies'], 30);
+        if (empty($validation['ok'])) {
+            virtualServicesAdminReply(telegramFragmentLoginErrorMessage($validation['code'] ?? 'SESSION_CHECK_FAILED'), [
+                [telegramFragmentButton('ارسال نشست تازه', 'vsf_cookie', 'primary')],
+                [telegramFragmentButton('راهنمای دریافت نشست', 'vsf_cookie_help')],
+                [telegramFragmentButton('انصراف', 'vsf_home')],
+            ]);
+            return true;
+        }
+        telegramFragmentSetSecret('cookies', json_encode($parsed['cookies'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         telegramFragmentSetSetting('session_saved_at', date('Y-m-d H:i:s'));
+        telegramFragmentSetSetting('login_job', '');
         virtualServicesAdminClearState();
-        virtualServicesAdminReply('نشست فرگمنت به‌صورت رمزگذاری‌شده ذخیره شد.', [[telegramFragmentButton('بازگشت به اتصال فرگمنت', 'vsf_home')]]);
+        virtualServicesAdminReply("<b>حساب Fragment متصل شد</b>\n\nنشست فعال بررسی و به‌صورت رمزگذاری‌شده ذخیره شد. اطلاعات نشست در پیام‌ها یا گزارش‌ها نمایش داده نمی‌شود.", [
+            [telegramFragmentButton('بررسی کامل اتصال', 'vsf_test', 'success')],
+            [telegramFragmentButton('بازگشت به اتصال فرگمنت', 'vsf_home')],
+        ]);
         return true;
     }
 
@@ -559,7 +761,7 @@ function telegramFragmentAdminHandleState()
         }
         telegramFragmentSetSecret('seed', implode(' ', $words));
         virtualServicesAdminClearState();
-        virtualServicesAdminReply('کیف پول با رمزگذاری محلی ثبت شد. عبارت بازیابی در پیام‌ها نمایش داده نمی‌شود.', [[telegramFragmentButton('بررسی اتصال', 'vsf_test', 'success')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
+        virtualServicesAdminReply('کیف پول با رمزگذاری محلی ثبت شد. عبارت بازیابی در پیام‌ها نمایش داده نمی‌شود.', [[telegramFragmentButton('اتصال خودکار Fragment', 'vsf_login', 'success')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
         return true;
     }
 
@@ -685,7 +887,7 @@ function telegramFragmentAdminHandle()
     if ($datain === 'vsf_toggle') {
         $status = telegramFragmentStatus();
         if (!$status['enabled'] && !$status['ready']) {
-            virtualServicesAdminReply('ابتدا ورود تلگرام، کیف پول، کلید API و پردازشگر محلی را کامل کنید.', [[telegramFragmentButton('بازگشت', 'vsf_home')]]);
+            virtualServicesAdminReply('ابتدا نشست Fragment، کیف پول، کلید API و پردازشگر محلی را کامل کنید.', [[telegramFragmentButton('بازگشت', 'vsf_home')]]);
             return true;
         }
         if (!$status['enabled']) {
@@ -700,30 +902,68 @@ function telegramFragmentAdminHandle()
         return true;
     }
     if ($datain === 'vsf_login') {
-        virtualServicesAdminSetState('vsf_login_phone');
-        virtualServicesAdminReply("<b>ورود به Fragment</b>\n\nشماره تلگرام متصل به حساب Fragment را با کد کشور ارسال کنید.\nنمونه: <code>+989121234567</code>\n\nبعد از ارسال، درخواست ورود را داخل تلگرام تأیید می‌کنید؛ کد یا رمز دوم از شما گرفته نمی‌شود.", [
-            [telegramFragmentButton('ثبت دستی کوکی نشست', 'vsf_cookie')],
+        $status = telegramFragmentStatus();
+        if (!$status['wallet']) {
+            virtualServicesAdminReply("<b>اتصال حساب Fragment</b>\n\nبرای ساخت نشست خودکار، ابتدا کیف پول TON را ثبت کنید. ربات با اثبات مالکیت کیف پول یک لینک رسمی تأیید تلگرام می‌سازد؛ شماره، کد ورود و رمز دوم از شما گرفته نمی‌شود.", [
+                [telegramFragmentButton('اتصال کیف پول', 'vsf_seed', 'primary')],
+                [telegramFragmentButton('ثبت نشست مرورگر', 'vsf_cookie')],
+                [telegramFragmentButton('بازگشت', 'vsf_home')],
+            ]);
+            return true;
+        }
+        virtualServicesAdminReply('در حال ساخت درخواست امن ورود Fragment...', []);
+        $started = telegramFragmentStartLogin();
+        if (empty($started['ok'])) {
+            $code = (string) ($started['code'] ?? 'RUNTIME_START_FAILED');
+            virtualServicesAdminReply(telegramFragmentLoginErrorMessage($code), [
+                [telegramFragmentButton('اتصال کیف پول', 'vsf_seed')],
+                [telegramFragmentButton('ثبت نشست مرورگر', 'vsf_cookie')],
+                [telegramFragmentButton('بازگشت', 'vsf_home')],
+            ]);
+            return true;
+        }
+        $job = $started['job'];
+        $result = ['status' => 'starting'];
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            usleep(250000);
+            $result = telegramFragmentReadLogin($job);
+            if (($result['status'] ?? 'starting') !== 'starting') break;
+        }
+        telegramFragmentLoginReply($job, $result);
+        return true;
+    }
+    if ($datain === 'vsf_cookie') {
+        $activeJob = telegramFragmentSetting('login_job', '');
+        if ($activeJob !== '') telegramFragmentCancelLogin($activeJob);
+        virtualServicesAdminSetState('vsf_cookie_value');
+        virtualServicesAdminReply("<b>ثبت نشست مرورگر</b>\n\nرشته <code>Cookie</code> مربوط به دامنه <code>fragment.com</code> یا خروجی JSON کوکی‌های آن را ارسال کنید. هر سه قالب زیر پذیرفته می‌شود:\n\n<code>stel_ssid=...; stel_token=...</code>\nآبجکت JSON\nخروجی JSON افزونه‌های مدیریت کوکی\n\nپیام شما فوراً حذف می‌شود؛ فقط کلیدهای موردنیاز Fragment نگهداری و نشست پیش از ذخیره اعتبارسنجی خواهد شد.", [
+            [telegramFragmentButton('راهنمای دریافت نشست', 'vsf_cookie_help')],
             [telegramFragmentButton('انصراف', 'vsf_home')],
         ]);
         return true;
     }
-    if ($datain === 'vsf_cookie') {
-        virtualServicesAdminSetState('vsf_cookie_value');
-        virtualServicesAdminReply("آبجکت JSON کوکی‌های نشست Fragment را ارسال کنید. پیام ارسالی بلافاصله حذف و مقدار آن رمزگذاری می‌شود.", [[telegramFragmentButton('انصراف', 'vsf_home')]]);
+    if ($datain === 'vsf_cookie_help') {
+        virtualServicesAdminReply("<b>راهنمای دریافت نشست Fragment</b>\n\n1. در مرورگر دسکتاپ وارد <b>fragment.com</b> شوید.\n2. روی <b>Connect Telegram</b> بزنید و ورود را داخل تلگرام تأیید کنید.\n3. ابزار توسعه مرورگر را باز کنید و از بخش <b>Application / Storage → Cookies → https://fragment.com</b> مقادیر کوکی‌ها را دریافت کنید.\n4. کوکی‌ها را به شکل رشته Cookie یا JSON در بخش «ثبت نشست مرورگر» بفرستید.\n\nنشست مانند رمز عبور حساس است؛ آن را برای فرد یا ربات دیگری ارسال نکنید.", [
+            [telegramFragmentButton('ثبت نشست مرورگر', 'vsf_cookie', 'primary')],
+            [telegramFragmentButton('بازگشت', 'vsf_login')],
+        ]);
         return true;
     }
     if (preg_match('/^vsf_logincheck_([a-f0-9]{32})$/', $datain, $match)) {
-        $result = telegramFragmentReadLogin($match[1]);
-        if (($result['status'] ?? '') === 'success') {
-            virtualServicesAdminReply('ورود با موفقیت تأیید شد و نشست فرگمنت به‌صورت رمزگذاری‌شده ذخیره شد.', [[telegramFragmentButton('بررسی اتصال', 'vsf_test', 'success')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
-        } elseif (in_array($result['status'] ?? '', ['starting', 'waiting'], true)) {
-            virtualServicesAdminReply('هنوز تأیید ورود دریافت نشده است. درخواست ورود را داخل تلگرام تأیید کرده و دوباره بررسی کنید.', [[telegramFragmentButton('بررسی دوباره', 'vsf_logincheck_' . $match[1], 'primary')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
-        } else {
-            virtualServicesAdminReply('ورود انجام نشد: <code>' . telegramProductsEscape($result['error'] ?? 'LOGIN_FAILED') . '</code>', [[telegramFragmentButton('شروع دوباره', 'vsf_login')], [telegramFragmentButton('بازگشت', 'vsf_home')]]);
-        }
+        telegramFragmentLoginReply($match[1], telegramFragmentReadLogin($match[1]));
+        return true;
+    }
+    if (preg_match('/^vsf_logincancel_([a-f0-9]{32})$/', $datain, $match)) {
+        telegramFragmentCancelLogin($match[1]);
+        virtualServicesAdminReply('درخواست ورود لغو و فایل‌های موقت آن پاک شد.', [
+            [telegramFragmentButton('شروع دوباره', 'vsf_login', 'primary')],
+            [telegramFragmentButton('بازگشت', 'vsf_home')],
+        ]);
         return true;
     }
     if ($datain === 'vsf_seed') {
+        $activeJob = telegramFragmentSetting('login_job', '');
+        if ($activeJob !== '') telegramFragmentCancelLogin($activeJob);
         virtualServicesAdminSetState('vsf_seed_value');
         virtualServicesAdminReply("<b>اتصال کیف پول TON</b>\n\nعبارت بازیابی کیف پولی را ارسال کنید که موجودی خریدهای Fragment داخل آن قرار دارد. پیام بلافاصله حذف و عبارت با کلید اختصاصی همین ربات رمزگذاری می‌شود.", [[telegramFragmentButton('انصراف', 'vsf_home')]]);
         return true;
@@ -755,7 +995,7 @@ function telegramFragmentAdminHandle()
     if ($datain === 'vsf_test') {
         $status = telegramFragmentStatus();
         if (!$status['ready']) {
-            virtualServicesAdminReply('تنظیمات اتصال کامل نیست. ورود، کیف پول، کلید API و پردازشگر را بررسی کنید.', [[telegramFragmentButton('بازگشت', 'vsf_home')]]);
+            virtualServicesAdminReply('تنظیمات اتصال کامل نیست. نشست Fragment، کیف پول، کلید API و پردازشگر را بررسی کنید.', [[telegramFragmentButton('بازگشت', 'vsf_home')]]);
             return true;
         }
         virtualServicesAdminReply('در حال بررسی نشست و کیف پول فرگمنت...', []);
@@ -783,8 +1023,8 @@ function telegramFragmentAdminHandle()
     }
     if ($datain === 'vsf_help') {
         $runtime = telegramFragmentRuntimeStatus();
-        $text = "<b>راهنمای اتصال فرگمنت</b>\n\n1. ورود تلگرام را انجام دهید و اعلان را داخل تلگرام تأیید کنید.\n2. کیف پول TON و کلید Toncenter را ثبت کنید.\n3. نسخه کیف پول را انتخاب و اتصال را آزمایش کنید.\n4. پلن‌ها را بسازید و فروش خودکار را روشن کنید.\n\n";
-        $text .= '<b>وضعیت نصب:</b> Python worker: ' . ($runtime['worker'] ? 'موجود' : 'ناموجود') . ' | Login runtime: ' . ($runtime['node_modules'] ? 'موجود' : 'ناموجود');
+        $text = "<b>راهنمای اتصال فرگمنت</b>\n\n1. کیف پول TON و نسخه صحیح آن را ثبت کنید.\n2. «اتصال حساب Fragment» را بزنید و درخواست رسمی تلگرام را تأیید کنید.\n3. کلید Toncenter را ثبت و اتصال را آزمایش کنید.\n4. پلن‌ها را بسازید و فروش خودکار را روشن کنید.\n\nدر صورت نیاز، ثبت دستی نشست مرورگر نیز در بخش اتصال حساب در دسترس است.\n\n";
+        $text .= '<b>وضعیت نصب:</b> پردازشگر خرید: ' . ($runtime['worker'] ? 'موجود' : 'ناموجود') . ' | ورود خودکار: ' . ($runtime['login_worker'] ? 'موجود' : 'ناموجود');
         virtualServicesAdminReply($text, [[telegramFragmentButton('بازگشت', 'vsf_home')]]);
         return true;
     }

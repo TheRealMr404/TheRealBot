@@ -289,7 +289,7 @@ IP_CACHE="/tmp/.mirza_server_ip"
 
 install_fragment_runtime() {
     local bot_dir="${1:-${BOT_DIR:-$BOT_DIR_DEFAULT}}"
-    [ -f "$bot_dir/fragment_runtime/package.json" ] || return 0
+    [ -f "$bot_dir/fragment_runtime/fragment_worker.py" ] || return 0
     [ -f "$bot_dir/fragment_runtime/install.sh" ] || {
         echo "Fragment runtime installer is missing: $bot_dir/fragment_runtime/install.sh" >&2
         return 1
@@ -512,7 +512,7 @@ rsync -a --delete \
     --exclude='/fragment_runtime/node_modules/' \
     "$SOURCE_DIR/" "$BOT_DIR/"
 
-if [ -f "$BOT_DIR/fragment_runtime/package.json" ]; then
+if [ -f "$BOT_DIR/fragment_runtime/fragment_worker.py" ]; then
     [ -f "$BOT_DIR/fragment_runtime/install.sh" ] || {
         echo "FRAGMENT_RUNTIME_INSTALLER_MISSING"
         exit 28
@@ -1551,24 +1551,13 @@ FROM php:8.2-apache
 ENV DEBIAN_FRONTEND=noninteractive
 ENV MIRZA_FRAGMENT_PYTHON=/opt/mirza/fragment-venv/bin/python
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash cron curl unzip rsync sudo ca-certificates git gnupg util-linux nodejs npm python3 python3-venv \
+    bash cron curl unzip rsync sudo ca-certificates git util-linux python3 python3-venv \
     libcurl4-openssl-dev libfreetype6-dev libicu-dev libjpeg62-turbo-dev \
     libonig-dev libpng-dev libssh2-1-dev libxml2-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" mysqli pdo_mysql mbstring zip gd curl intl xml bcmath soap \
     && printf '\n' | pecl install ssh2-1.4.1 \
     && docker-php-ext-enable ssh2 \
-    && if [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 18 ]; then \
-        install -d -m 0755 /etc/apt/keyrings; \
-        curl -fsSL --retry 3 https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.key; \
-        gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource.key; \
-        rm -f /tmp/nodesource.key; \
-        echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main' > /etc/apt/sources.list.d/nodesource.list; \
-        apt-get update; \
-        apt-get remove -y nodejs npm || true; \
-        apt-get install -y --no-install-recommends nodejs; \
-    fi \
-    && node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)' \
     && python3 -m venv /opt/mirza/fragment-venv \
     && /opt/mirza/fragment-venv/bin/pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 60 --upgrade pip setuptools wheel \
     && /opt/mirza/fragment-venv/bin/pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 60 'fragment-api-py==12.1.0' \
@@ -1631,7 +1620,7 @@ SOURCE_DIR=$(find "$TMP_DIR/extracted" -mindepth 1 -maxdepth 1 -type d | head -1
 find "$SOURCE_DIR" -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null; done
 tar -czf "$BACKUP_DIR/source_${STAMP}.tar.gz" -C "$BOT_DIR" .
 rsync -a --delete --exclude='/config.php' --exclude='/error_log' --exclude='/fragment_runtime/node_modules/' "$SOURCE_DIR/" "$BOT_DIR/"
-if [ -f "$BOT_DIR/fragment_runtime/package.json" ]; then
+if [ -f "$BOT_DIR/fragment_runtime/fragment_worker.py" ]; then
     [ -f "$BOT_DIR/fragment_runtime/install.sh" ] || { echo FRAGMENT_RUNTIME_INSTALLER_MISSING; exit 28; }
     bash "$BOT_DIR/fragment_runtime/install.sh" --bot-dir "$BOT_DIR" --app-only
 fi
@@ -1820,7 +1809,7 @@ docker_bot_add() {
     }
 
     docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
-        "if [ -f /var/www/html/fragment_runtime/package.json ]; then bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" \
+        "if [ -f /var/www/html/fragment_runtime/fragment_worker.py ]; then [ -f /var/www/html/fragment_runtime/install.sh ] || exit 28; bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" \
         || {
             echo "Fragment runtime installation failed. Installation was rolled back."
             docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
@@ -2057,7 +2046,7 @@ docker_bot_update() {
         return 1
     }
     docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
-        "if [ -f /var/www/html/fragment_runtime/package.json ]; then bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" || {
+        "if [ -f /var/www/html/fragment_runtime/fragment_worker.py ]; then [ -f /var/www/html/fragment_runtime/install.sh ] || exit 28; bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" || {
             echo "Fragment runtime installation failed after update; restoring the pre-update backup."
             docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
             return 1

@@ -50,8 +50,8 @@ done
 BOT_DIR="$(readlink -f -- "$BOT_DIR" 2>/dev/null || true)"
 RUNTIME_DIR="$BOT_DIR/fragment_runtime"
 
-[ -n "$BOT_DIR" ] && [ -f "$RUNTIME_DIR/package.json" ] \
-    || fail "Fragment package.json was not found under the selected bot directory"
+[ -n "$BOT_DIR" ] && [ -f "$RUNTIME_DIR/fragment_worker.py" ] && [ -f "$RUNTIME_DIR/fragment_auth.py" ] \
+    || fail "Fragment runtime files were not found under the selected bot directory"
 
 apt_install() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
@@ -59,41 +59,6 @@ apt_install() {
 
 refresh_apt() {
     retry 3 apt-get update -o Acquire::Retries=3
-}
-
-node_major() {
-    node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || printf '0\n'
-}
-
-install_node() {
-    local major
-    major="$(node_major)"
-    if [ "$major" -ge 18 ] 2>/dev/null && command -v npm >/dev/null 2>&1; then
-        return 0
-    fi
-
-    log "Installing Node.js 20 and npm..."
-    apt_install ca-certificates curl gnupg
-    install -d -m 0755 /etc/apt/keyrings
-    rm -f /etc/apt/keyrings/nodesource.gpg.tmp
-    retry 3 curl -fsSL --connect-timeout 20 --max-time 120 \
-        https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-        -o /etc/apt/keyrings/nodesource.gpg.tmp
-    gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg \
-        /etc/apt/keyrings/nodesource.gpg.tmp
-    rm -f /etc/apt/keyrings/nodesource.gpg.tmp
-    chmod 0644 /etc/apt/keyrings/nodesource.gpg
-    printf '%s\n' \
-        'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main' \
-        > /etc/apt/sources.list.d/nodesource.list
-    refresh_apt
-    # Debian's npm package conflicts with the npm bundled by NodeSource.
-    DEBIAN_FRONTEND=noninteractive apt-get remove -y nodejs npm >/dev/null 2>&1 || true
-    apt_install nodejs
-
-    major="$(node_major)"
-    [ "$major" -ge 18 ] 2>/dev/null && command -v npm >/dev/null 2>&1 \
-        || fail "Node.js 18 or newer and npm could not be installed"
 }
 
 python_supported() {
@@ -152,15 +117,12 @@ if [ "$APP_ONLY" -eq 0 ]; then
     [ "$(id -u)" -eq 0 ] || fail "Run this installer as root"
     log "Refreshing operating-system packages..."
     refresh_apt
-    apt_install ca-certificates curl gnupg python3 python3-venv
-    install_node
+    apt_install ca-certificates python3 python3-venv
     PYTHON_BIN="$(install_python)"
     ensure_venv_module "$PYTHON_BIN"
 else
     PYTHON_BIN="$(select_python 2>/dev/null || true)"
     [ -n "$PYTHON_BIN" ] || fail "Python 3.10 or newer is not available in the container"
-    [ "$(node_major)" -ge 18 ] 2>/dev/null && command -v npm >/dev/null 2>&1 \
-        || fail "Node.js 18 or newer and npm are not available in the container"
 fi
 
 if [ -x "$VENV_DIR/bin/python" ] && ! python_supported "$VENV_DIR/bin/python"; then
@@ -182,22 +144,17 @@ retry 3 "$VENV_DIR/bin/python" -m pip install \
     --disable-pip-version-check --no-cache-dir --retries 5 --timeout 60 \
     "$PY_PACKAGE"
 
-log "Installing the Fragment Node package..."
-if [ -f "$RUNTIME_DIR/package-lock.json" ]; then
-    retry 3 npm ci --omit=dev --no-audit --no-fund --prefix "$RUNTIME_DIR"
-else
-    retry 3 npm install --omit=dev --no-audit --no-fund --prefix "$RUNTIME_DIR"
-fi
+# Remove the retired Node OAuth package from installations upgraded from an
+# earlier build. Authentication and session checks now share the Python runtime.
+rm -rf -- "$RUNTIME_DIR/node_modules"
 
 log "Verifying the installed runtime..."
 "$VENV_DIR/bin/python" -c 'from FragmentAPI import FragmentClient'
-(
-    cd "$RUNTIME_DIR"
-    node --input-type=module -e "import('fragment-tg').then(() => process.exit(0))"
-)
+"$VENV_DIR/bin/python" -c 'import pathlib, sys; [compile(pathlib.Path(item).read_text(encoding="utf-8"), item, "exec") for item in sys.argv[1:]]' \
+    "$RUNTIME_DIR/fragment_auth.py" "$RUNTIME_DIR/fragment_worker.py"
 
 if id www-data >/dev/null 2>&1; then
     chown -R www-data:www-data "$RUNTIME_DIR"
 fi
 
-log "Fragment dependencies installed successfully (Node $(node --version), Python $("$VENV_DIR/bin/python" --version 2>&1))."
+log "Fragment dependencies installed successfully (Python $("$VENV_DIR/bin/python" --version 2>&1))."

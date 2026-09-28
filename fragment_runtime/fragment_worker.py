@@ -73,6 +73,13 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
 
     try:
         async with FragmentClient(**kwargs) as client:
+            if action == "session":
+                profile = await client.get_profile()
+                return {
+                    "ok": True,
+                    "profile": public_value(profile),
+                }
+
             if action == "connection":
                 from FragmentAPI.utils.wallet import fetch_wallet_info
 
