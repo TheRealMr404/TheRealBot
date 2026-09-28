@@ -17,6 +17,7 @@ from typing import Any
 JOB_LIFETIME_SECONDS = 330
 SUCCESS_RETENTION_SECONDS = 240
 LOGIN_URL_PATTERN = re.compile(r"^https://t\.me/oauth\?startapp=[A-Za-z0-9_-]{8,512}$")
+OAUTH_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,8192}$")
 
 
 def now() -> str:
@@ -53,6 +54,21 @@ def safe_login_url(value: Any) -> str | None:
     return value if LOGIN_URL_PATTERN.fullmatch(value) else None
 
 
+def read_oauth_result(path: Path) -> str | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    token = payload.get("token") if isinstance(payload, dict) else None
+    if not isinstance(token, str) or not OAUTH_TOKEN_PATTERN.fullmatch(token):
+        return None
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    return token
+
+
 def map_error(exc: BaseException) -> str:
     name = exc.__class__.__name__.lower()
     message = str(exc).lower()
@@ -71,6 +87,7 @@ def map_error(exc: BaseException) -> str:
 
 async def run_authentication(input_path: Path, output_path: Path) -> None:
     cancel_path = output_path.with_name(f"{output_path.name}.cancel")
+    oauth_result_path = output_path.with_name(f"{output_path.stem}.oauth.json")
     try:
         raw = input_path.read_text(encoding="utf-8")
         payload = json.loads(raw)
@@ -94,6 +111,7 @@ async def run_authentication(input_path: Path, output_path: Path) -> None:
 
     try:
         from FragmentAPI import FragmentClient
+        from FragmentAPI.utils import auth as fragment_auth
     except Exception:
         write_state(output_path, "error", code="RUNTIME_MISSING")
         return
@@ -139,6 +157,93 @@ async def run_authentication(input_path: Path, output_path: Path) -> None:
             if current_login_url:
                 state["login_url"] = current_login_url
             write_state(output_path, status, **state)
+
+    original_poll = getattr(fragment_auth, "_poll_telegram_auth", None)
+
+    async def poll_telegram_auth(session: Any, qtoken: str, on_status: Any = None) -> str:
+        headers = {
+            **fragment_auth.BROWSER_HEADERS,
+            "Content-type": "application/x-www-form-urlencoded",
+        }
+        current_qtoken = qtoken
+        consumed = False
+        confirmed_at: float | None = None
+        last_push_attempt = 0.0
+
+        while True:
+            if cancelled():
+                raise asyncio.CancelledError
+            bridged_token = read_oauth_result(oauth_result_path)
+            if bridged_token:
+                if on_status:
+                    on_status("confirmed", None)
+                return bridged_token
+            if confirmed_at is not None and time.monotonic() - confirmed_at > 60:
+                raise asyncio.TimeoutError
+
+            poll_url = (
+                f"{fragment_auth.TELEGRAM_OAUTH_BASE}/auth/login?"
+                f"{fragment_auth.TELEGRAM_BASE_PARAMS}&qtoken={current_qtoken}"
+            )
+            try:
+                response = await asyncio.wait_for(
+                    session.post(poll_url, content=b"", headers=headers),
+                    timeout=10,
+                )
+                data = response.json()
+                status = data.get("status") if isinstance(data, dict) else None
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await asyncio.sleep(1)
+                continue
+
+            if status == "refresh":
+                refreshed_qtoken = str(data.get("qtoken", ""))
+                if OAUTH_TOKEN_PATTERN.fullmatch(refreshed_qtoken):
+                    current_qtoken = refreshed_qtoken
+                    if on_status:
+                        on_status("refresh", current_qtoken)
+            elif status == "consumed":
+                if not consumed:
+                    consumed = True
+                    if on_status:
+                        on_status("consumed", None)
+            elif status == "confirmed":
+                if confirmed_at is None:
+                    confirmed_at = time.monotonic()
+                    if on_status:
+                        on_status("confirmed", None)
+
+                bridged_token = read_oauth_result(oauth_result_path)
+                if bridged_token:
+                    return bridged_token
+
+                if time.monotonic() - last_push_attempt >= 3:
+                    last_push_attempt = time.monotonic()
+                    push_url = (
+                        f"{fragment_auth.TELEGRAM_OAUTH_BASE}/auth/push?"
+                        f"{fragment_auth.TELEGRAM_BASE_PARAMS}"
+                    )
+                    try:
+                        push_response = await asyncio.wait_for(
+                            session.get(push_url, headers=fragment_auth.BROWSER_HEADERS),
+                            timeout=8,
+                        )
+                        match = re.search(r"#tgAuthResult=([A-Za-z0-9_-]{8,8192})", push_response.text)
+                        if match:
+                            return match.group(1)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        pass
+            elif status in ("cancelled", "expired", "failed"):
+                raise RuntimeError(f"Telegram OAuth status: {status}")
+
+            await asyncio.sleep(0.5 if confirmed_at is not None else 1)
+
+    if callable(original_poll):
+        fragment_auth._poll_telegram_auth = poll_telegram_auth
 
     auth_task = asyncio.create_task(
         FragmentClient.authenticate(
@@ -198,6 +303,8 @@ async def run_authentication(input_path: Path, output_path: Path) -> None:
         if not cancelled():
             write_state(output_path, "error", code=map_error(exc))
     finally:
+        if callable(original_poll):
+            fragment_auth._poll_telegram_auth = original_poll
         if not auth_task.done():
             auth_task.cancel()
         try:
@@ -206,6 +313,10 @@ async def run_authentication(input_path: Path, output_path: Path) -> None:
             pass
         try:
             cancel_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            oauth_result_path.unlink()
         except FileNotFoundError:
             pass
 

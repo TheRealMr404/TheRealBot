@@ -352,6 +352,47 @@ function telegramFragmentJobPrefix($job)
     return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mirza_fragment_' . $job;
 }
 
+function telegramFragmentStoreOAuthResult($job, $resultUrl)
+{
+    $job = (string) $job;
+    $prefix = telegramFragmentJobPrefix($job);
+    $activeJob = telegramFragmentSetting('login_job', '');
+    if ($prefix === '' || $activeJob === '' || !hash_equals($activeJob, $job)) return false;
+
+    $resultUrl = trim((string) $resultUrl);
+    if ($resultUrl === '' || strlen($resultUrl) > 12000) return false;
+    $parts = parse_url($resultUrl);
+    if (!is_array($parts)
+        || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || strtolower((string) ($parts['host'] ?? '')) !== 'fragment.com') {
+        return false;
+    }
+
+    $parameters = [];
+    parse_str((string) ($parts['fragment'] ?? ''), $parameters);
+    if (empty($parameters['tgAuthResult'])) {
+        parse_str((string) ($parts['query'] ?? ''), $parameters);
+    }
+    $token = (string) ($parameters['tgAuthResult'] ?? '');
+    if (!preg_match('/^[A-Za-z0-9_-]{8,8192}$/', $token)) return false;
+
+    $path = $prefix . '.oauth.json';
+    try {
+        $temporaryPath = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
+    } catch (Throwable $exception) {
+        return false;
+    }
+    $payload = json_encode(['token' => $token, 'created_at' => time()], JSON_UNESCAPED_SLASHES);
+    if ($payload === false || @file_put_contents($temporaryPath, $payload, LOCK_EX) === false) return false;
+    @chmod($temporaryPath, 0600);
+    if (!@rename($temporaryPath, $path)) {
+        @unlink($temporaryPath);
+        return false;
+    }
+    @chmod($path, 0600);
+    return true;
+}
+
 function telegramFragmentRememberLoginResult($job, $status, $code = '')
 {
     telegramFragmentSetSetting('login_last_job', (string) $job);
@@ -451,6 +492,7 @@ function telegramFragmentCancelLogin($job)
     @chmod($prefix . '.json.cancel', 0600);
     @unlink($prefix . '.input.json');
     @unlink($prefix . '.json');
+    @unlink($prefix . '.oauth.json');
     telegramFragmentSetSetting('login_job', '');
     telegramFragmentSetSetting('login_qr_sent_key', '');
     return true;
@@ -501,6 +543,7 @@ function telegramFragmentReadLogin($job)
                 telegramFragmentRememberLoginResult($job, 'error', $code);
                 telegramFragmentSetSetting('login_job', '');
                 @unlink($path);
+                @unlink($prefix . '.oauth.json');
                 return ['status' => 'error', 'code' => $code];
             }
             $validation = telegramFragmentValidateCookies($parsed['cookies'], 30);
@@ -509,6 +552,7 @@ function telegramFragmentReadLogin($job)
                 telegramFragmentRememberLoginResult($job, 'error', $code);
                 telegramFragmentSetSetting('login_job', '');
                 @unlink($path);
+                @unlink($prefix . '.oauth.json');
                 return ['status' => 'error', 'code' => $code];
             }
             telegramFragmentSetSecret('cookies', json_encode($parsed['cookies'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -518,6 +562,7 @@ function telegramFragmentReadLogin($job)
             telegramFragmentSetSetting('login_qr_sent_key', '');
             @unlink($path);
             @unlink($inputPath);
+            @unlink($prefix . '.oauth.json');
             return ['status' => 'success'];
         } finally {
             flock($lock, LOCK_UN);
@@ -535,6 +580,7 @@ function telegramFragmentReadLogin($job)
         telegramFragmentSetSetting('login_qr_sent_key', '');
         @unlink($path);
         @unlink($inputPath);
+        @unlink($prefix . '.oauth.json');
         return ['status' => 'error', 'code' => $code];
     }
 
