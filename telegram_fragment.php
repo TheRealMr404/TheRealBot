@@ -313,6 +313,8 @@ function telegramFragmentLoginErrorMessage($code)
         'INVALID_WALLET_VERSION' => 'نسخه کیف پول معتبر نیست. نسخه V4R2 یا V5R1 را انتخاب کنید.',
         'WALLET_AUTH_FAILED' => 'اثبات مالکیت کیف پول انجام نشد. عبارت بازیابی و نسخه کیف پول را بررسی کنید.',
         'OAUTH_START_FAILED' => 'تلگرام درخواست ورود را ایجاد نکرد. اتصال سرور و نسخه پردازشگر Fragment را بررسی کنید.',
+        'OAUTH_RESULT_MISSING' => 'تأیید تلگرام انجام شد، اما نتیجه نهایی ورود دریافت نشد. یک درخواست تازه بسازید و آن را با آخرین نسخه Telegram تأیید کنید.',
+        'SESSION_FINALIZE_FAILED' => 'نتیجه تأیید دریافت شد، اما Fragment نشست نهایی ایجاد نکرد. اتصال سرور به fragment.com را بررسی و درخواست را دوباره اجرا کنید.',
         'INVALID_JOB_INPUT' => 'اطلاعات داخلی درخواست ورود معتبر نبود. یک درخواست تازه بسازید.',
         'AUTH_WORKER_FAILED' => 'پردازشگر ورود به‌صورت غیرمنتظره متوقف شد. یک درخواست تازه بسازید.',
         'LOGIN_TIMEOUT' => 'زمان تأیید ورود تمام شد. یک درخواست تازه بسازید و آن را حداکثر طی پنج دقیقه تأیید کنید.',
@@ -360,7 +362,7 @@ function telegramFragmentStoreOAuthResult($job, $resultUrl)
     if ($prefix === '' || $activeJob === '' || !hash_equals($activeJob, $job)) return false;
 
     $resultUrl = trim((string) $resultUrl);
-    if ($resultUrl === '' || strlen($resultUrl) > 12000) return false;
+    if ($resultUrl === '' || strlen($resultUrl) > 20000) return false;
     $parts = parse_url($resultUrl);
     if (!is_array($parts)
         || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
@@ -368,13 +370,20 @@ function telegramFragmentStoreOAuthResult($job, $resultUrl)
         return false;
     }
 
-    $parameters = [];
-    parse_str((string) ($parts['fragment'] ?? ''), $parameters);
-    if (empty($parameters['tgAuthResult'])) {
-        parse_str((string) ($parts['query'] ?? ''), $parameters);
+    // Telegram returns standard Base64 here. parse_str() would turn a valid "+"
+    // into a space, so extract and percent-decode the value without form rules.
+    $token = '';
+    foreach ([(string) ($parts['fragment'] ?? ''), (string) ($parts['query'] ?? '')] as $source) {
+        if (!preg_match('/(?:^|[&?])tgAuthResult=([^&#\s"\'<>]+)/i', $source, $match)) continue;
+        $token = (string) $match[1];
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $decoded = rawurldecode($token);
+            if ($decoded === $token) break;
+            $token = $decoded;
+        }
+        break;
     }
-    $token = (string) ($parameters['tgAuthResult'] ?? '');
-    if (!preg_match('/^[A-Za-z0-9_-]{8,8192}$/', $token)) return false;
+    if (!preg_match('/\A[A-Za-z0-9+\/_=-]{8,16384}\z/D', $token)) return false;
 
     $path = $prefix . '.oauth.json';
     try {
@@ -783,8 +792,11 @@ function telegramFragmentLoginReply($job, array $result)
         virtualServicesAdminReply($text, telegramFragmentLoginRows($job, $loginUrl));
         return;
     }
-    if (in_array($status, ['consumed', 'confirmed'], true)) {
-        virtualServicesAdminReply("<b>تأیید دریافت شد</b>\n\nFragment در حال نهایی‌کردن نشست است. چند ثانیه دیگر وضعیت را بررسی کنید.", [
+    if (in_array($status, ['consumed', 'confirmed', 'finalizing'], true)) {
+        $message = $status === 'finalizing'
+            ? "<b>در حال ساخت نشست Fragment</b>\n\nنتیجه تأیید به‌دست رسیده و در حال تبدیل به نشست قابل استفاده است."
+            : "<b>تأیید دریافت شد</b>\n\nFragment در حال نهایی‌کردن نشست است. چند ثانیه دیگر وضعیت را بررسی کنید.";
+        virtualServicesAdminReply($message, [
             [telegramFragmentButton('بررسی وضعیت ورود', 'vsf_logincheck_' . $job, 'success')],
             [telegramFragmentButton('لغو درخواست', 'vsf_logincancel_' . $job)],
         ]);
