@@ -468,10 +468,6 @@ function telegramProductsAdminPermissionForRequest($callback, $state = '', $inco
 {
     $value = $callback !== '' ? $callback : $state;
     if (in_array($incomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true) || in_array($callback, ['vsa_home', 'vsa_exit'], true)) return null;
-    if (preg_match('/^vsf_(orders|reviews|order_|delivered_)/', $value)) return 'orders';
-    if (preg_match('/^vsf_refund/', $value)) return 'finance';
-    if (preg_match('/^vsf_(plans|plan_|add_|prem_|pname_|pprice_|pemoji_|pstyle_|setstyle_|ptoggle_|pup_|pdown_|pdelete)/', $value)) return 'catalog';
-    if (strpos($value, 'vsf_') === 0) return 'settings';
     if (strpos($value, 'vsa_fx_role') === 0) return 'roles';
     if (strpos($value, 'vsa_fx_discount') === 0 || strpos($value, 'vsa_fx_d') === 0) return 'discounts';
     if (strpos($value, 'vsa_fx_w') === 0) return 'warranty';

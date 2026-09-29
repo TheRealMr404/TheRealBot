@@ -425,6 +425,8 @@ try {
         addFieldToTable("marzban_panel", "xui_auth_mode", "session", "VARCHAR(20)");
         addFieldToTable("marzban_panel", "xui_api_token", null, "TEXT");
         addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
+        // Older releases stored PasarGuard config panels as Marzban with version_panel=1.
+        $connect->query("UPDATE marzban_panel SET type = 'pasarguard', version_panel = '0' WHERE type = 'marzban' AND version_panel = '1'");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
         $next_num = $max_row['max_num'] ? (int) $max_row['max_num'] + 1 : 15;

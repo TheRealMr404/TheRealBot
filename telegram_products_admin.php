@@ -104,7 +104,6 @@ function virtualServicesAdminHome()
             ['text' => 'محصولات', 'callback_data' => 'vsa_groups'],
         ],
         [['text' => 'پلن‌های قابل خرید', 'callback_data' => 'vsa_products']],
-        [['text' => 'استارز و پریمیوم خودکار', 'callback_data' => 'vsf_home']],
         [
             ['text' => 'سفارش‌های منتظر تحویل' . ($pendingCount ? " ({$pendingCount})" : ''), 'callback_data' => 'vsa_orders'],
         ],
@@ -874,9 +873,7 @@ function telegramProductsAdminPanelHandleRequest()
     }
     $isRequest = in_array($text, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
         || strpos($datain, 'vsa_') === 0
-        || strpos($datain, 'vsf_') === 0
-        || strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
-        || strpos((string) ($user['step'] ?? ''), 'vsf_') === 0;
+        || strpos((string) ($user['step'] ?? ''), 'vsa_') === 0;
     if (!$isRequest) {
         return false;
     }
@@ -893,9 +890,6 @@ function telegramProductsAdminPanelHandleRequest()
             }
         }
         if (function_exists('telegramProductsAdminFeatureHandleRequest') && telegramProductsAdminFeatureHandleRequest()) {
-            return true;
-        }
-        if (function_exists('telegramFragmentAdminHandle') && telegramFragmentAdminHandle()) {
             return true;
         }
         $isStateContinuation = preg_match('/^vsa_(begin|planbegin_|addcat_|addgroup_|add_(delivery|scope|style)_)/', $datain) === 1;

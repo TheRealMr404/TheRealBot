@@ -31,6 +31,7 @@ class ManagePanel
         // input from_id use $Data_Config
         // input type config use $Data_Config
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if ($Get_Data_Panel == false) {
             $Output['status'] = 'Unsuccessful';
             $Output['msg'] = 'Panel Not Found';
@@ -371,6 +372,37 @@ class ManagePanel
                 $Output['subscription_url'] = $password;
                 $Output['configs'] = [];
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            $create = pasarguardCreateUser(
+                $Get_Data_Panel,
+                $Get_Data_Product,
+                $usernameC,
+                $expire,
+                $data_limit,
+                $note,
+                $code_product === 'usertest'
+            );
+            if (!$create['ok']) {
+                $Output['status'] = 'Unsuccessful';
+                $Output['msg'] = $create['msg'];
+            } else {
+                $panelSubscriptionUrl = pasarguardAbsoluteUrl($Get_Data_Panel, $create['data']['subscription_url'] ?? '');
+                $createdUsername = (string) ($create['data']['username'] ?? pasarguardNormalizeUsername($usernameC));
+                if ($createdUsername !== (string) $usernameC && function_exists('update')) {
+                    update('invoice', 'username', $createdUsername, 'username', $usernameC);
+                    update('invoice', 'Status', 'active', 'username', $createdUsername);
+                }
+                $subscriptionUrl = $inoice != false
+                    ? "https://$domainhosts/sub/" . $inoice['id_invoice']
+                    : $panelSubscriptionUrl;
+                $Output = [
+                    'status' => 'successful',
+                    'username' => $createdUsername,
+                    'subscription_url' => $subscriptionUrl,
+                    'panel_subscription_url' => $panelSubscriptionUrl,
+                    'configs' => pasarguardGetSubscriptionLinks($Get_Data_Panel, $panelSubscriptionUrl),
+                ];
+            }
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
             $settings = pasarguardProductSettings($Get_Data_Product, $Get_Data_Panel);
             if ($code_product == "usertest") {
@@ -409,6 +441,7 @@ class ManagePanel
         $Output = array();
         global $pdo, $domainhosts;
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if (!$Get_Data_Panel || !is_array($Get_Data_Panel)) {
             return array(
                 'status' => 'Unsuccessful',
@@ -917,6 +950,19 @@ class ManagePanel
                     'sub_last_user_agent' => null,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            $userResponse = pasarguardGetUser($Get_Data_Panel, $username);
+            if (!$userResponse['ok']) {
+                $Output = [
+                    'status' => 'Unsuccessful',
+                    'msg' => $userResponse['msg'],
+                ];
+            } else {
+                $customSubscriptionUrl = $inoice != false
+                    ? "https://$domainhosts/sub/" . $inoice['id_invoice']
+                    : null;
+                $Output = pasarguardUserOutput($Get_Data_Panel, $userResponse['data'], $customSubscriptionUrl);
+            }
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
             $adminResponse = pasarguardFindAdmin($Get_Data_Panel, $username);
             if (!$adminResponse['ok']) {
@@ -980,6 +1026,7 @@ class ManagePanel
         $Output = array();
         $ManagePanel = new ManagePanel();
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if ($Get_Data_Panel['type'] == "marzban") {
             $revoke_sub = revoke_sub($username, $name_panel);
             if (isset($revoke_sub['detail']) && $revoke_sub['detail']) {
@@ -1171,6 +1218,18 @@ class ManagePanel
                     'subscription_url' => $url_sub,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            $revoke = pasarguardRevokeUserSubscription($Get_Data_Panel, $username);
+            if (!$revoke['ok']) {
+                $Output = ['status' => 'Unsuccessful', 'msg' => $revoke['msg']];
+            } else {
+                $data = pasarguardUserOutput($Get_Data_Panel, $revoke['data']);
+                $Output = [
+                    'status' => 'successful',
+                    'configs' => $data['links'],
+                    'subscription_url' => $data['subscription_url'],
+                ];
+            }
         } else {
             $Output = array(
                 'status' => 'Unsuccessful',
@@ -1183,6 +1242,7 @@ class ManagePanel
     {
         $Output = array();
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if ($Get_Data_Panel['type'] == "marzban") {
             $UsernameData = removeuser($Get_Data_Panel['name_panel'], $username);
             if (!empty($UsernameData['status']) && $UsernameData['status'] != 200) {
@@ -1325,6 +1385,11 @@ class ManagePanel
                     'username' => $username,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            $remove = pasarguardDeleteUser($Get_Data_Panel, $username);
+            $Output = $remove['ok']
+                ? ['status' => 'successful', 'username' => $username]
+                : ['status' => 'Unsuccessful', 'msg' => $remove['msg']];
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
             $remove = pasarguardDeleteAdmin($Get_Data_Panel, $username);
             if (!$remove['ok']) {
@@ -1350,6 +1415,7 @@ class ManagePanel
     {
         $Output = array();
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if ($Get_Data_Panel['type'] == "marzban") {
             if ($Get_Data_Panel['version_panel'] == "1") {
                 $result = getuser($username, $name_panel);
@@ -1598,6 +1664,15 @@ class ManagePanel
                 'status' => true,
                 'data' => $modify
             );
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            if (array_key_exists('enable', $config)) {
+                $config['status'] = $config['enable'] ? 'active' : 'disabled';
+                unset($config['enable']);
+            }
+            $modify = pasarguardModifyUser($Get_Data_Panel, $username, $config);
+            return $modify['ok']
+                ? ['status' => true, 'data' => $modify['data']]
+                : ['status' => false, 'msg' => $modify['msg']];
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
             if (array_key_exists('enable', $config)) {
                 $config['status'] = $config['enable'] ? 'active' : 'disabled';
@@ -1618,19 +1693,20 @@ class ManagePanel
         $ManagePanel = new ManagePanel();
         $DataUserOut = $ManagePanel->DataUser($name_panel, $username);
         $Get_Data_Panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $Get_Data_Panel = pasarguardMigrateLegacyPanel($Get_Data_Panel);
         if ($DataUserOut['status'] == "Unsuccessful") {
             $Output = array(
                 'status' => 'Unsuccessful',
-                'msg' => $DataUserOut['detail']
+                'msg' => $DataUserOut['msg'] ?? 'خطا در دریافت اطلاعات سرویس'
             );
-            return;
+            return $Output;
         }
         if (!in_array($DataUserOut['status'], ["active", "disabled"])) {
             $Output = array(
                 'status' => 'Unsuccessful',
                 'msg' => "status invalid"
             );
-            return;
+            return $Output;
         }
         if ($Get_Data_Panel['type'] == "marzban") {
             if ($DataUserOut['status'] == "active") {
@@ -1711,6 +1787,12 @@ class ManagePanel
                 'status' => 'successful',
                 'msg' => null
             );
+        } elseif ($Get_Data_Panel['type'] == "pasarguard") {
+            $status = $DataUserOut['status'] == 'active' ? 'disabled' : 'active';
+            $changed = $ManagePanel->Modifyuser($username, $name_panel, ['status' => $status]);
+            $Output = $changed['status']
+                ? ['status' => 'successful', 'msg' => null]
+                : ['status' => 'Unsuccessful', 'msg' => $changed['msg'] ?? 'خطا در تغییر وضعیت سرویس'];
         } elseif ($Get_Data_Panel['type'] == "pasarguard_reseller") {
             $status = $DataUserOut['status'] == 'active' ? 'disabled' : 'active';
             $changed = $ManagePanel->Modifyuser($username, $name_panel, ['status' => $status]);
@@ -1724,6 +1806,7 @@ class ManagePanel
     function ResetUserDataUsage($username, $name_panel)
     {
         $panel = select("marzban_panel", "*", "name_panel", $name_panel, "select");
+        $panel = pasarguardMigrateLegacyPanel($panel);
         if ($panel == false) {
             return array(
                 'status' => false,
@@ -1855,6 +1938,11 @@ class ManagePanel
             return array(
                 'status' => true
             );
+        } elseif ($panel['type'] == "pasarguard") {
+            $reset = pasarguardResetUserUsage($panel, $username);
+            return $reset['ok']
+                ? ['status' => true, 'data' => $reset['data']]
+                : ['status' => false, 'msg' => $reset['msg']];
         } elseif ($panel['type'] == "pasarguard_reseller") {
             $reset = pasarguardResetAdminUsage($panel, $username);
             return $reset['ok']
@@ -1865,6 +1953,7 @@ class ManagePanel
     function extend($Method_extend, $new_limit, $time_day, $username, $code_product, $name_panel)
     {
         $panel = select("marzban_panel", "*", "code_panel", $name_panel, "select");
+        $panel = pasarguardMigrateLegacyPanel($panel);
         $product = select("product", "*", "code_product", $code_product, "select");
         $invoice = select("invoice", "*", "username", $username, "select");
         if ($code_product == "custom_volume")
@@ -1947,6 +2036,16 @@ class ManagePanel
             );
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
+            }
+        } elseif ($panel['type'] == "pasarguard") {
+            $data = [
+                'status' => 'active',
+                'data_limit' => $data_limit_new,
+                'expire' => $time_new,
+            ];
+            $selectedGroups = pasarguardResolveGroupIds($panel, $product);
+            if ($selectedGroups) {
+                $data['group_ids'] = $selectedGroups;
             }
         } elseif ($panel['type'] == "marzneshin") {
             $expire_strotegy = $time_new == 0 ? "never" : "fixed_date";
@@ -2074,6 +2173,7 @@ class ManagePanel
     function extra_volume($username_account, $code_panel, $limit_volume_new)
     {
         $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
+        $panel = pasarguardMigrateLegacyPanel($panel);
         $invoice = select("invoice", "*", "username", $username_account, "select");
         if ($panel == false) {
             return array(
@@ -2111,6 +2211,11 @@ class ManagePanel
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
             }
+        } elseif ($panel['type'] == "pasarguard") {
+            $data = [
+                'status' => 'active',
+                'data_limit' => $new_limit,
+            ];
         } elseif ($panel['type'] == "marzneshin") {
             $data = array(
                 'data_limit' => $new_limit,
@@ -2187,6 +2292,7 @@ class ManagePanel
     function extra_time($username_account, $code_panel, $limit_time_new)
     {
         $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
+        $panel = pasarguardMigrateLegacyPanel($panel);
         $invoice = select("invoice", "*", "username", $username_account, "select");
         if ($panel == false) {
             return array(
@@ -2225,6 +2331,11 @@ class ManagePanel
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
             }
+        } elseif ($panel['type'] == "pasarguard") {
+            $data = [
+                'status' => 'active',
+                'expire' => $new_limit,
+            ];
         } elseif ($panel['type'] == "marzneshin") {
             $data = array(
                 'expire_date' => $new_limit,

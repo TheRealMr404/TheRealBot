@@ -1099,6 +1099,29 @@ $optionPasarguardReseller = json_encode([
     'resize_keyboard' => true,
 ], JSON_UNESCAPED_UNICODE);
 
+$optionPasarguard = json_encode([
+    'keyboard' => [
+        [['text' => "⚙️ وضعیت قابلیت ها پنل"]],
+        [['text' => "✍️ نام پنل"], ['text' => "❌ حذف پنل"]],
+        [['text' => "🔐 ویرایش رمز عبور"], ['text' => "👤 ویرایش نام کاربری"]],
+        [['text' => "🔗 ویرایش آدرس پنل"], ['text' => "⚙️ گروه‌های پاسارگارد"]],
+        [['text' => "🎨 تنظیم رنگ پنل"], ['text' => "⭐ تنظیم ایموجی پرمیوم"]],
+        [['text' => "🔋 روش تمدید سرویس"], ['text' => "💡 روش ساخت نام کاربری"]],
+        [['text' => "🚨 محدودیت ساخت اکانت"], ['text' => "📍 تغییر گروه کاربری"]],
+        [['text' => "⏳ زمان سرویس تست"], ['text' => "💾 حجم اکانت تست"]],
+        [['text' => "⚙️ قیمت حجم سرویس دلخواه"], ['text' => "➕ قیمت حجم اضافه"]],
+        [['text' => "⏳ قیمت زمان اضافه"], ['text' => "⏳ قیمت زمان دلخواه"]],
+        [['text' => "🌍 قیمت تغییر لوکیشن"]],
+        [['text' => "📍 حداقل حجم دلخواه"], ['text' => "📍 حداکثر حجم دلخواه"]],
+        [['text' => "📍 حداقل زمان دلخواه"], ['text' => "📍 حداکثر زمان دلخواه"]],
+        [['text' => "🔌 تست اتصال پنل"]],
+        [['text' => "🫣 مخفی کردن پنل برای یک کاربر"]],
+        [['text' => "❌  حذف کاربر از لیست مخفی شدگان"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]],
+    ],
+    'resize_keyboard' => true,
+], JSON_UNESCAPED_UNICODE);
+
 $keyboardprotocol = json_encode([
     'keyboard' => [
         [['text' => "vless"], ['text' => "vmess"], ['text' => "trojan"]],
@@ -1437,6 +1460,9 @@ $keyboardtypepanel = json_encode([
         [
             ['text' => "مرزبان", 'callback_data' => "typepanel#marzban"],
             ['text' => "مرزنشین", 'callback_data' => "typepanel#marzneshin"]
+        ],
+        [
+            ['text' => "پاسارگارد", 'callback_data' => "typepanel#pasarguard"]
         ],
         [
             ['text' => 'ثنایی تک پورت', 'callback_data' => 'typepanel#x-ui_single'],

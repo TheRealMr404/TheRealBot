@@ -12,7 +12,6 @@ require_once 'function.php';
 require_once 'telegram_products.php';
 require_once 'telegram_products_features.php';
 require_once 'telegram_products_admin.php';
-require_once 'telegram_fragment.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -503,10 +502,7 @@ $isVirtualServicesAdminRoute = in_array((string) $from_id, array_map('strval', (
     && (
         in_array($virtualServicesIncomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
         || strpos((string) $datain, 'vsa_') === 0
-        || strpos((string) $datain, 'vsf_') === 0
         || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
-            && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
-        || (strpos((string) ($user['step'] ?? ''), 'vsf_') === 0
             && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
     );
 if ($isVirtualServicesAdminRoute) {
@@ -515,12 +511,9 @@ if ($isVirtualServicesAdminRoute) {
 }
 
 $isVirtualServicesUserRoute = strpos((string) $datain, 'tgp_') === 0
-    || strpos((string) $datain, 'tgf_') === 0
     || strpos((string) $text, '/tg_') === 0
     || strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0
     || strpos((string) ($user['step'] ?? ''), 'tgp_') === 0
-    || (strpos((string) ($user['step'] ?? ''), 'tgf_') === 0
-        && !in_array($virtualServicesIncomingText, ['/start', 'start'], true))
     || $virtualServicesIncomingText === telegramProductsPlainText(TELEGRAM_PRODUCTS_BUTTON)
     || ($virtualServicesButtonText !== '' && $virtualServicesIncomingText === $virtualServicesButtonText);
 if ($isVirtualServicesUserRoute) {
@@ -2305,6 +2298,10 @@ $textconnect
     if (!is_array($DataUserOut['links'])) {
         sendmessage($from_id, "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.", null, 'html');
         return;
+    }
+    $configPanel = select('marzban_panel', '*', 'name_panel', $nameloc['Service_location'], 'select');
+    if ($configPanel && $configPanel['type'] === 'pasarguard') {
+        sendPasarguardWireGuardFiles($configPanel, $nameloc['username'], $from_id);
     }
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", keyboard_config($DataUserOut['links'], $nameloc['id_invoice']));
 } elseif (preg_match('/configget_(.*)_(.*)/', $datain, $dataget)) {

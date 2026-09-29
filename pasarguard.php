@@ -6,6 +6,22 @@ function pasarguardNormalizeUrl($url)
     return preg_replace('~/api(?:/.*)?$~i', '', $url);
 }
 
+function pasarguardMigrateLegacyPanel($panel)
+{
+    if (!is_array($panel)) {
+        return $panel;
+    }
+    if (($panel['type'] ?? '') === 'marzban' && (string) ($panel['version_panel'] ?? '0') === '1') {
+        if (!empty($panel['code_panel']) && function_exists('update')) {
+            update('marzban_panel', 'type', 'pasarguard', 'code_panel', $panel['code_panel']);
+            update('marzban_panel', 'version_panel', '0', 'code_panel', $panel['code_panel']);
+        }
+        $panel['type'] = 'pasarguard';
+        $panel['version_panel'] = '0';
+    }
+    return $panel;
+}
+
 function pasarguardDashboardUrl($url)
 {
     $baseUrl = rtrim(pasarguardNormalizeUrl($url), '/');
@@ -160,6 +176,347 @@ function pasarguardApiRequest($panel, $method, $path, $payload = null, $retry = 
 function pasarguardCheckConnection($panel)
 {
     return pasarguardApiRequest($panel, 'GET', 'admin');
+}
+
+function pasarguardAbsoluteUrl($panel, $url)
+{
+    $url = trim((string) $url);
+    if ($url === '') {
+        return '';
+    }
+    if (preg_match('~^https?://~i', $url)) {
+        return $url;
+    }
+    return rtrim(pasarguardNormalizeUrl($panel['url_panel'] ?? ''), '/') . '/' . ltrim($url, '/');
+}
+
+function pasarguardNormalizeGroupIds($value)
+{
+    if (is_string($value)) {
+        $decoded = json_decode($value, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $value = $decoded;
+        } else {
+            $value = preg_split('/[\s,]+/', trim($value), -1, PREG_SPLIT_NO_EMPTY);
+        }
+    }
+    if (is_array($value) && isset($value['group_ids'])) {
+        $value = $value['group_ids'];
+    }
+    if (!is_array($value)) {
+        return [];
+    }
+    $ids = [];
+    foreach ($value as $id) {
+        if (is_numeric($id) && (int) $id > 0) {
+            $ids[(int) $id] = (int) $id;
+        }
+    }
+    return array_values($ids);
+}
+
+function pasarguardResolveGroupIds($panel, $product = [])
+{
+    $productGroups = pasarguardNormalizeGroupIds(is_array($product) ? ($product['inbounds'] ?? null) : null);
+    if ($productGroups) {
+        return $productGroups;
+    }
+    return pasarguardNormalizeGroupIds($panel['inbounds'] ?? null);
+}
+
+function pasarguardGetGroups($panel)
+{
+    $response = pasarguardApiRequest($panel, 'GET', 'groups?offset=0&limit=100');
+    if (!$response['ok']) {
+        $response = pasarguardApiRequest($panel, 'GET', 'groups/simple?offset=0&limit=100');
+    }
+    if (!$response['ok']) {
+        return $response;
+    }
+    $items = $response['data']['groups'] ?? $response['data']['items'] ?? $response['data'] ?? [];
+    $response['items'] = is_array($items) ? array_values($items) : [];
+    $response['total'] = (int) ($response['data']['total'] ?? count($response['items']));
+    return $response;
+}
+
+function pasarguardGroupsKeyboardData($panel, $selectedIds, $callbackPrefix, $doneCallback)
+{
+    $groups = pasarguardGetGroups($panel);
+    if (!$groups['ok']) {
+        return ['ok' => false, 'msg' => $groups['msg'], 'text' => '', 'keyboard' => null];
+    }
+    $selectedIds = pasarguardNormalizeGroupIds($selectedIds);
+    $keyboard = ['inline_keyboard' => []];
+    foreach ($groups['items'] as $group) {
+        if (!is_array($group) || empty($group['id'])) {
+            continue;
+        }
+        $groupId = (int) $group['id'];
+        $name = trim((string) ($group['name'] ?? ('گروه ' . $groupId)));
+        $enabled = in_array($groupId, $selectedIds, true);
+        $keyboard['inline_keyboard'][] = [[
+            'text' => ($enabled ? '✅ ' : '▫️ ') . $name . ' (' . $groupId . ')',
+            'callback_data' => $callbackPrefix . $groupId,
+        ]];
+    }
+    $keyboard['inline_keyboard'][] = [[
+        'text' => '✅ ذخیره و بازگشت',
+        'callback_data' => $doneCallback,
+    ]];
+    $protocols = 'VMess، VLESS، Trojan، Shadowsocks، WireGuard و Hysteria2';
+    $text = "⚙️ <b>انتخاب گروه‌های پاسارگارد</b>\n\n"
+        . "هر پروتکلی که در گروه‌های انتخابی پنل فعال باشد، به‌صورت خودکار برای کاربر ساخته می‌شود.\n"
+        . "پروتکل‌های پشتیبانی‌شده: {$protocols}\n\n"
+        . "حداقل یک گروه را انتخاب کنید.";
+    return [
+        'ok' => true,
+        'msg' => '',
+        'text' => $text,
+        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ];
+}
+
+function pasarguardNormalizeUsername($username)
+{
+    $username = strtolower(trim((string) $username));
+    $username = preg_replace('/[^a-z0-9_]+/', '_', $username);
+    $username = trim((string) $username, '_');
+    if ($username === '' || strlen($username) < 3) {
+        $username = 'user_' . bin2hex(random_bytes(4));
+    }
+    return substr($username, 0, 32);
+}
+
+function pasarguardExpireValue($timestamp)
+{
+    $timestamp = (int) $timestamp;
+    return $timestamp > 0 ? gmdate('Y-m-d\TH:i:s\Z', $timestamp) : 0;
+}
+
+function pasarguardCreateUser($panel, $product, $username, $expire, $dataLimit, $note, $isTest = false)
+{
+    $groupIds = pasarguardResolveGroupIds($panel, $product);
+    if (!$groupIds) {
+        return [
+            'ok' => false,
+            'status' => 422,
+            'data' => null,
+            'msg' => 'هیچ گروهی برای پنل پاسارگارد انتخاب نشده است. ابتدا گروه‌های پیش‌فرض پنل را تنظیم کنید.',
+        ];
+    }
+
+    $resetStrategy = (string) ($product['data_limit_reset'] ?? 'no_reset');
+    if (!in_array($resetStrategy, ['no_reset', 'day', 'week', 'month', 'year'], true)) {
+        $resetStrategy = 'no_reset';
+    }
+    $payload = [
+        'username' => pasarguardNormalizeUsername($username),
+        'status' => 'active',
+        'expire' => pasarguardExpireValue($expire),
+        'data_limit' => max(0, (int) $dataLimit),
+        'data_limit_reset_strategy' => $resetStrategy,
+        'group_ids' => $groupIds,
+        'note' => (string) $note,
+    ];
+
+    $firstUse = ($isTest && (string) ($panel['on_hold_test'] ?? '0') === '1')
+        || (!$isTest && (string) ($panel['conecton'] ?? '') === 'onconecton');
+    if ($firstUse && (int) $expire > time()) {
+        $payload['status'] = 'on_hold';
+        $payload['expire'] = 0;
+        $payload['on_hold_expire_duration'] = max(60, (int) $expire - time());
+    }
+
+    return pasarguardApiRequest($panel, 'POST', 'user', $payload);
+}
+
+function pasarguardGetUser($panel, $username)
+{
+    return pasarguardApiRequest($panel, 'GET', 'user/' . rawurlencode((string) $username));
+}
+
+function pasarguardModifyUser($panel, $username, $payload)
+{
+    $allowed = [
+        'status', 'expire', 'data_limit', 'data_limit_reset_strategy', 'proxy_settings',
+        'group_ids', 'note', 'on_hold_timeout', 'on_hold_expire_duration', 'next_plan',
+    ];
+    $payload = array_intersect_key((array) $payload, array_flip($allowed));
+    if (isset($payload['expire']) && is_numeric($payload['expire'])) {
+        $payload['expire'] = pasarguardExpireValue((int) $payload['expire']);
+    }
+    if (isset($payload['group_ids'])) {
+        $payload['group_ids'] = pasarguardNormalizeGroupIds($payload['group_ids']);
+    }
+    if (!$payload) {
+        return ['ok' => false, 'status' => 422, 'data' => null, 'msg' => 'اطلاعاتی برای ویرایش سرویس ارسال نشده است.'];
+    }
+    return pasarguardApiRequest($panel, 'PUT', 'user/' . rawurlencode((string) $username), $payload);
+}
+
+function pasarguardDeleteUser($panel, $username)
+{
+    return pasarguardApiRequest($panel, 'DELETE', 'user/' . rawurlencode((string) $username));
+}
+
+function pasarguardResetUserUsage($panel, $username)
+{
+    return pasarguardApiRequest($panel, 'POST', 'user/' . rawurlencode((string) $username) . '/reset');
+}
+
+function pasarguardRevokeUserSubscription($panel, $username)
+{
+    return pasarguardApiRequest($panel, 'POST', 'user/' . rawurlencode((string) $username) . '/revoke_sub');
+}
+
+function pasarguardPublicRequest($url, $maxBytes = 12582912)
+{
+    $url = trim((string) $url);
+    if (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('~^https?://~i', $url)) {
+        return ['ok' => false, 'status' => 0, 'body' => '', 'content_type' => '', 'msg' => 'آدرس اشتراک پاسارگارد معتبر نیست.'];
+    }
+    $curl = curl_init($url);
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => 12,
+        CURLOPT_TIMEOUT => 35,
+        CURLOPT_HEADER => true,
+        CURLOPT_HTTPHEADER => ['Accept: */*'],
+    ]);
+    $raw = curl_exec($curl);
+    $curlError = curl_error($curl);
+    $statusCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $headerSize = (int) curl_getinfo($curl, CURLINFO_HEADER_SIZE);
+    $contentType = (string) curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
+    curl_close($curl);
+    if ($raw === false) {
+        return ['ok' => false, 'status' => 0, 'body' => '', 'content_type' => '', 'msg' => $curlError ?: 'دریافت خروجی اشتراک ناموفق بود.'];
+    }
+    $body = substr($raw, $headerSize);
+    if (strlen($body) > $maxBytes) {
+        return ['ok' => false, 'status' => $statusCode, 'body' => '', 'content_type' => $contentType, 'msg' => 'حجم فایل دریافتی از حد مجاز بیشتر است.'];
+    }
+    $ok = $statusCode >= 200 && $statusCode < 300;
+    return ['ok' => $ok, 'status' => $statusCode, 'body' => $body, 'content_type' => $contentType, 'msg' => $ok ? '' : 'خطای HTTP ' . $statusCode];
+}
+
+function pasarguardGetSubscriptionLinks($panel, $subscriptionUrl)
+{
+    $subscriptionUrl = rtrim(pasarguardAbsoluteUrl($panel, $subscriptionUrl), '/');
+    if ($subscriptionUrl === '') {
+        return [];
+    }
+    $response = pasarguardPublicRequest($subscriptionUrl . '/links', 4194304);
+    if (!$response['ok']) {
+        return [];
+    }
+    $body = trim((string) $response['body']);
+    $decoded = base64_decode($body, true);
+    if ($decoded !== false && preg_match('/(?:vmess|vless|trojan|ss|wireguard|hysteria2?):\/\//i', $decoded)) {
+        $body = $decoded;
+    }
+    $links = preg_split('/\r?\n/', trim($body), -1, PREG_SPLIT_NO_EMPTY);
+    return array_values(array_filter(array_map('trim', $links), function ($link) {
+        return preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $link);
+    }));
+}
+
+function pasarguardUserOutput($panel, $user, $customSubscriptionUrl = null)
+{
+    $subscriptionUrl = pasarguardAbsoluteUrl($panel, $user['subscription_url'] ?? '');
+    $expire = $user['expire'] ?? 0;
+    if (is_string($expire) && !ctype_digit($expire)) {
+        $expire = strtotime($expire) ?: 0;
+    }
+    return [
+        'status' => (string) ($user['status'] ?? 'active'),
+        'username' => (string) ($user['username'] ?? ''),
+        'data_limit' => (int) ($user['data_limit'] ?? 0),
+        'expire' => (int) $expire,
+        'online_at' => $user['online_at'] ?? null,
+        'used_traffic' => (int) ($user['used_traffic'] ?? 0),
+        'links' => pasarguardGetSubscriptionLinks($panel, $subscriptionUrl),
+        'subscription_url' => $customSubscriptionUrl ?: $subscriptionUrl,
+        'panel_subscription_url' => $subscriptionUrl,
+        'sub_updated_at' => $user['sub_updated_at'] ?? null,
+        'sub_last_user_agent' => $user['sub_last_user_agent'] ?? null,
+        'uuid' => $user['proxy_settings'] ?? [],
+        'data_limit_reset' => $user['data_limit_reset_strategy'] ?? 'no_reset',
+        'group_ids' => pasarguardNormalizeGroupIds($user['group_ids'] ?? []),
+    ];
+}
+
+function pasarguardPrepareWireGuardFiles($panel, $username)
+{
+    $userResponse = pasarguardGetUser($panel, $username);
+    if (!$userResponse['ok'] || empty($userResponse['data']['subscription_url'])) {
+        return [];
+    }
+    $proxySettings = $userResponse['data']['proxy_settings'] ?? [];
+    if (!is_array($proxySettings) || !array_key_exists('wireguard', $proxySettings)) {
+        return [];
+    }
+    $subscriptionUrl = rtrim(pasarguardAbsoluteUrl($panel, $userResponse['data']['subscription_url']), '/');
+    $download = pasarguardPublicRequest($subscriptionUrl . '/wireguard');
+    if (!$download['ok'] || $download['body'] === '') {
+        return [];
+    }
+
+    $zipPath = tempnam(sys_get_temp_dir(), 'pgwg_');
+    if ($zipPath === false || file_put_contents($zipPath, $download['body']) === false) {
+        return [];
+    }
+    $safeUser = preg_replace('/[^a-zA-Z0-9_-]+/', '_', (string) $username);
+    if (!class_exists('ZipArchive')) {
+        $finalZipPath = $zipPath . '.zip';
+        @unlink($finalZipPath);
+        if (!@rename($zipPath, $finalZipPath)) {
+            @unlink($zipPath);
+            return [];
+        }
+        return [[
+            'path' => $finalZipPath,
+            'name' => ($safeUser ?: 'pasarguard') . '-wireguard.zip',
+            'mime' => 'application/zip',
+        ]];
+    }
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath) !== true) {
+        return [[
+            'path' => $zipPath,
+            'name' => ($safeUser ?: 'pasarguard') . '-wireguard.zip',
+            'mime' => 'application/zip',
+        ]];
+    }
+    $files = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entry = $zip->getNameIndex($i);
+        if (!is_string($entry) || !preg_match('/\.conf$/i', $entry)) {
+            continue;
+        }
+        $content = $zip->getFromIndex($i);
+        if (!is_string($content) || strpos($content, '[Interface]') === false) {
+            continue;
+        }
+        $path = tempnam(sys_get_temp_dir(), 'pgconf_');
+        if ($path === false) {
+            continue;
+        }
+        $finalPath = $path . '.conf';
+        @unlink($path);
+        if (file_put_contents($finalPath, $content) !== false) {
+            $files[] = [
+                'path' => $finalPath,
+                'name' => ($safeUser ?: 'pasarguard') . '-' . (count($files) + 1) . '.conf',
+                'mime' => 'application/x-wireguard-profile',
+            ];
+        }
+    }
+    $zip->close();
+    @unlink($zipPath);
+    return $files;
 }
 
 function pasarguardListValues($data)

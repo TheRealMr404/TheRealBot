@@ -287,17 +287,6 @@ GIT_REPO="TheRealMr404/TheRealBot"
 LATEST_CACHE="/tmp/.mirza_latest_version"
 IP_CACHE="/tmp/.mirza_server_ip"
 
-install_fragment_runtime() {
-    local bot_dir="${1:-${BOT_DIR:-$BOT_DIR_DEFAULT}}"
-    [ -f "$bot_dir/fragment_runtime/fragment_worker.py" ] || return 0
-    [ -f "$bot_dir/fragment_runtime/install.sh" ] || {
-        echo "Fragment runtime installer is missing: $bot_dir/fragment_runtime/install.sh" >&2
-        return 1
-    }
-    bash "$bot_dir/fragment_runtime/install.sh" --bot-dir "$bot_dir"
-}
-export -f install_fragment_runtime
-
 
 # ── Telegram panel auto-updater ──────────────────────────────
 # Creates the updater used by the admin-panel button. It synchronizes the
@@ -509,16 +498,7 @@ DEPLOY_STARTED=1
 # Mirror GitHub exactly; keep only the server's existing config.php.
 rsync -a --delete \
     --exclude='/config.php' \
-    --exclude='/fragment_runtime/node_modules/' \
     "$SOURCE_DIR/" "$BOT_DIR/"
-
-if [ -f "$BOT_DIR/fragment_runtime/fragment_worker.py" ]; then
-    [ -f "$BOT_DIR/fragment_runtime/install.sh" ] || {
-        echo "FRAGMENT_RUNTIME_INSTALLER_MISSING"
-        exit 28
-    }
-    bash "$BOT_DIR/fragment_runtime/install.sh" --bot-dir "$BOT_DIR"
-fi
 
 chown -R www-data:www-data "$BOT_DIR"
 find "$BOT_DIR" -type d -exec chmod 755 {} +
@@ -1549,18 +1529,14 @@ EOF
     cat > "$dir/Dockerfile" <<'EOF'
 FROM php:8.2-apache
 ENV DEBIAN_FRONTEND=noninteractive
-ENV MIRZA_FRAGMENT_PYTHON=/opt/mirza/fragment-venv/bin/python
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash cron curl unzip rsync sudo ca-certificates git util-linux python3 python3-venv \
+    cron curl unzip rsync sudo ca-certificates git util-linux \
     libcurl4-openssl-dev libfreetype6-dev libicu-dev libjpeg62-turbo-dev \
     libonig-dev libpng-dev libssh2-1-dev libxml2-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" mysqli pdo_mysql mbstring zip gd curl intl xml bcmath soap \
     && printf '\n' | pecl install ssh2-1.4.1 \
     && docker-php-ext-enable ssh2 \
-    && python3 -m venv /opt/mirza/fragment-venv \
-    && /opt/mirza/fragment-venv/bin/pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 60 --upgrade pip setuptools wheel \
-    && /opt/mirza/fragment-venv/bin/pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 60 'fragment-api-py==12.1.0' \
     && a2enmod rewrite headers expires \
     && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
     && printf '<IfModule mpm_prefork_module>\nStartServers 2\nMinSpareServers 2\nMaxSpareServers 8\nMaxRequestWorkers 40\nMaxConnectionsPerChild 500\n</IfModule>\n' > /etc/apache2/mods-available/mpm_prefork.conf \
@@ -1619,11 +1595,7 @@ SOURCE_DIR=$(find "$TMP_DIR/extracted" -mindepth 1 -maxdepth 1 -type d | head -1
 [ -f "$SOURCE_DIR/index.php" ] && [ -f "$SOURCE_DIR/table.php" ] || exit 23
 find "$SOURCE_DIR" -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null; done
 tar -czf "$BACKUP_DIR/source_${STAMP}.tar.gz" -C "$BOT_DIR" .
-rsync -a --delete --exclude='/config.php' --exclude='/error_log' --exclude='/fragment_runtime/node_modules/' "$SOURCE_DIR/" "$BOT_DIR/"
-if [ -f "$BOT_DIR/fragment_runtime/fragment_worker.py" ]; then
-    [ -f "$BOT_DIR/fragment_runtime/install.sh" ] || { echo FRAGMENT_RUNTIME_INSTALLER_MISSING; exit 28; }
-    bash "$BOT_DIR/fragment_runtime/install.sh" --bot-dir "$BOT_DIR" --app-only
-fi
+rsync -a --delete --exclude='/config.php' --exclude='/error_log' "$SOURCE_DIR/" "$BOT_DIR/"
 chown -R www-data:www-data "$BOT_DIR"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'source_*.tar.gz' -printf '%T@ %p\n' \
     | sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -f
@@ -1807,16 +1779,6 @@ docker_bot_add() {
         rm -rf "$dir"
         return 1
     }
-
-    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
-        "if [ -f /var/www/html/fragment_runtime/fragment_worker.py ]; then [ -f /var/www/html/fragment_runtime/install.sh ] || exit 28; bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" \
-        || {
-            echo "Fragment runtime installation failed. Installation was rolled back."
-            docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
-            docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
-            rm -rf "$dir"
-            return 1
-        }
 
     docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
         "find /var/www/html -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" \
@@ -2031,7 +1993,7 @@ docker_bot_update() {
         || { rm -rf "$temp_dir"; echo "Update source contains invalid PHP files."; return 1; }
     config_backup="$temp_dir/config.php"
     cp "$dir/app/config.php" "$config_backup" || { rm -rf "$temp_dir"; return 1; }
-    rsync -a --delete --exclude='config.php' --exclude='fragment_runtime/node_modules/' "$temp_dir/app/" "$dir/app/"
+    rsync -a --delete --exclude='config.php' "$temp_dir/app/" "$dir/app/"
     cp "$config_backup" "$dir/app/config.php"
     chown -R 33:33 "$dir/app"
     rm -rf "$temp_dir"
@@ -2045,12 +2007,6 @@ docker_bot_update() {
         docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
         return 1
     }
-    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
-        "if [ -f /var/www/html/fragment_runtime/fragment_worker.py ]; then [ -f /var/www/html/fragment_runtime/install.sh ] || exit 28; bash /var/www/html/fragment_runtime/install.sh --bot-dir /var/www/html --app-only; fi" || {
-            echo "Fragment runtime installation failed after update; restoring the pre-update backup."
-            docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
-            return 1
-        }
     docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
         "find /var/www/html -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" || {
             echo "PHP validation failed after update; restoring the pre-update backup."
@@ -2208,7 +2164,6 @@ function show_help_screen() {
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
     _kv "updater-refresh" "${C_DIM}Reinstall the admin-panel auto-updater${CR}"
-    _kv "fragment-runtime" "${C_DIM}Install the local Fragment Python/Node runtime${CR}"
     _kv "bot-add" "${C_DIM}Install a new isolated Docker bot${CR}"
     _kv "bot-list" "${C_DIM}List Docker bot instances${CR}"
     _kv "bot-update" "${C_DIM}Backup and update one Docker bot${CR}"
@@ -2614,8 +2569,6 @@ function install_bot() {
         rm -rf "$TEMP_DIR"
         sudo chown -R www-data:www-data "$BOT_DIR"
         sudo chmod -R 755 "$BOT_DIR"
-        run_step "Installing Fragment automation runtime" "install_fragment_runtime '$BOT_DIR'" \
-            || { show_step_error; install_pause "Installing Fragment runtime"; }
         wait
         mark_phase FILES
     else
@@ -3063,10 +3016,6 @@ function update_bot() {
     sudo chown -R www-data:www-data "$BOT_DIR"
     sudo chmod -R 755 "$BOT_DIR"
 
-    if ! install_fragment_runtime "$BOT_DIR"; then
-        echo -e "\e[91mWarning: Fragment automation runtime could not be installed. Other bot features remain available.\033[0m"
-    fi
-
     # Recreate/refresh the updater after every CLI update as well.
     if ! install_bot_auto_updater; then
         echo -e "\e[91mWarning: failed to install the Telegram auto-updater.\033[0m"
@@ -3475,7 +3424,6 @@ print_usage() {
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
     updater-refresh    Reinstall the admin-panel auto-updater
-    fragment-runtime   Install Fragment dependencies for one bot directory
     bot-add            Add an isolated Docker bot
     bot-list           List Docker bots
     bot-update         Backup and update a Docker bot
@@ -3510,7 +3458,6 @@ print_usage() {
     mirza update --channel release
     mirza update --version 0.1.6
     mirza updater-refresh
-    mirza fragment-runtime --source-dir /var/www/html/mirzaprobotconfig
     mirza bot-add --id shop1 --name ShopBot --token TOKEN --admin 111 --domain shop.example.com
     mirza bot-add --id shop2 --name ShopBot2 --token TOKEN --admin 111 --domain shop2.example.com --source-dir /path/to/custom-source
     mirza bot-backup --id shop1 --retention 14
@@ -3523,7 +3470,7 @@ process_arguments() {
     local cmd="menu"
     # First non-flag token is the command
     case "$1" in
-        install|update|remove|migrate|renew|updater-refresh|fragment-runtime|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
+        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
         -h|--help) print_usage; exit 0 ;;
         "") cmd="menu" ;;
         --*) cmd="menu" ;;            # only flags given -> menu, but still parse flags
@@ -3567,11 +3514,6 @@ process_arguments() {
             install_bot_auto_updater \
                 && echo "Admin-panel auto-updater refreshed successfully." \
                 || { echo "Failed to refresh the admin-panel auto-updater."; return 1; }
-            ;;
-        fragment-runtime)
-            install_fragment_runtime "${ARG_SOURCE_DIR:-$BOT_DIR_DEFAULT}" \
-                && echo "Fragment runtime installed successfully." \
-                || { echo "Fragment runtime installation failed."; return 1; }
             ;;
         bot-add) docker_bot_add ;;
         bot-list) docker_bot_list ;;

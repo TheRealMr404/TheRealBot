@@ -496,12 +496,6 @@ function telegramProductsShowHome()
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $rows = [];
-    if (function_exists('telegramFragmentStatus')) {
-        $fragmentStatus = telegramFragmentStatus();
-        if ($fragmentStatus['enabled'] && $fragmentStatus['ready']) {
-            $rows[] = [telegramProductsStyledButton('استارز و پریمیوم تلگرام', 'tgf_home', 'success')];
-        }
-    }
     foreach ($categories as $category) {
         $rows[] = [telegramProductsStyledButton(
             $category['title'] . ' (' . $category['product_count'] . ')',
@@ -1083,10 +1077,8 @@ function telegramProductsHandleRequestInternal()
         || $text === TELEGRAM_PRODUCTS_BUTTON
         || strpos($text, '/tg_') === 0
         || strpos($datain, 'tgp_') === 0
-        || strpos($datain, 'tgf_') === 0
         || $isInputStep
-        || $isFeatureStep
-        || strpos((string) ($user['step'] ?? ''), 'tgf_') === 0;
+        || $isFeatureStep;
     if (!$isProductRequest) {
         return false;
     }
@@ -1096,10 +1088,6 @@ function telegramProductsHandleRequestInternal()
 
     if ($callback_query_id) {
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    }
-
-    if (function_exists('telegramFragmentUserHandle') && telegramFragmentUserHandle()) {
-        return true;
     }
 
     $isFeatureContinuation = preg_match('/^tgp_form(opt|skip)_/', $datain) === 1;

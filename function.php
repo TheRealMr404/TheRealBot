@@ -2303,7 +2303,7 @@ function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype
 }
 function outtypepanel($typepanel, $message)
 {
-    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguardReseller;
+    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguard, $optionPasarguardReseller;
     
     if ($typepanel == "marzban") {
         sendmessage($from_id, $message, $optionMarzban, 'HTML');
@@ -2325,6 +2325,8 @@ function outtypepanel($typepanel, $message)
         sendmessage($from_id, $message, $option_mikrotik, 'HTML');
     } elseif ($typepanel == "x-ui_tunnel") {
         sendmessage($from_id, $message, $optionX_ui_tunnel, 'HTML');
+    } elseif ($typepanel == "pasarguard") {
+        sendmessage($from_id, $message, $optionPasarguard, 'HTML');
     } elseif ($typepanel == "pasarguard_reseller") {
         sendmessage($from_id, $message, $optionPasarguardReseller, 'HTML');
     }
@@ -2800,6 +2802,26 @@ function isBase64($string)
     }
     return false;
 }
+function sendPasarguardWireGuardFiles($panel, $username, $chatId)
+{
+    if (($panel['type'] ?? '') !== 'pasarguard') {
+        return 0;
+    }
+    $sent = 0;
+    foreach (pasarguardPrepareWireGuardFiles($panel, $username) as $wireGuardFile) {
+        $response = telegram('senddocument', [
+            'chat_id' => $chatId,
+            'document' => new CURLFile($wireGuardFile['path'], $wireGuardFile['mime'] ?? 'application/x-wireguard-profile', $wireGuardFile['name']),
+            'caption' => 'فایل WireGuard سرویس شما',
+        ]);
+        if (is_array($response) && !empty($response['ok'])) {
+            $sent++;
+        }
+        @unlink($wireGuardFile['path']);
+    }
+    return $sent;
+}
+
 function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
 {
     global $setting, $from_id;
@@ -2850,6 +2872,9 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         if (is_array($config)) {
             sendmessage($user_id, "📌 جهت دریافت کانفیگ روی دکمه دریافت کانفیگ کلیک کنید", keyboard_config($config, $invoice_id, false), 'HTML');
         }
+    }
+    if (($panel_info['type'] ?? '') === 'pasarguard' && ($panel_info['config'] ?? '') === 'onconfig') {
+        sendPasarguardWireGuardFiles($panel_info, $username_service, $user_id);
     }
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)

@@ -915,6 +915,10 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         sendmessage($from_id, "🔐 <b>ربات چگونه به پنل متصل شود؟</b>\n\nاستفاده از <b>API Token</b> پیشنهاد می‌شود؛ راه‌اندازی آن ساده‌تر و اتصال آن پایدارتر است. اگر ورود دومرحله‌ای پنل فعال است، حتماً همین گزینه را انتخاب کنید.", $authKeyboard, 'HTML');
         step('xui_add_auth_choice', $from_id);
         return;
+    } elseif ($userdata['type'] == 'pasarguard') {
+        sendmessage($from_id, "👤 <b>نام کاربری ادمین پاسارگارد را ارسال کنید</b>\n\nاین حساب باید مجوز ساخت و مدیریت کاربران و مشاهده گروه‌ها را داشته باشد.", $backadmin, 'HTML');
+        step('add_username_panel', $from_id);
+        return;
     } elseif ($userdata['type'] == 'pasarguard_reseller') {
         sendmessage($from_id, "👤 <b>نام کاربری مالک پنل پاسارگارد را ارسال کنید</b>\n\nاین حساب باید اجازه ساخت و مدیریت ادمین‌ها را داشته باشد.", $backadmin, 'HTML');
         step('add_username_panel', $from_id);
@@ -952,7 +956,9 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
     $userdata = json_decode($user['Processing_value'], true);
-    if (($userdata['type'] ?? '') === 'pasarguard_reseller') {
+    if (($userdata['type'] ?? '') === 'pasarguard') {
+        sendmessage($from_id, "🔐 <b>رمز عبور ادمین پاسارگارد را ارسال کنید</b>\n\nرمز فقط برای دریافت توکن امن API استفاده می‌شود.", $backadmin, 'HTML');
+    } elseif (($userdata['type'] ?? '') === 'pasarguard_reseller') {
         sendmessage($from_id, "🔐 <b>رمز عبور حساب مالک پاسارگارد را ارسال کنید</b>\n\nرمز فقط برای دریافت توکن API و ساخت خودکار نمایندگی استفاده می‌شود.", $backadmin, 'HTML');
     } else {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
@@ -1141,6 +1147,15 @@ if (in_array($text, $textadmin) || $datain == "admin") {
 1 - از مسیر مدیریت پنل > تنظیم ⚙️ تنظیم پروتکل و اینباند یک نام کاربری کانفیگ را ارسال نمایید.", null, 'HTML');
     } elseif ($userdata['type'] == "x-ui_tunnel") {
         sendmessage($from_id, "✅ <b>پنل تانل سنایی با موفقیت اضافه شد.</b>\n\n⚙️ <b>نکته مهم:</b>\nمطمئن شوید فایروال سرور ایران پورت‌های مورد نظر را باز نگه داشته باشد تا اتصالات کاربران بدون اختلال برقرار شود.", null, 'HTML');
+    } elseif ($userdata['type'] == "pasarguard") {
+        $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
+        $connection = pasarguardCheckConnection($savedPanel);
+        if ($connection['ok']) {
+            sendmessage($from_id, "✅ اتصال به PasarGuard برقرار شد.\n\nاکنون از مدیریت همین پنل، گزینه «گروه‌های پاسارگارد» را باز کنید و گروه‌های پیش‌فرض فروش را انتخاب کنید. تمام پروتکل‌های فعال گروه، از جمله WireGuard و Hysteria2، خودکار تحویل می‌شوند.", null, 'HTML');
+        } else {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "⚠️ پنل ذخیره شد اما اتصال API برقرار نشد.\n\nعلت: <code>{$reason}</code>\nآدرس و اطلاعات ورود را از مدیریت پنل بررسی کنید.", null, 'HTML');
+        }
     } elseif ($userdata['type'] == "pasarguard_reseller") {
         $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
         $connection = pasarguardCheckConnection($savedPanel);
@@ -3495,7 +3510,7 @@ $caption";
     savedata("save", "price_product", $text);
     $userdata = json_decode($user['Processing_value'], true);
     $panel = select("marzban_panel", "*", "name_panel", $userdata['Location'], "select");
-    if ($panel['type'] == "marzban" || $panel['type'] == "marzneshin") {
+    if (in_array($panel['type'], ["marzban", "pasarguard", "marzneshin"], true)) {
         sendmessage($from_id, $textbotlang['Admin']['Product']['gettimereset'], $keyboardtimereset, 'HTML');
         step('getnote', $from_id);
         return;
@@ -4045,8 +4060,11 @@ $caption";
     $product = select("product", "*", "name_product", $user['Processing_value']);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
     $targetPanel = select('marzban_panel', '*', 'name_panel', $text, 'select');
-    if ($panel && $targetPanel && (($panel['type'] === 'pasarguard_reseller') !== ($targetPanel['type'] === 'pasarguard_reseller'))) {
-        sendmessage($from_id, "❌ انتقال محصول بین پنل پاسارگارد و پنل VPN مجاز نیست؛ چون ساختار تحویل این دو محصول متفاوت است.", $shopkeyboard, 'HTML');
+    $pasarguardTypes = ['pasarguard', 'pasarguard_reseller'];
+    if ($panel && $targetPanel
+        && (in_array($panel['type'], $pasarguardTypes, true) || in_array($targetPanel['type'], $pasarguardTypes, true))
+        && $panel['type'] !== $targetPanel['type']) {
+        sendmessage($from_id, "❌ انتقال این محصول بین نوع‌های متفاوت پنل مجاز نیست؛ تنظیمات گروه و شیوه تحویل آن‌ها با هم تفاوت دارد.", $shopkeyboard, 'HTML');
         step('home', $from_id);
         return;
     }
@@ -4737,6 +4755,7 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
 
 } elseif ($user['step'] == "GetLocationEdit") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $text, "select");
+    $marzban_list_get = pasarguardMigrateLegacyPanel($marzban_list_get);
     if ($marzban_list_get['type'] == "x-ui_tunnel") {
         $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
         $txt_tun = "🔌 <b>پنل پورت تانل متصل است ✅</b>\n\n📍 <b>نام پنل:</b> {$marzban_list_get['name_panel']}\n👥 <b>گروه:</b> {$marzban_list_get['agent']}";
@@ -4885,6 +4904,24 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
             $text_marzban = $textbotlang['Admin']['managepanel']['errorstateuspanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
+    } elseif ($marzban_list_get['type'] == "pasarguard") {
+        $connection = pasarguardCheckConnection($marzban_list_get);
+        $selectedGroups = pasarguardNormalizeGroupIds($marzban_list_get['inbounds'] ?? null);
+        if ($connection['ok']) {
+            $groups = pasarguardGetGroups($marzban_list_get);
+            $availableGroups = $groups['ok'] ? count($groups['items']) : 0;
+            $panelName = htmlspecialchars((string) $marzban_list_get['name_panel'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $textPasarguard = "✅ <b>پنل پاسارگارد متصل است</b>\n\n"
+                . "نام پنل: <b>{$panelName}</b>\n"
+                . "گروه‌های انتخاب‌شده: <code>" . count($selectedGroups) . "</code>\n"
+                . "گروه‌های قابل دسترس: <code>{$availableGroups}</code>\n"
+                . "پروتکل‌ها: VMess، VLESS، Trojan، Shadowsocks، WireGuard و Hysteria2\n\n"
+                . "برای مدیریت پنل یکی از گزینه‌های زیر را انتخاب کنید.";
+        } else {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $textPasarguard = "❌ <b>اتصال به پنل پاسارگارد برقرار نشد</b>\n\nجزئیات: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.";
+        }
+        sendmessage($from_id, $textPasarguard, $optionPasarguard, 'HTML');
     } elseif ($marzban_list_get['type'] == "pasarguard_reseller") {
         $dashboard = pasarguardAdminDashboardData($marzban_list_get);
         sendmessage($from_id, $dashboard['text'], $optionPasarguardReseller, 'HTML');
@@ -5186,17 +5223,18 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     }
 } elseif (in_array($text, ["🔌 تست اتصال پنل", "🔌 بررسی اتصال"], true) && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
-    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
+    if (!$panel || !in_array($panel['type'], ['pasarguard', 'pasarguard_reseller'], true)) {
         sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
         return;
     }
+    $panelKeyboard = $panel['type'] === 'pasarguard' ? $optionPasarguard : $optionPasarguardReseller;
     $connection = pasarguardCheckConnection($panel);
     if ($connection['ok']) {
         $account = htmlspecialchars((string) ($connection['data']['username'] ?? $panel['username_panel']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        sendmessage($from_id, "✅ <b>ارتباط با پنل برقرار است</b>\n\nحساب متصل: <code>{$account}</code>", $optionPasarguardReseller, 'HTML');
+        sendmessage($from_id, "✅ <b>ارتباط با پنل برقرار است</b>\n\nحساب متصل: <code>{$account}</code>", $panelKeyboard, 'HTML');
     } else {
         $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        sendmessage($from_id, "❌ <b>ارتباط با پنل برقرار نشد</b>\n\nجزئیات خطا: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.", $optionPasarguardReseller, 'HTML');
+        sendmessage($from_id, "❌ <b>ارتباط با پنل برقرار نشد</b>\n\nجزئیات خطا: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.", $panelKeyboard, 'HTML');
     }
 } elseif (in_array($text, ["📋 نقش‌های پنل", "📋 نقش‌های پاسارگارد"], true) && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
@@ -5300,18 +5338,19 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     );
     step("cr_step_get_panel_color", $from_id);
 } elseif ($user['step'] == "cr_step_get_panel_color" && in_array($from_id, $admin_ids)) {
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
     if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
         step("none", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
+        $activePanelData = select('marzban_panel', '*', 'name_panel', $active_panel, 'select');
+        outtypepanel($activePanelData['type'] ?? 'marzban', "عملیات تغییر استایل لغو شد.");
         return;
     }
-
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
     if ($text == 'none' || $text == 'حذف' || $text == '0') {
         update("marzban_panel", "panel_color", "", "name_panel", $active_panel);
         step("none", $from_id);
-        sendmessage($from_id, "✅ رنگ پنل <b>{$active_panel}</b> حذف شد.", $optionMarzban, 'HTML');
+        $activePanelData = select('marzban_panel', '*', 'name_panel', $active_panel, 'select');
+        outtypepanel($activePanelData['type'] ?? 'marzban', "✅ رنگ پنل <b>{$active_panel}</b> حذف شد.");
         return;
     }
 
@@ -5347,7 +5386,8 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
         'secondary' => '⚪️ بی رنگ / خاکستری'
     ];
 
-    sendmessage($from_id, "✅ رنگ دکمه پنل <b>{$active_panel}</b> با موفقیت به <b>{$color_names_fa[$color]}</b> تغییر یافت.", $optionMarzban, 'HTML');
+    $activePanelData = select('marzban_panel', '*', 'name_panel', $active_panel, 'select');
+    outtypepanel($activePanelData['type'] ?? 'marzban', "✅ رنگ دکمه پنل <b>{$active_panel}</b> با موفقیت به <b>{$color_names_fa[$color]}</b> تغییر یافت.");
 
 } elseif ($text == "⭐ تنظیم ایموجی پرمیوم" && in_array($from_id, $admin_ids)) {
     $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
@@ -5364,13 +5404,13 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
 }
 // مرحله ۲: دریافت و ذخیره ایموجی و اعمال تغییرات برای پنل مرزبان
 elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_ids)) {
+    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
     if ($text == "🔙 انصراف" || $text == "🔙 بازگشت" || $text == ($textbotlang['Admin']['backadmin'] ?? '')) {
         step("none", $from_id);
-        sendmessage($from_id, "عملیات تغییر استایل لغو شد.", $optionMarzban, 'HTML');
+        $activePanelData = select('marzban_panel', '*', 'name_panel', $active_panel, 'select');
+        outtypepanel($activePanelData['type'] ?? 'marzban', "عملیات تغییر استایل لغو شد.");
         return;
     }
-
-    $active_panel = !empty($user['Processing_value']) ? $user['Processing_value'] : ($user['Processing_value_one'] ?? '');
 
     if (empty($active_panel)) {
         sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات پنل رخ داد. لطفاً مجدداً از منو پنل را انتخاب کنید.", $optionMarzban, 'HTML');
@@ -5450,7 +5490,7 @@ elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_
         "👇 پیش‌نمایش ظاهر دکمه برای کاربران:";
 
     sendmessage($from_id, $res_msg, $final_keyboard, 'HTML');
-    sendmessage($from_id, "منوی مدیریت پنل:", $optionMarzban, 'HTML');
+    outtypepanel($panel_info['type'] ?? 'marzban', "منوی مدیریت پنل:");
 } elseif ($text == "🔌 مدیریت پورت‌های تانل" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE status != 'removed' ORDER BY id DESC LIMIT 30");
     $stmt->execute();
@@ -11560,6 +11600,59 @@ f,n.n2", $backadmin, 'HTML');
         sendmessage($from_id, "🖼 پس زمینه با موفقیت تنظیم گردید", $setting_panel, 'HTML');
         step("home", $from_id);
     }
+} elseif ($text == "⚙️ گروه‌های پاسارگارد" && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard') {
+        sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $groupsData = pasarguardGroupsKeyboardData(
+        $panel,
+        $panel['inbounds'] ?? null,
+        'pggt_' . $panel['code_panel'] . '_',
+        'pggdone_' . $panel['code_panel']
+    );
+    if (!$groupsData['ok']) {
+        $reason = htmlspecialchars((string) $groupsData['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "❌ دریافت گروه‌های پاسارگارد ناموفق بود.\n\nجزئیات: <code>{$reason}</code>", $optionPasarguard, 'HTML');
+        return;
+    }
+    sendmessage($from_id, $groupsData['text'], $groupsData['keyboard'], 'HTML');
+} elseif (preg_match('/^pggt_([^_]+)_(\d+)$/', $datain, $pgGroupMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgGroupMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard') {
+        Editmessagetext($from_id, $message_id, "❌ پنل پاسارگارد پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $groups = pasarguardGetGroups($panel);
+    $groupId = (int) $pgGroupMatch[2];
+    $validIds = $groups['ok'] ? array_map('intval', array_column($groups['items'], 'id')) : [];
+    if (!in_array($groupId, $validIds, true)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این گروه در پنل پیدا نشد.', 'show_alert' => true]);
+        return;
+    }
+    $selected = pasarguardNormalizeGroupIds($panel['inbounds'] ?? null);
+    if (in_array($groupId, $selected, true)) {
+        $selected = array_values(array_diff($selected, [$groupId]));
+    } else {
+        $selected[] = $groupId;
+    }
+    update('marzban_panel', 'inbounds', json_encode(array_values($selected)), 'code_panel', $panel['code_panel']);
+    $groupsData = pasarguardGroupsKeyboardData($panel, $selected, 'pggt_' . $panel['code_panel'] . '_', 'pggdone_' . $panel['code_panel']);
+    Editmessagetext($from_id, $message_id, $groupsData['text'], $groupsData['keyboard'], 'HTML');
+} elseif (preg_match('/^pggdone_([^_]+)$/', $datain, $pgGroupMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $pgGroupMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'pasarguard') {
+        Editmessagetext($from_id, $message_id, "❌ پنل پاسارگارد پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $selected = pasarguardNormalizeGroupIds($panel['inbounds'] ?? null);
+    if (!$selected) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'حداقل یک گروه را انتخاب کنید.', 'show_alert' => true]);
+        return;
+    }
+    Editmessagetext($from_id, $message_id, "✅ گروه‌های پیش‌فرض پاسارگارد ذخیره شدند.", null, 'HTML');
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $optionPasarguard, 'HTML');
 } elseif ($text == "⚙️ تنظیم پروتکل و اینباند" || $text == "🎛 تنظیم نام گروه" || $text == "⚙️ تنظیم نود") {
     if ($text == "🎛 تنظیم نام گروه") {
         $textsetprotocol = "📌 نام گروهی که بصورت پیشفرض می خواهید از آن ساخته شود را ارسال نمایید.";
@@ -11904,8 +11997,64 @@ elseif ($text == "🫣 مخفی کردن پنل برای یک کاربر" && $ad
 📆 تاریخ خرید :  {$paymentUser['time']}";
     sendmessage($from_id, $text_order, null, 'HTML');
 } elseif ($text == "🎛 تنظیم اینباند") {
+    $product = select('product', '*', 'id', $user['Processing_value'], 'select');
+    $selectedPanel = select('marzban_panel', '*', 'code_panel', $user['Processing_value_one'], 'select');
+    if ($product && $selectedPanel && $selectedPanel['type'] === 'pasarguard') {
+        $selectedGroups = pasarguardNormalizeGroupIds($product['inbounds'] ?? null);
+        if (!$selectedGroups) {
+            $selectedGroups = pasarguardNormalizeGroupIds($selectedPanel['inbounds'] ?? null);
+        }
+        $groupsData = pasarguardGroupsKeyboardData(
+            $selectedPanel,
+            $selectedGroups,
+            'pgpgt_' . $product['id'] . '_',
+            'pgpgdone_' . $product['id']
+        );
+        if (!$groupsData['ok']) {
+            $reason = htmlspecialchars((string) $groupsData['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "❌ دریافت گروه‌های پاسارگارد ناموفق بود.\n\nجزئیات: <code>{$reason}</code>", $shopkeyboard, 'HTML');
+            return;
+        }
+        sendmessage($from_id, "📦 <b>گروه‌های اختصاصی این محصول</b>\n\n" . $groupsData['text'], $groupsData['keyboard'], 'HTML');
+        return;
+    }
     sendmessage($from_id, "📌 در صورتی که پنل مرزبان  یا مرزنشین هستید یک نام کاربری کانفیگ از پنل کپی و ارسال نمایید در غیراینصورت برای پنل های ثنایی و علیرضا شناسه اینباند را ارسال نمایید", $backadmin, 'HTML');
     step("getdatainboundproduct", $from_id);
+} elseif (preg_match('/^pgpgt_(\d+)_(\d+)$/', $datain, $pgProductMatch) && $adminrulecheck['rule'] == "administrator") {
+    $product = select('product', '*', 'id', (int) $pgProductMatch[1], 'select');
+    $panel = $product ? select('marzban_panel', '*', 'name_panel', $product['Location'], 'select') : false;
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard') {
+        Editmessagetext($from_id, $message_id, "❌ محصول یا پنل پاسارگارد پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $groups = pasarguardGetGroups($panel);
+    $groupId = (int) $pgProductMatch[2];
+    $validIds = $groups['ok'] ? array_map('intval', array_column($groups['items'], 'id')) : [];
+    if (!in_array($groupId, $validIds, true)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این گروه در پنل پیدا نشد.', 'show_alert' => true]);
+        return;
+    }
+    $selected = pasarguardNormalizeGroupIds($product['inbounds'] ?? null);
+    if (!$selected) {
+        $selected = pasarguardNormalizeGroupIds($panel['inbounds'] ?? null);
+    }
+    if (in_array($groupId, $selected, true)) {
+        $selected = array_values(array_diff($selected, [$groupId]));
+    } else {
+        $selected[] = $groupId;
+    }
+    update('product', 'inbounds', json_encode(array_values($selected)), 'id', $product['id']);
+    $groupsData = pasarguardGroupsKeyboardData($panel, $selected, 'pgpgt_' . $product['id'] . '_', 'pgpgdone_' . $product['id']);
+    Editmessagetext($from_id, $message_id, "📦 <b>گروه‌های اختصاصی این محصول</b>\n\n" . $groupsData['text'], $groupsData['keyboard'], 'HTML');
+} elseif (preg_match('/^pgpgdone_(\d+)$/', $datain, $pgProductMatch) && $adminrulecheck['rule'] == "administrator") {
+    $product = select('product', '*', 'id', (int) $pgProductMatch[1], 'select');
+    $panel = $product ? select('marzban_panel', '*', 'name_panel', $product['Location'], 'select') : false;
+    if (!$product || !$panel || $panel['type'] !== 'pasarguard') {
+        Editmessagetext($from_id, $message_id, "❌ محصول یا پنل پاسارگارد پیدا نشد.", null, 'HTML');
+        return;
+    }
+    Editmessagetext($from_id, $message_id, "✅ گروه‌های اختصاصی محصول ذخیره شدند.", null, 'HTML');
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $shopkeyboard, 'HTML');
 } elseif ($user['step'] == "getdatainboundproduct") {
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $user['Processing_value_one']);
     $datainbound = "";
@@ -11944,6 +12093,13 @@ elseif ($text == "🫣 مخفی کردن پنل برای یک کاربر" && $ad
         $stmt->bindParam(':agent', $user['Processing_value_tow']);
         $stmt->execute();
         $datainbound = json_encode($DataUserOut['inbounds']);
+    } elseif ($marzban_list_get['type'] == "pasarguard") {
+        $groupIds = pasarguardNormalizeGroupIds($text);
+        if (!$groupIds) {
+            sendmessage($from_id, "❌ شناسه گروه معتبر نیست. شناسه‌ها را با ویرگول جدا کنید.", $backadmin, 'HTML');
+            return;
+        }
+        $datainbound = json_encode($groupIds);
     } elseif ($marzban_list_get['type'] == "marzneshin") {
         $userdata = json_decode(getuserm($text, $marzban_list_get['name_panel'])['body'], true);
         if (isset($userdata['detail']) and $userdata['detail'] == "User not found") {
@@ -12784,12 +12940,6 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ]
         ]
     ];
-    if (in_array($panel['type'], ['marzban'])) {
-        $Bot_Status['inline_keyboard'][] = [
-            ['text' => $version_panel_status, 'callback_data' => "editpanel-versionpanel-{$panel['version_panel']}-{$panel['code_panel']}"],
-            ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
-        ];
-    }
     if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
@@ -12802,7 +12952,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
         ];
     }
-    if (in_array($panel['type'], ['marzban', "x-ui_single", "marzneshin"])) {
+    if (in_array($panel['type'], ['marzban', 'pasarguard', "x-ui_single", "marzneshin"])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconnecton, 'callback_data' => "editpanel-connecton-{$panel['conecton']}-{$panel['code_panel']}"],
             ['text' => "📊 اولین اتصال", 'callback_data' => "none"],
@@ -13051,12 +13201,6 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ]
         ]
     ];
-    if (in_array($panel['type'], ['marzban'])) {
-        $Bot_Status['inline_keyboard'][] = [
-            ['text' => $version_panel_status, 'callback_data' => "editpanel-versionpanel-{$panel['version_panel']}-{$panel['code_panel']}"],
-            ['text' => "🎛 پنل پاسارگارد", 'callback_data' => "none"],
-        ];
-    }
     if (!in_array($panel['type'], ['Manualsale', "WGDashboard", 'hiddify', 'x-ui_tunnel'])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconfig, 'callback_data' => "editpanel-stautsconfig-{$panel['config']}-{$panel['code_panel']}"],
@@ -13069,7 +13213,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
         ];
     }
-    if (in_array($panel['type'], ['marzban', "x-ui_single", "marzneshin"])) {
+    if (in_array($panel['type'], ['marzban', 'pasarguard', "x-ui_single", "marzneshin"])) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconnecton, 'callback_data' => "editpanel-connecton-{$panel['conecton']}-{$panel['code_panel']}"],
             ['text' => "📊 اولین اتصال", 'callback_data' => "none"],
