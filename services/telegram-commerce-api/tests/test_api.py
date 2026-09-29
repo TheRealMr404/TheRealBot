@@ -1,5 +1,7 @@
 import asyncio
 
+from app.db import SessionLocal
+from app.models import FragmentAuthJob, ProviderConfig
 from app.services import process_one_order
 
 
@@ -133,4 +135,67 @@ def test_provider_dashboard_and_live_check_contract(client, headers):
     check = client.post("/v1/admin/provider-check?provider=mock", headers=headers)
     assert check.status_code == 200
     assert check.json() == {"ok": True, "provider": "mock", "message": "Mock provider is ready"}
+
+
+def test_provider_config_is_encrypted_and_never_returned(client, headers):
+    seed = "one two three four five six seven eight nine ten eleven twelve"
+    ton_key = "private-ton-api-key-value"
+    response = client.patch(
+        "/v1/admin/provider-config",
+        headers=headers,
+        json={
+            "fragment_wallet_seed": seed,
+            "fragment_ton_api_key": ton_key,
+            "fragment_wallet_version": "V4R2",
+            "fragment_show_sender": True,
+            "fragment_low_balance_ton": 2.5,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert seed not in body
+    assert ton_key not in body
+    assert response.json()["fragment_wallet_version"] == "V4R2"
+
+    db = SessionLocal()
+    try:
+        seed_row = db.get(ProviderConfig, "fragment_wallet_seed")
+        key_row = db.get(ProviderConfig, "fragment_ton_api_key")
+        assert seed_row is not None and seed not in seed_row.encrypted_value
+        assert key_row is not None and ton_key not in key_row.encrypted_value
+    finally:
+        db.close()
+
+    status = client.get("/v1/admin/provider-status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["fragment_wallet_configured"] is True
+    assert seed not in status.text
+    assert ton_key not in status.text
+
+
+def test_fragment_auth_phone_is_encrypted(monkeypatch, client, headers):
+    seed = "one two three four five six seven eight nine ten eleven twelve"
+    client.patch(
+        "/v1/admin/provider-config",
+        headers=headers,
+        json={"fragment_wallet_seed": seed},
+    )
+    launched = []
+    monkeypatch.setattr("app.api.launch_auth", launched.append)
+    phone = "+989121234567"
+    response = client.post(
+        "/v1/admin/fragment/auth", headers=headers, json={"phone": phone}
+    )
+    assert response.status_code == 202, response.text
+    assert phone not in response.text
+    job_id = response.json()["id"]
+    assert launched == [job_id]
+
+    db = SessionLocal()
+    try:
+        job = db.get(FragmentAuthJob, job_id)
+        assert job is not None
+        assert job.encrypted_phone and phone not in job.encrypted_phone
+    finally:
+        db.close()
 

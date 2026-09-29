@@ -119,5 +119,5 @@ curl -fsS http://127.0.0.1:8088/healthz >/dev/null || {
 echo "Telegram Commerce API installed."
 echo "Secure configuration: $ENV_FILE"
 echo "Local API: http://127.0.0.1:8088"
-echo "Edit Fragment credentials in the secure configuration, then restart both services."
+echo "Open the bot admin panel to register Fragment and wallet information."
 

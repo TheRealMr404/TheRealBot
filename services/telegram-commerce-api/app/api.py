@@ -9,10 +9,14 @@ from .auth import Principal, generate_api_key, hash_api_key, require_scope
 from .config import get_settings
 from .crypto import encrypt_secret
 from .db import get_db
-from .models import ApiKey, Order, Payment, Product, WebhookEndpoint, utcnow
+from .fragment_auth import launch_auth
+from .models import ApiKey, FragmentAuthJob, Order, Payment, Product, WebhookEndpoint, utcnow
+from .runtime_config import clear_runtime_values, get_effective_settings, set_runtime_value
 from .schemas import (
     ApiKeyCreate,
     ApiKeyCreated,
+    FragmentAuthOut,
+    FragmentAuthStart,
     OrderCreate,
     OrderList,
     OrderOut,
@@ -22,6 +26,7 @@ from .schemas import (
     ProductOut,
     ProductPublic,
     ProductUpdate,
+    ProviderConfigUpdate,
     QuoteCreate,
     QuoteOut,
     WebhookCreate,
@@ -265,15 +270,13 @@ def create_api_key(
 
 @router.get("/admin/provider-status")
 def provider_status(_: Principal = Depends(require_scope("admin"))):
-    settings = get_settings()
+    settings = get_effective_settings()
     return {
         "default_provider": settings.default_provider,
         "fragment_session_configured": all(
             [settings.fragment_stel_ssid, settings.fragment_stel_dt, settings.fragment_stel_token]
         ),
-        "fragment_wallet_configured": all(
-            [settings.fragment_stel_ton_token, settings.fragment_wallet_seed]
-        ),
+        "fragment_wallet_configured": bool(settings.fragment_wallet_seed),
         "fragment_ton_rpc_configured": bool(settings.fragment_ton_api_key),
         "fragment_wallet_version": settings.fragment_wallet_version,
         "fragment_show_sender": settings.fragment_show_sender,
@@ -291,6 +294,89 @@ def provider_status(_: Principal = Depends(require_scope("admin"))):
         "telegram_bot_configured": bool(settings.telegram_bot_token),
         "marketapp_enabled": False,
     }
+
+
+@router.patch("/admin/provider-config")
+def update_provider_config(
+    data: ProviderConfigUpdate,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_scope("admin")),
+):
+    values = data.model_dump(exclude_unset=True)
+    if not values:
+        raise HTTPException(status_code=422, detail="No setting was provided")
+    for key, value in values.items():
+        if hasattr(value, "get_secret_value"):
+            value = value.get_secret_value().strip()
+        set_runtime_value(db, key, value)
+    db.commit()
+    settings = get_effective_settings(db)
+    return {
+        "ok": True,
+        "fragment_wallet_configured": bool(settings.fragment_wallet_seed),
+        "fragment_ton_rpc_configured": bool(settings.fragment_ton_api_key),
+        "fragment_wallet_version": settings.fragment_wallet_version,
+        "fragment_show_sender": settings.fragment_show_sender,
+        "fragment_low_balance_ton": settings.fragment_low_balance_ton,
+    }
+
+
+@router.post("/admin/fragment/auth", response_model=FragmentAuthOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_fragment_auth(
+    data: FragmentAuthStart,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_scope("admin")),
+):
+    settings = get_effective_settings(db)
+    if not settings.fragment_wallet_seed:
+        raise HTTPException(status_code=409, detail="Register the wallet seed before Telegram login")
+    active = db.scalar(
+        select(FragmentAuthJob).where(
+            FragmentAuthJob.status.in_(["pending", "running", "waiting_confirmation", "finalizing"])
+        )
+    )
+    if active:
+        raise HTTPException(status_code=409, detail={"message": "An authentication is already running", "job_id": active.id})
+    job = FragmentAuthJob(
+        status="pending",
+        encrypted_phone=encrypt_secret(data.phone.get_secret_value()),
+        progress="queued",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    launch_auth(job.id)
+    return FragmentAuthOut.model_validate(job, from_attributes=True)
+
+
+@router.get("/admin/fragment/auth/{job_id}", response_model=FragmentAuthOut)
+def fragment_auth_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_scope("admin")),
+):
+    job = db.get(FragmentAuthJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Authentication job not found")
+    return FragmentAuthOut.model_validate(job, from_attributes=True)
+
+
+@router.delete("/admin/fragment/session")
+def clear_fragment_session(
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_scope("admin")),
+):
+    clear_runtime_values(
+        db,
+        [
+            "fragment_stel_ssid",
+            "fragment_stel_dt",
+            "fragment_stel_token",
+            "fragment_stel_ton_token",
+        ],
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/admin/provider-check")

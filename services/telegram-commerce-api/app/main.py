@@ -1,14 +1,37 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import update
 
 from .api import router
-from .db import Base, engine
+from .db import Base, SessionLocal, engine
+from .models import FragmentAuthJob, utcnow
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(
+            update(FragmentAuthJob)
+            .where(
+                FragmentAuthJob.status.in_(
+                    ["pending", "running", "waiting_confirmation", "finalizing"]
+                )
+            )
+            .values(
+                status="failed",
+                progress="interrupted",
+                error_message="Authentication was interrupted by a service restart",
+                encrypted_phone=None,
+                completed_at=utcnow(),
+                updated_at=utcnow(),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
     yield
 
 

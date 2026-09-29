@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 ProductKind = Literal["stars", "premium"]
@@ -182,4 +182,44 @@ class ApiKeyCreated(BaseModel):
     key: str
     prefix: str
     scopes: list[str]
+
+
+class ProviderConfigUpdate(BaseModel):
+    fragment_wallet_seed: SecretStr | None = None
+    fragment_ton_api_key: SecretStr | None = None
+    fragment_wallet_version: Literal["V4R2", "V5R1"] | None = None
+    fragment_show_sender: bool | None = None
+    fragment_low_balance_ton: float | None = Field(default=None, ge=0, le=1_000_000)
+
+    @field_validator("fragment_wallet_seed")
+    @classmethod
+    def validate_seed(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().strip().split()) not in {12, 18, 24}:
+            raise ValueError("Wallet seed must contain 12, 18 or 24 words")
+        return value
+
+
+class FragmentAuthStart(BaseModel):
+    phone: SecretStr
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: SecretStr) -> SecretStr:
+        phone = value.get_secret_value().strip()
+        digits = "".join(character for character in phone if character.isdigit())
+        if len(digits) < 8 or len(digits) > 15:
+            raise ValueError("Invalid phone number")
+        return SecretStr("+" + digits)
+
+
+class FragmentAuthOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    status: str
+    progress: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
 

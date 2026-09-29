@@ -67,6 +67,7 @@ _step_eta() {
         "Creating database & user"*)         echo 5  ;;
         "Setting Telegram webhook"*)         echo 5  ;;
         "Initializing database tables"*)     echo 15 ;;
+        "Installing Stars & Premium API"*)   echo 45 ;;
         *)                                   echo 8  ;;
     esac
 }
@@ -87,6 +88,7 @@ plan_eta() {
     phase_done VHOST   || { STEP_TOTAL=$((STEP_TOTAL + 1)); ETA_REMAINING=$((ETA_REMAINING + 6)); }
     phase_done DB      || { STEP_TOTAL=$((STEP_TOTAL + 1)); ETA_REMAINING=$((ETA_REMAINING + 5)); }
     phase_done WEBHOOK || { STEP_TOTAL=$((STEP_TOTAL + 3)); ETA_REMAINING=$((ETA_REMAINING + 25)); }
+    STEP_TOTAL=$((STEP_TOTAL + 1)); ETA_REMAINING=$((ETA_REMAINING + 45))
 }
 
 print_header() {
@@ -2917,6 +2919,15 @@ EOF
     # Install the admin-panel GitHub auto-updater.
     run_step "Installing bot auto-updater" "install_bot_auto_updater" \
         || { show_step_error; install_pause "Installing bot auto-updater"; }
+
+    # Install the isolated API, worker and Fragment dependencies automatically.
+    if [ -f "$BOT_DIR/services/telegram-commerce-api/install-service.sh" ]; then
+        run_step "Installing Stars & Premium API" \
+            "bash '$BOT_DIR/services/telegram-commerce-api/install-service.sh'" \
+            || { show_step_error; install_pause "Installing Stars & Premium API"; }
+    else
+        echo -e "  ${C_WARN}!${CR} ${C_DIM}Stars & Premium API package is not present in this release.${CR}"
+    fi
 
     # ── Done ──
     mark_phase COMPLETE

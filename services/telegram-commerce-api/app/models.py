@@ -144,3 +144,23 @@ class WebhookDelivery(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
+class ProviderConfig(Base):
+    __tablename__ = "provider_config"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    encrypted_value: Mapped[str] = mapped_column(Text)
+    is_secret: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class FragmentAuthJob(Base):
+    __tablename__ = "fragment_auth_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid4)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    encrypted_phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
