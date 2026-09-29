@@ -123,3 +123,14 @@ def test_webhook_secret_is_not_returned(client, headers):
     assert response.status_code == 201, response.text
     assert "secret" not in response.json()
 
+
+def test_provider_dashboard_and_live_check_contract(client, headers):
+    status = client.get("/v1/admin/provider-status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["marketapp_enabled"] is False
+    assert status.json()["fragment_wallet_version"] == "V5R1"
+
+    check = client.post("/v1/admin/provider-check?provider=mock", headers=headers)
+    assert check.status_code == 200
+    assert check.json() == {"ok": True, "provider": "mock", "message": "Mock provider is ready"}
+

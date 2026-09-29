@@ -27,6 +27,7 @@ from .schemas import (
     WebhookCreate,
     WebhookOut,
 )
+from .providers import get_provider
 from .services import add_payment, create_order, emit_order_event, validate_webhook_url
 
 
@@ -267,6 +268,16 @@ def provider_status(_: Principal = Depends(require_scope("admin"))):
     settings = get_settings()
     return {
         "default_provider": settings.default_provider,
+        "fragment_session_configured": all(
+            [settings.fragment_stel_ssid, settings.fragment_stel_dt, settings.fragment_stel_token]
+        ),
+        "fragment_wallet_configured": all(
+            [settings.fragment_stel_ton_token, settings.fragment_wallet_seed]
+        ),
+        "fragment_ton_rpc_configured": bool(settings.fragment_ton_api_key),
+        "fragment_wallet_version": settings.fragment_wallet_version,
+        "fragment_show_sender": settings.fragment_show_sender,
+        "fragment_low_balance_ton": settings.fragment_low_balance_ton,
         "fragment_configured": all(
             [
                 settings.fragment_stel_ssid,
@@ -280,4 +291,15 @@ def provider_status(_: Principal = Depends(require_scope("admin"))):
         "telegram_bot_configured": bool(settings.telegram_bot_token),
         "marketapp_enabled": False,
     }
+
+
+@router.post("/admin/provider-check")
+async def check_provider(
+    provider: str = Query(default="fragment", pattern="^(fragment|telegram_bot|mock)$"),
+    _: Principal = Depends(require_scope("admin")),
+):
+    try:
+        return await get_provider(provider).check_connection()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)[:500]) from exc
 

@@ -13,6 +13,20 @@ class TelegramBotProvider(PurchaseProvider):
             raise ProviderDefinitiveError("TELEGRAM_BOT_TOKEN is not configured")
         self.token = settings.telegram_bot_token
 
+    async def check_connection(self) -> dict:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"https://api.telegram.org/bot{self.token}/getMe")
+        data = response.json()
+        if response.status_code >= 400 or not data.get("ok"):
+            raise ProviderDefinitiveError(data.get("description") or f"Telegram HTTP {response.status_code}")
+        bot = data.get("result") or {}
+        return {
+            "ok": True,
+            "provider": "telegram_bot",
+            "bot_id": bot.get("id"),
+            "username": bot.get("username"),
+        }
+
     async def purchase(self, order: Order) -> PurchaseResult:
         if order.kind != "premium":
             raise ProviderDefinitiveError("telegram_bot provider supports Premium only")

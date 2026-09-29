@@ -483,25 +483,146 @@ function telegramCommerceAdminHomeButton(array &$rows)
     array_splice($rows, $insertAt, 0, [[['text' => 'فروش خودکار استارز و پریمیوم', 'callback_data' => 'vsa_tc_home']]]);
 }
 
+function telegramCommerceAdminOnOff($value)
+{
+    return $value ? '✅ روشن' : '❌ خاموش';
+}
+
+function telegramCommerceAdminConfigured($value)
+{
+    return $value ? '✅ ثبت شده' : '❌ ثبت نشده';
+}
+
+function telegramCommerceMaskedAddress($address)
+{
+    $address = trim((string) $address);
+    if ($address === '') return 'دریافت نشده';
+    if (strlen($address) <= 20) return telegramProductsEscape($address);
+    return telegramProductsEscape(substr($address, 0, 10) . '...' . substr($address, -8));
+}
+
 function telegramCommerceAdminHome()
 {
     $enabled = telegramCommerceSetting('enabled', '0') === '1';
     $ready = telegramCommerceReady();
     $health = $ready ? telegramCommerceApi('GET', '/healthz') : ['ok' => false];
+    $statusResponse = $ready ? telegramCommerceApi('GET', '/v1/admin/provider-status') : ['ok' => false, 'data' => []];
+    $status = !empty($statusResponse['ok']) ? $statusResponse['data'] : [];
     $products = $ready ? telegramCommerceProducts(null, true) : null;
-    $text = "<b>فروش خودکار استارز و پریمیوم</b>\n\n";
-    $text .= 'وضعیت فروش: ' . ($enabled ? 'فعال' : 'غیرفعال') . "\n";
-    $text .= 'تنظیمات اتصال: ' . ($ready ? 'تکمیل' : 'ناقص') . "\n";
-    $text .= 'ارتباط با API: ' . (!empty($health['ok']) ? 'برقرار' : 'قطع') . "\n";
-    $text .= 'تعداد پلن‌ها: <code>' . (is_array($products) ? count($products) : 0) . "</code>\n\n";
-    $text .= 'کلید API در پیام یا دیتابیس ربات ذخیره نمی‌شود و باید در فایل محافظت‌شده سرور قرار بگیرد.';
+    $lastCheck = telegramCommerceSetting('last_connection_check', 'هنوز انجام نشده');
+    $lastCheckOk = telegramCommerceSetting('last_connection_ok', '0') === '1';
+    $lastWallet = telegramCommerceSetting('last_wallet_address', '');
+    $lastBalance = telegramCommerceSetting('last_wallet_balance', '');
+    $lastProfile = telegramCommerceSetting('last_fragment_profile', '');
+    $walletVersion = $status['fragment_wallet_version'] ?? 'V5R1';
+    $lowBalance = (float) ($status['fragment_low_balance_ton'] ?? 0);
+
+    $text = "💎 <b>اتصال فرگمنت</b>\n\n";
+    $text .= "پکیج‌های پریمیوم و استارز بعد از پرداخت کاربر، به‌صورت خودکار از Fragment/Telegram خریداری می‌شوند.\n\n";
+    $text .= "<blockquote>";
+    $text .= "🟢 فروش خودکار: " . telegramCommerceAdminOnOff($enabled) . "\n";
+    $text .= "🔌 ارتباط API: " . telegramCommerceAdminConfigured(!empty($health['ok'])) . "\n";
+    $text .= "🔐 نشست فرگمنت: " . telegramCommerceAdminConfigured(!empty($status['fragment_session_configured'])) . "\n";
+    $text .= "💰 کیف پول: " . telegramCommerceAdminConfigured(!empty($status['fragment_wallet_configured'])) . "\n";
+    if ($lastWallet !== '') $text .= "👛 آدرس: <code>" . telegramCommerceMaskedAddress($lastWallet) . "</code>\n";
+    if ($lastBalance !== '') $text .= "💵 موجودی آخر: <code>" . telegramProductsEscape($lastBalance) . " TON</code>\n";
+    if ($lastProfile !== '') $text .= "👤 حساب: " . telegramProductsEscape($lastProfile) . "\n";
+    $text .= "🧬 نسخه کیف پول: <code>" . telegramProductsEscape($walletVersion) . "</code>\n";
+    $text .= "🔑 کلید TON RPC: " . telegramCommerceAdminConfigured(!empty($status['fragment_ton_rpc_configured'])) . "\n";
+    $text .= "👤 نمایش نام فرستنده: " . telegramCommerceAdminOnOff(!empty($status['fragment_show_sender'])) . "\n";
+    $text .= "⚠️ هشدار موجودی کمتر از: <code>" . ($lowBalance > 0 ? telegramProductsEscape((string) $lowBalance) . ' TON' : 'خاموش') . "</code>\n";
+    $text .= "📦 تعداد پلن‌ها: <code>" . (is_array($products) ? count($products) : 0) . "</code>\n";
+    $text .= "🔄 آخرین بررسی: " . ($lastCheckOk ? '✅ ' : '') . telegramProductsEscape($lastCheck);
+    $text .= "</blockquote>";
     $rows = [
-        [['text' => $enabled ? 'غیرفعال‌سازی فروش' : 'فعال‌سازی فروش', 'callback_data' => 'vsa_tc_toggle']],
-        [['text' => 'مدیریت پلن‌ها', 'callback_data' => 'vsa_tc_products'], ['text' => 'بررسی اتصال', 'callback_data' => 'vsa_tc_test']],
-        [['text' => 'راهنمای اتصال و webhook', 'callback_data' => 'vsa_tc_help']],
-        [['text' => 'بازگشت', 'callback_data' => 'vsa_home']],
+        [['text' => 'فروش خودکار: ' . telegramCommerceAdminOnOff($enabled), 'callback_data' => 'vsa_tc_toggle', 'style' => $enabled ? 'success' : 'danger']],
+        [
+            ['text' => '💰 کلید کیف پول', 'callback_data' => 'vsa_tc_info_wallet'],
+            ['text' => '🔐 ورود تلگرام (یک‌بار)', 'callback_data' => 'vsa_tc_info_session'],
+        ],
+        [
+            ['text' => '🧬 نسخه: ' . $walletVersion, 'callback_data' => 'vsa_tc_info_version'],
+            ['text' => '🔑 کلید TON RPC', 'callback_data' => 'vsa_tc_info_ton'],
+        ],
+        [
+            ['text' => '👤 نام فرستنده: ' . (!empty($status['fragment_show_sender']) ? 'روشن' : 'خاموش'), 'callback_data' => 'vsa_tc_info_sender'],
+            ['text' => '⚠️ هشدار موجودی', 'callback_data' => 'vsa_tc_info_balance'],
+        ],
+        [
+            ['text' => '🔄 بررسی نشست', 'callback_data' => 'vsa_tc_refresh'],
+            ['text' => '🧪 بررسی اتصال', 'callback_data' => 'vsa_tc_test'],
+        ],
+        [['text' => '📦 مدیریت پکیج‌ها', 'callback_data' => 'vsa_tc_products', 'style' => 'primary']],
+        [['text' => '📖 راهنما و webhook', 'callback_data' => 'vsa_tc_help']],
+        [['text' => 'بازگشت', 'callback_data' => 'vsa_home', 'style' => 'danger']],
     ];
     virtualServicesAdminReply($text, $rows);
+}
+
+function telegramCommerceAdminConnectionCheck()
+{
+    if (!telegramCommerceReady()) {
+        telegramCommerceSetSetting('last_connection_check', date('Y-m-d H:i:s'));
+        telegramCommerceSetSetting('last_connection_ok', '0');
+        virtualServicesAdminReply('تنظیمات اتصال API هنوز کامل نشده است.', [[['text' => 'بازگشت', 'callback_data' => 'vsa_tc_home']]]);
+        return;
+    }
+    $response = telegramCommerceApi('POST', '/v1/admin/provider-check?provider=fragment');
+    telegramCommerceSetSetting('last_connection_check', date('Y-m-d H:i:s'));
+    telegramCommerceSetSetting('last_connection_ok', $response['ok'] ? '1' : '0');
+    if (!$response['ok']) {
+        telegramCommerceSetSetting('last_connection_error', (string) $response['error']);
+        virtualServicesAdminReply("<b>بررسی اتصال ناموفق بود</b>\n\n<code>" . telegramProductsEscape((string) $response['error']) . '</code>', [[['text' => 'بازگشت', 'callback_data' => 'vsa_tc_home']]]);
+        return;
+    }
+    $data = $response['data'];
+    telegramCommerceSetSetting('last_connection_error', '');
+    telegramCommerceSetSetting('last_wallet_address', (string) ($data['wallet_address'] ?? ''));
+    telegramCommerceSetSetting('last_wallet_balance', isset($data['balance_ton']) ? (string) $data['balance_ton'] : '');
+    telegramCommerceSetSetting('last_fragment_profile', (string) ($data['profile_name'] ?? ''));
+    $text = "<b>اتصال فرگمنت با موفقیت بررسی شد</b>\n\n";
+    if (!empty($data['profile_name'])) $text .= 'حساب: ' . telegramProductsEscape($data['profile_name']) . "\n";
+    if (!empty($data['wallet_address'])) $text .= 'کیف پول: <code>' . telegramCommerceMaskedAddress($data['wallet_address']) . "</code>\n";
+    if (isset($data['balance_ton'])) $text .= 'موجودی: <code>' . telegramProductsEscape((string) $data['balance_ton']) . " TON</code>\n";
+    if (!empty($data['low_balance'])) $text .= "\n⚠️ موجودی کیف پول از حد هشدار کمتر است.";
+    virtualServicesAdminReply($text, [[['text' => 'بازگشت به وضعیت اتصال', 'callback_data' => 'vsa_tc_home']]]);
+}
+
+function telegramCommerceAdminSecureGuide($section)
+{
+    global $dbname;
+    $safeDb = preg_replace('/[^A-Za-z0-9_.-]/', '', (string) $dbname);
+    $file = "/etc/mirza/telegram-commerce-{$safeDb}.env";
+    $guides = [
+        'wallet' => [
+            'کلید کیف پول',
+            "برای امنیت، seed داخل تلگرام دریافت نمی‌شود. در فایل زیر مقدارها را ثبت کنید:\n\n<code>FRAGMENT_WALLET_SEED=word1 ... word24\nFRAGMENT_STEL_TON_TOKEN=...</code>",
+        ],
+        'session' => [
+            'ورود تلگرام و نشست فرگمنت',
+            "ورود فقط یک‌بار انجام می‌شود و cookieها باید در فایل امن سرور ثبت شوند:\n\n<code>FRAGMENT_STEL_SSID=...\nFRAGMENT_STEL_DT=...\nFRAGMENT_STEL_TOKEN=...</code>\n\nهیچ cookie یا کد ورود را داخل پیام تلگرام ارسال نکنید.",
+        ],
+        'version' => [
+            'نسخه کیف پول',
+            "نسخه کیف پول را در فایل امن روی <code>V5R1</code> یا <code>V4R2</code> قرار دهید:\n\n<code>FRAGMENT_WALLET_VERSION=V5R1</code>",
+        ],
+        'ton' => [
+            'کلید TON RPC',
+            "کلید Toncenter/Tonconsole را در فایل امن ثبت کنید:\n\n<code>FRAGMENT_TON_API_KEY=...</code>",
+        ],
+        'sender' => [
+            'نمایش نام فرستنده',
+            "برای نمایش یا مخفی‌کردن نام فرستنده مقدار زیر را تغییر دهید:\n\n<code>FRAGMENT_SHOW_SENDER=true</code>",
+        ],
+        'balance' => [
+            'هشدار موجودی',
+            "حداقل موجودی TON را مشخص کنید. مقدار صفر هشدار را خاموش می‌کند:\n\n<code>FRAGMENT_LOW_BALANCE_TON=5</code>",
+        ],
+    ];
+    if (!isset($guides[$section])) $section = 'session';
+    $text = '<b>' . $guides[$section][0] . "</b>\n\n" . $guides[$section][1];
+    $text .= "\n\nفایل تنظیمات:\n<code>" . telegramProductsEscape($file) . "</code>\n\nبعد از تغییر، سرویس‌های API و worker را restart کنید.";
+    virtualServicesAdminReply($text, [[['text' => 'بررسی اتصال', 'callback_data' => 'vsa_tc_test', 'style' => 'success']], [['text' => 'بازگشت', 'callback_data' => 'vsa_tc_home']]]);
 }
 
 function telegramCommerceAdminProducts()
@@ -579,13 +700,16 @@ function telegramCommerceAdminHandleRequest()
     }
     if ($datain === 'vsa_tc_home') { virtualServicesAdminClearState(); telegramCommerceAdminHome(); return true; }
     if ($datain === 'vsa_tc_toggle') { telegramCommerceSetSetting('enabled', telegramCommerceSetting('enabled', '0') === '1' ? '0' : '1'); telegramCommerceAdminHome(); return true; }
-    if ($datain === 'vsa_tc_test') { telegramCommerceAdminHome(); return true; }
+    if ($datain === 'vsa_tc_test' || $datain === 'vsa_tc_refresh') { telegramCommerceAdminConnectionCheck(); return true; }
     if ($datain === 'vsa_tc_products') { telegramCommerceAdminProducts(); return true; }
     if ($datain === 'vsa_tc_help') {
         global $dbname;
         $safeDb = preg_replace('/[^A-Za-z0-9_.-]/', '', (string) $dbname);
         $help = "<b>راهنمای اتصال امن</b>\n\nفایل <code>/etc/mirza/telegram-commerce-{$safeDb}.env</code> را با دسترسی <code>640</code> بسازید:\n\n<code>TELEGRAM_COMMERCE_API_URL=http://127.0.0.1:8088\nTELEGRAM_COMMERCE_API_KEY=...\nTELEGRAM_COMMERCE_WEBHOOK_SECRET=...</code>\n\nآدرس webhook ربات:\n<code>https://دامنه-ربات/telegram_commerce_webhook.php</code>";
         virtualServicesAdminReply($help, [[['text' => 'بازگشت', 'callback_data' => 'vsa_tc_home']]]); return true;
+    }
+    if (preg_match('/^vsa_tc_info_(wallet|session|version|ton|sender|balance)$/', $datain, $m)) {
+        telegramCommerceAdminSecureGuide($m[1]); return true;
     }
     if (preg_match('/^vsa_tc_p_([a-f0-9-]{36})$/i', $datain, $m)) { telegramCommerceAdminProduct($m[1]); return true; }
     if (preg_match('/^vsa_tc_togglep_([a-f0-9-]{36})$/i', $datain, $m)) {

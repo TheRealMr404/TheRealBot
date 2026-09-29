@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     fragment_wallet_seed: str = ""
     fragment_ton_api_key: str = ""
     fragment_wallet_version: str = "V5R1"
+    fragment_show_sender: bool = False
+    fragment_low_balance_ton: float = Field(default=0, ge=0)
     telegram_bot_token: str = ""
 
     @field_validator("default_provider")
