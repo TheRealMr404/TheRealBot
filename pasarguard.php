@@ -178,6 +178,29 @@ function pasarguardCheckConnection($panel)
     return pasarguardApiRequest($panel, 'GET', 'admin');
 }
 
+function pasarguardListUsers($panel, $offset = 0, $limit = 20, $status = null)
+{
+    $query = [
+        'offset' => max(0, (int) $offset),
+        'limit' => max(1, min(100, (int) $limit)),
+        'sort' => 'username',
+    ];
+    if (is_string($status) && $status !== '') {
+        $query['status'] = $status;
+    }
+
+    $response = pasarguardApiRequest($panel, 'GET', 'users?' . http_build_query($query));
+    if (!$response['ok']) {
+        return $response;
+    }
+
+    $data = is_array($response['data']) ? $response['data'] : [];
+    $items = $data['users'] ?? $data['items'] ?? $data['data'] ?? [];
+    $response['items'] = is_array($items) ? array_values($items) : [];
+    $response['total'] = (int) ($data['total'] ?? $data['count'] ?? count($response['items']));
+    return $response;
+}
+
 function pasarguardAbsoluteUrl($panel, $url)
 {
     $url = trim((string) $url);

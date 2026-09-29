@@ -915,10 +915,6 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         sendmessage($from_id, "🔐 <b>ربات چگونه به پنل متصل شود؟</b>\n\nاستفاده از <b>API Token</b> پیشنهاد می‌شود؛ راه‌اندازی آن ساده‌تر و اتصال آن پایدارتر است. اگر ورود دومرحله‌ای پنل فعال است، حتماً همین گزینه را انتخاب کنید.", $authKeyboard, 'HTML');
         step('xui_add_auth_choice', $from_id);
         return;
-    } elseif ($userdata['type'] == 'pasarguard') {
-        sendmessage($from_id, "👤 <b>نام کاربری ادمین پاسارگارد را ارسال کنید</b>\n\nاین حساب باید مجوز ساخت و مدیریت کاربران و مشاهده گروه‌ها را داشته باشد.", $backadmin, 'HTML');
-        step('add_username_panel', $from_id);
-        return;
     } elseif ($userdata['type'] == 'pasarguard_reseller') {
         sendmessage($from_id, "👤 <b>نام کاربری مالک پنل پاسارگارد را ارسال کنید</b>\n\nاین حساب باید اجازه ساخت و مدیریت ادمین‌ها را داشته باشد.", $backadmin, 'HTML');
         step('add_username_panel', $from_id);
@@ -956,9 +952,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
     $userdata = json_decode($user['Processing_value'], true);
-    if (($userdata['type'] ?? '') === 'pasarguard') {
-        sendmessage($from_id, "🔐 <b>رمز عبور ادمین پاسارگارد را ارسال کنید</b>\n\nرمز فقط برای دریافت توکن امن API استفاده می‌شود.", $backadmin, 'HTML');
-    } elseif (($userdata['type'] ?? '') === 'pasarguard_reseller') {
+    if (($userdata['type'] ?? '') === 'pasarguard_reseller') {
         sendmessage($from_id, "🔐 <b>رمز عبور حساب مالک پاسارگارد را ارسال کنید</b>\n\nرمز فقط برای دریافت توکن API و ساخت خودکار نمایندگی استفاده می‌شود.", $backadmin, 'HTML');
     } else {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
@@ -1147,15 +1141,6 @@ if (in_array($text, $textadmin) || $datain == "admin") {
 1 - از مسیر مدیریت پنل > تنظیم ⚙️ تنظیم پروتکل و اینباند یک نام کاربری کانفیگ را ارسال نمایید.", null, 'HTML');
     } elseif ($userdata['type'] == "x-ui_tunnel") {
         sendmessage($from_id, "✅ <b>پنل تانل سنایی با موفقیت اضافه شد.</b>\n\n⚙️ <b>نکته مهم:</b>\nمطمئن شوید فایروال سرور ایران پورت‌های مورد نظر را باز نگه داشته باشد تا اتصالات کاربران بدون اختلال برقرار شود.", null, 'HTML');
-    } elseif ($userdata['type'] == "pasarguard") {
-        $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
-        $connection = pasarguardCheckConnection($savedPanel);
-        if ($connection['ok']) {
-            sendmessage($from_id, "✅ اتصال به PasarGuard برقرار شد.\n\nاکنون از مدیریت همین پنل، گزینه «گروه‌های پاسارگارد» را باز کنید و گروه‌های پیش‌فرض فروش را انتخاب کنید. تمام پروتکل‌های فعال گروه، از جمله WireGuard و Hysteria2، خودکار تحویل می‌شوند.", null, 'HTML');
-        } else {
-            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            sendmessage($from_id, "⚠️ پنل ذخیره شد اما اتصال API برقرار نشد.\n\nعلت: <code>{$reason}</code>\nآدرس و اطلاعات ورود را از مدیریت پنل بررسی کنید.", null, 'HTML');
-        }
     } elseif ($userdata['type'] == "pasarguard_reseller") {
         $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
         $connection = pasarguardCheckConnection($savedPanel);
@@ -4906,20 +4891,33 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
         }
     } elseif ($marzban_list_get['type'] == "pasarguard") {
         $connection = pasarguardCheckConnection($marzban_list_get);
-        $selectedGroups = pasarguardNormalizeGroupIds($marzban_list_get['inbounds'] ?? null);
         if ($connection['ok']) {
-            $groups = pasarguardGetGroups($marzban_list_get);
-            $availableGroups = $groups['ok'] ? count($groups['items']) : 0;
-            $panelName = htmlspecialchars((string) $marzban_list_get['name_panel'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $textPasarguard = "✅ <b>پنل پاسارگارد متصل است</b>\n\n"
-                . "نام پنل: <b>{$panelName}</b>\n"
-                . "گروه‌های انتخاب‌شده: <code>" . count($selectedGroups) . "</code>\n"
-                . "گروه‌های قابل دسترس: <code>{$availableGroups}</code>\n"
-                . "پروتکل‌ها: VMess، VLESS، Trojan، Shadowsocks، WireGuard و Hysteria2\n\n"
-                . "برای مدیریت پنل یکی از گزینه‌های زیر را انتخاب کنید.";
+            $allUsers = pasarguardListUsers($marzban_list_get, 0, 1);
+            $activeUsers = pasarguardListUsers($marzban_list_get, 0, 1, 'active');
+            $total_user = $allUsers['ok'] ? number_format($allUsers['total']) : '-';
+            $active_users = $activeUsers['ok'] ? number_format($activeUsers['total']) : '-';
+
+            $salesQuery = $pdo->prepare("SELECT COUNT(*) AS total_sales, COALESCE(SUM(price_product), 0) AS total_amount FROM invoice WHERE status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold') AND Service_location = :panel AND name_product != 'سرویس تست'");
+            $salesQuery->execute([':panel' => $marzban_list_get['name_panel']]);
+            $sales = $salesQuery->fetch(PDO::FETCH_ASSOC) ?: [];
+            $ListSell = number_format((int) ($sales['total_sales'] ?? 0));
+            $ListSellSUM = number_format((float) ($sales['total_amount'] ?? 0));
+
+            $textPasarguard = "
+آمار پنل شما👇:
+                             
+🖥 وضعیت اتصال پنل پاسارگارد: ✅ پنل متصل است
+👥  تعداد کل کاربران: $total_user
+👤 تعداد کاربران فعال: $active_users
+🛍 تعداد فروش کل در این پنل : $ListSell
+🛍 جمع فروش کل در این پنل : $ListSellSUM تومان
+گروه کاربری :{$marzban_list_get['agent']}
+        
+⭕️ برای مدیریت پنل یکی از گزینه های زیر را انتخاب کنید";
         } else {
-            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $textPasarguard = "❌ <b>اتصال به پنل پاسارگارد برقرار نشد</b>\n\nجزئیات: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.";
+            $textPasarguard = (int) ($connection['status'] ?? 0) === 401
+                ? "❌ نام کاربری یا رمز عبور پنل اشتباه است"
+                : $textbotlang['Admin']['managepanel']['errorstateuspanel'] . ($connection['msg'] ?? 'خطای نامشخص');
         }
         sendmessage($from_id, $textPasarguard, $optionPasarguard, 'HTML');
     } elseif ($marzban_list_get['type'] == "pasarguard_reseller") {
@@ -5223,18 +5221,17 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
     }
 } elseif (in_array($text, ["🔌 تست اتصال پنل", "🔌 بررسی اتصال"], true) && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
-    if (!$panel || !in_array($panel['type'], ['pasarguard', 'pasarguard_reseller'], true)) {
+    if (!$panel || $panel['type'] !== 'pasarguard_reseller') {
         sendmessage($from_id, "❌ پنل پاسارگارد انتخاب نشده است.", $keyboardadmin, 'HTML');
         return;
     }
-    $panelKeyboard = $panel['type'] === 'pasarguard' ? $optionPasarguard : $optionPasarguardReseller;
     $connection = pasarguardCheckConnection($panel);
     if ($connection['ok']) {
         $account = htmlspecialchars((string) ($connection['data']['username'] ?? $panel['username_panel']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        sendmessage($from_id, "✅ <b>ارتباط با پنل برقرار است</b>\n\nحساب متصل: <code>{$account}</code>", $panelKeyboard, 'HTML');
+        sendmessage($from_id, "✅ <b>ارتباط با پنل برقرار است</b>\n\nحساب متصل: <code>{$account}</code>", $optionPasarguardReseller, 'HTML');
     } else {
         $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        sendmessage($from_id, "❌ <b>ارتباط با پنل برقرار نشد</b>\n\nجزئیات خطا: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.", $panelKeyboard, 'HTML');
+        sendmessage($from_id, "❌ <b>ارتباط با پنل برقرار نشد</b>\n\nجزئیات خطا: <code>{$reason}</code>\n\nآدرس پنل و اطلاعات ورود را بررسی کنید.", $optionPasarguardReseller, 'HTML');
     }
 } elseif (in_array($text, ["📋 نقش‌های پنل", "📋 نقش‌های پاسارگارد"], true) && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
