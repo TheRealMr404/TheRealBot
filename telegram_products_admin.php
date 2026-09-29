@@ -128,6 +128,9 @@ function virtualServicesAdminHome()
     if (function_exists('telegramProductsAdminCan') && telegramProductsAdminCan($from_id, 'roles')) {
         array_splice($rows, count($rows) - 1, 0, [[['text' => 'سطح دسترسی ادمین‌ها', 'callback_data' => 'vsa_fx_roles']]]);
     }
+    if (function_exists('telegramCommerceAdminHomeButton')) {
+        telegramCommerceAdminHomeButton($rows);
+    }
     virtualServicesAdminReply($text, $rows);
 }
 
@@ -882,6 +885,9 @@ function telegramProductsAdminPanelHandleRequest()
         telegramProductsEnsureSchema();
         if ($callback_query_id) {
             telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+        }
+        if (function_exists('telegramCommerceAdminHandleRequest') && telegramCommerceAdminHandleRequest()) {
+            return true;
         }
         if (function_exists('telegramProductsAdminPermissionForRequest')) {
             $requiredPermission = telegramProductsAdminPermissionForRequest($datain, (string) ($user['step'] ?? ''), $text);

@@ -12,6 +12,7 @@ require_once 'function.php';
 require_once 'telegram_products.php';
 require_once 'telegram_products_features.php';
 require_once 'telegram_products_admin.php';
+require_once 'telegram_commerce.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';

@@ -386,6 +386,20 @@ switch ($data['actions'] ?? '') {
             $stmt->bindParam(':id_panel', $data['id']);
             $stmt->execute();
             $datainbound = json_encode($DataUserOut['inbounds']);
+        } elseif ($panel['type'] == "pasarguard") {
+            $groupIds = pasarguardNormalizeGroupIds($data['input']);
+            if (!$groupIds) {
+                sendJsonResponse(false, "At least one valid PasarGuard group id is required", [], 200);
+            }
+            $groups = pasarguardGetGroups($panel);
+            if (!$groups['ok']) {
+                sendJsonResponse(false, $groups['msg'], [], 200);
+            }
+            $validIds = array_map('intval', array_column($groups['items'], 'id'));
+            if (array_diff($groupIds, $validIds)) {
+                sendJsonResponse(false, "One or more PasarGuard groups do not exist", [], 200);
+            }
+            $datainbound = json_encode($groupIds);
         } elseif ($panel['type'] == "marzneshin") {
             $userdata = json_decode(getuserm($data['input'], $panel['name_panel'])['body'], true);
             if (isset($userdata['detail']) and $userdata['detail'] == "User not found")

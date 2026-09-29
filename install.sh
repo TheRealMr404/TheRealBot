@@ -2124,6 +2124,17 @@ docker_manager_menu() {
     done
 }
 
+function install_telegram_commerce() {
+    local script_dir commerce_installer
+    script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")
+    commerce_installer="$script_dir/services/telegram-commerce-api/install-service.sh"
+    if [ ! -f "$commerce_installer" ]; then
+        echo -e "${C_BAD}Telegram Commerce installer was not found in this bot release.${CR}"
+        return 1
+    fi
+    bash "$commerce_installer"
+}
+
 function show_menu() {
     show_logo
     _sec "Menu"
@@ -2134,10 +2145,11 @@ function show_menu() {
     _mi "5" "Renew SSL certificate"
     _mi "6" "Help & Parameters"
     _mi "7" "Docker multi-bot manager"
-    _mi "8" "Exit"
+    _mi "8" "Install Telegram Stars & Premium API"
+    _mi "9" "Exit"
     _rule
     echo ""
-    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-8]${CR}: "
+    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-9]${CR}: "
     read -r option
     case $option in
         1) install_bot ;;
@@ -2147,7 +2159,8 @@ function show_menu() {
         5) renew_ssl ;;
         6) show_help_screen ;;
         7) docker_manager_menu ;;
-        8) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
+        8) install_telegram_commerce ;;
+        9) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
         *) echo -e "\n${C_BAD}Invalid option. Please try again.${CR}"; sleep 1; show_menu ;;
     esac
 }
@@ -2164,6 +2177,7 @@ function show_help_screen() {
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
     _kv "updater-refresh" "${C_DIM}Reinstall the admin-panel auto-updater${CR}"
+    _kv "commerce-install" "${C_DIM}Install Stars & Premium API + worker${CR}"
     _kv "bot-add" "${C_DIM}Install a new isolated Docker bot${CR}"
     _kv "bot-list" "${C_DIM}List Docker bot instances${CR}"
     _kv "bot-update" "${C_DIM}Backup and update one Docker bot${CR}"
@@ -3424,6 +3438,7 @@ print_usage() {
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
     updater-refresh    Reinstall the admin-panel auto-updater
+    commerce-install   Install the Stars & Premium API and worker
     bot-add            Add an isolated Docker bot
     bot-list           List Docker bots
     bot-update         Backup and update a Docker bot
@@ -3470,7 +3485,7 @@ process_arguments() {
     local cmd="menu"
     # First non-flag token is the command
     case "$1" in
-        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
+        install|update|remove|migrate|renew|updater-refresh|commerce-install|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
         -h|--help) print_usage; exit 0 ;;
         "") cmd="menu" ;;
         --*) cmd="menu" ;;            # only flags given -> menu, but still parse flags
@@ -3515,6 +3530,7 @@ process_arguments() {
                 && echo "Admin-panel auto-updater refreshed successfully." \
                 || { echo "Failed to refresh the admin-panel auto-updater."; return 1; }
             ;;
+        commerce-install) install_telegram_commerce ;;
         bot-add) docker_bot_add ;;
         bot-list) docker_bot_list ;;
         bot-update) docker_bot_update "$ARG_ID" ;;
