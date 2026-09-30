@@ -2258,6 +2258,9 @@ $textconnect
         ]);
         unlink($urlimage);
     }
+    if (($marzban_list_get['type'] ?? '') === 'rebecca') {
+        sendRebeccaSubscriptionFiles($marzban_list_get, $nameloc['username'], $from_id);
+    }
 } elseif (preg_match('/removeauto-(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -2295,13 +2298,25 @@ $textconnect
         sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
         return;
     }
-    if (!is_array($DataUserOut['links'])) {
-        sendmessage($from_id, "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.", null, 'html');
-        return;
-    }
     $configPanel = select('marzban_panel', '*', 'name_panel', $nameloc['Service_location'], 'select');
+    $sentFiles = 0;
     if ($configPanel && $configPanel['type'] === 'pasarguard') {
-        sendPasarguardWireGuardFiles($configPanel, $nameloc['username'], $from_id);
+        $sentFiles = sendPasarguardWireGuardFiles($configPanel, $nameloc['username'], $from_id);
+    } elseif ($configPanel && $configPanel['type'] === 'rebecca') {
+        $sentFiles = sendRebeccaSubscriptionFiles($configPanel, $nameloc['username'], $from_id);
+    }
+    if (!is_array($DataUserOut['links']) || !$DataUserOut['links']) {
+        if ($sentFiles > 0) {
+            $filesBackKeyboard = json_encode([
+                'inline_keyboard' => [[
+                    ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => 'productcheckdata'],
+                ]],
+            ]);
+            Editmessagetext($from_id, $message_id, "✅ فایل‌های اتصال سرویس برای شما ارسال شد.", $filesBackKeyboard);
+        } else {
+            sendmessage($from_id, "❌ خطا در خواندن اطلاعات کانفیگ؛ لطفاً با پشتیبانی در ارتباط باشید.", null, 'html');
+        }
+        return;
     }
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", keyboard_config($DataUserOut['links'], $nameloc['id_invoice']));
 } elseif (preg_match('/configget_(.*)_(.*)/', $datain, $dataget)) {

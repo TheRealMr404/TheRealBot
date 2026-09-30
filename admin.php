@@ -1012,7 +1012,6 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     savedata("save", "limitpanel", $text);
     $userdata = json_decode($user['Processing_value'], true);
     $randomString = bin2hex(random_bytes(2));
-    $rebeccaDefaultService = 0;
     if (($userdata['type'] ?? '') === 'rebecca') {
         $temporaryRebeccaPanel = [
             'code_panel' => '',
@@ -1021,19 +1020,13 @@ if (in_array($text, $textadmin) || $datain == "admin") {
             'password_panel' => $userdata['password'] ?? '',
             'datelogin' => null,
         ];
-        $services = rebeccaGetServices($temporaryRebeccaPanel);
-        if (!$services['ok']) {
-            $reason = htmlspecialchars((string) $services['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $connection = rebeccaCheckConnection($temporaryRebeccaPanel);
+        if (!$connection['ok']) {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             sendmessage($from_id, "❌ <b>اتصال به پنل ربکا برقرار نشد.</b>\n\nجزئیات: <code>{$reason}</code>\n\nآدرس، نام کاربری و رمز عبور را بررسی کنید و دوباره افزودن پنل را انجام دهید.", $backadmin, 'HTML');
             step('home', $from_id);
             return;
         }
-        if (empty($services['items'])) {
-            sendmessage($from_id, "❌ در پنل ربکا هیچ سرویسی پیدا نشد. ابتدا در پنل یک سرویس دارای میزبان و پروتکل بسازید، سپس پنل را دوباره اضافه کنید.", $backadmin, 'HTML');
-            step('home', $from_id);
-            return;
-        }
-        $rebeccaDefaultService = (int) ($services['items'][0]['id'] ?? 0);
     }
     if ($userdata['type'] == "x-ui_single" || $userdata['type'] == "alireza") {
         $marzbanprotocol = $randomString;
@@ -1060,9 +1053,13 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $namecustoms = "none";
     $type = "marzban";
     $conecton = "offconecton";
-    $inboundid = ($userdata['type'] ?? '') === 'pasarguard_reseller'
-        ? (int) ($userdata['pasarguard_role_id'] ?? 1)
-        : 1;
+    if (($userdata['type'] ?? '') === 'pasarguard_reseller') {
+        $inboundid = (int) ($userdata['pasarguard_role_id'] ?? 1);
+    } elseif (($userdata['type'] ?? '') === 'rebecca') {
+        $inboundid = 0;
+    } else {
+        $inboundid = 1;
+    }
     $agent = "all";
     $time = "1";
     $valume = "100";
@@ -1128,10 +1125,6 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $stmt->bindParam(':customvolume', $VALUE);
     $stmt->bindParam(':on_hold_test', $stauts_on_holed);
     $stmt->execute();
-    if (($userdata['type'] ?? '') === 'rebecca' && $rebeccaDefaultService > 0) {
-        update('marzban_panel', 'inboundid', $rebeccaDefaultService, 'code_panel', $randomString);
-        update('marzban_panel', 'proxies', json_encode([$rebeccaDefaultService]), 'code_panel', $randomString);
-    }
     if (in_array($userdata['type'], ['x-ui_single', 'x-ui_tunnel'], true)) {
         xuiEnsurePanelSchema();
         update('marzban_panel', 'xui_version', $userdata['xui_version'] ?? 'legacy', 'code_panel', $randomString);
@@ -1181,18 +1174,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
             sendmessage($from_id, "⚠️ پنل ذخیره شد اما اتصال API برقرار نشد.\n\nعلت: <code>{$reason}</code>\nاطلاعات ورود را از مدیریت پنل بررسی کنید.", null, 'HTML');
         }
     } elseif ($userdata['type'] == "rebecca") {
-        $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
-        $serviceKeyboard = rebeccaServicesKeyboardData(
-            $savedPanel,
-            $rebeccaDefaultService,
-            'rbpanel_' . $randomString . '_',
-            'انتخاب سرویس پیش‌فرض ربکا'
-        );
-        if ($serviceKeyboard['ok']) {
-            sendmessage($from_id, "✅ پنل ربکا متصل و ذخیره شد.\n\n" . $serviceKeyboard['text'], $serviceKeyboard['keyboard'], 'HTML');
-        } else {
-            sendmessage($from_id, "✅ پنل ربکا متصل و ذخیره شد. سرویس پیش‌فرض نیز به‌صورت خودکار انتخاب شد.", null, 'HTML');
-        }
+        sendmessage($from_id, "✅ <b>پنل ربکا با موفقیت متصل و ذخیره شد.</b>\n\nبرای آماده‌سازی فروش، از مسیر <b>مدیریت پنل‌ها ← مدیریت این پنل ← سرویس پیش‌فرض ربکا</b> سرویس موردنظر را انتخاب کنید. تا قبل از این تنظیم، هیچ کاربری در پنل ساخته نمی‌شود.", null, 'HTML');
     }
 }
 //_____________________[ message ]____________________________//

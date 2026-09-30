@@ -240,26 +240,354 @@ function rebeccaAbsoluteUrl($panel, $url)
     return rebeccaNormalizeUrl($panel['url_panel'] ?? '') . '/' . ltrim($url, '/');
 }
 
-function rebeccaGetSubscriptionLinks($panel, array $user)
+function rebeccaSafeFileName($name, $fallback = 'rebecca-config')
 {
-    $links = $user['links'] ?? [];
-    if (is_string($links)) {
-        $links = preg_split('/\r?\n/', trim($links));
+    $name = rawurldecode(basename(trim((string) $name)));
+    $name = preg_replace('/[^A-Za-z0-9._-]+/', '-', $name);
+    $name = trim((string) $name, '.-_');
+    if ($name === '') {
+        $name = $fallback;
     }
-    $links = is_array($links) ? array_values(array_filter(array_map('trim', $links), 'strlen')) : [];
-    if (!$links && !empty($user['subscription_url']) && function_exists('outputlink')) {
-        $content = outputlink(rebeccaAbsoluteUrl($panel, $user['subscription_url']));
-        if (is_string($content) && $content !== '') {
-            if (function_exists('isBase64') && isBase64($content)) {
-                $decoded = base64_decode($content, true);
-                if ($decoded !== false) {
-                    $content = $decoded;
+    return substr($name, 0, 100);
+}
+
+function rebeccaProfileInfo($content, $fileName = '', $contentType = '')
+{
+    $content = ltrim((string) $content, "\xEF\xBB\xBF\r\n\t ");
+    if ($content === '') {
+        return null;
+    }
+    if (preg_match('/^\s*\[Interface\]\s*$/mi', $content) && preg_match('/^\s*\[Peer\]\s*$/mi', $content)) {
+        return [
+            'extension' => 'conf',
+            'mime' => 'application/x-wireguard-profile',
+            'caption' => 'فایل WireGuard سرویس شما',
+        ];
+    }
+    if (preg_match('/^\s*(client|tls-client)\s*$/mi', $content)
+        && preg_match('/(^\s*(remote|dev)\s+)|(<ca>|<cert>|<key>)/mi', $content)) {
+        return [
+            'extension' => 'ovpn',
+            'mime' => 'application/x-openvpn-profile',
+            'caption' => 'فایل OpenVPN سرویس شما',
+        ];
+    }
+
+    $extension = strtolower((string) pathinfo($fileName, PATHINFO_EXTENSION));
+    if ($extension === 'zip' && substr($content, 0, 2) === 'PK') {
+        return [
+            'extension' => 'zip',
+            'mime' => 'application/zip',
+            'caption' => 'فایل اتصال سرویس شما',
+        ];
+    }
+    if ($extension === 'mobileconfig' && stripos($content, '<plist') !== false) {
+        return [
+            'extension' => 'mobileconfig',
+            'mime' => trim((string) $contentType) ?: 'application/x-apple-aspen-config',
+            'caption' => 'فایل اتصال سرویس شما',
+        ];
+    }
+    $genericMimeTypes = [
+        'p12' => 'application/x-pkcs12',
+        'pfx' => 'application/x-pkcs12',
+        'crt' => 'application/x-x509-ca-cert',
+        'cer' => 'application/pkix-cert',
+        'pem' => 'application/x-pem-file',
+        'key' => 'application/octet-stream',
+    ];
+    if (isset($genericMimeTypes[$extension]) && stripos($content, '<html') === false) {
+        return [
+            'extension' => $extension,
+            'mime' => $genericMimeTypes[$extension],
+            'caption' => 'فایل اتصال سرویس شما',
+        ];
+    }
+    if ($extension === 'xml' && stripos($content, '<html') === false && preg_match('/<\?xml|<[^>]+>/', $content)) {
+        return [
+            'extension' => 'xml',
+            'mime' => 'application/xml',
+            'caption' => 'فایل اتصال سرویس شما',
+        ];
+    }
+    return null;
+}
+
+function rebeccaResolveResourceUrl($baseUrl, $resourceUrl)
+{
+    $resourceUrl = html_entity_decode(trim((string) $resourceUrl), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    if ($resourceUrl === '' || preg_match('#^(data|javascript):#i', $resourceUrl)) {
+        return '';
+    }
+    if (preg_match('#^https?://#i', $resourceUrl)) {
+        return $resourceUrl;
+    }
+    $base = parse_url((string) $baseUrl);
+    if (!$base || empty($base['host'])) {
+        return '';
+    }
+    $origin = ($base['scheme'] ?? 'https') . '://' . $base['host'];
+    if (!empty($base['port'])) {
+        $origin .= ':' . $base['port'];
+    }
+    if (strpos($resourceUrl, '//') === 0) {
+        return ($base['scheme'] ?? 'https') . ':' . $resourceUrl;
+    }
+    if ($resourceUrl[0] === '/') {
+        return $origin . $resourceUrl;
+    }
+    $path = isset($base['path']) ? dirname($base['path']) : '';
+    return $origin . rtrim(str_replace('\\', '/', $path), '/') . '/' . ltrim($resourceUrl, '/');
+}
+
+function rebeccaDownloadResource($url, array $allowedHosts = [], $maxBytes = 8388608, $userAgent = 'MirzaBot-Rebecca/1.0')
+{
+    $url = trim((string) $url);
+    $parts = parse_url($url);
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    if (!in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || $host === '') {
+        return ['ok' => false, 'msg' => 'Invalid profile URL'];
+    }
+    $allowedHosts = array_values(array_unique(array_filter(array_map('strtolower', $allowedHosts))));
+    if ($allowedHosts && !in_array($host, $allowedHosts, true)) {
+        return ['ok' => false, 'msg' => 'Profile host is not allowed'];
+    }
+
+    $body = '';
+    $headers = [];
+    $tooLarge = false;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => 6,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_ENCODING => '',
+        CURLOPT_USERAGENT => (string) $userAgent,
+        CURLOPT_HTTPHEADER => ['Accept: application/json,text/plain,text/html,application/octet-stream,*/*'],
+        CURLOPT_HEADERFUNCTION => function ($curl, $header) use (&$headers) {
+            $length = strlen($header);
+            $parts = explode(':', $header, 2);
+            if (count($parts) === 2) {
+                $headers[strtolower(trim($parts[0]))] = trim($parts[1]);
+            }
+            return $length;
+        },
+        CURLOPT_WRITEFUNCTION => function ($curl, $chunk) use (&$body, &$tooLarge, $maxBytes) {
+            if (strlen($body) + strlen($chunk) > $maxBytes) {
+                $tooLarge = true;
+                return 0;
+            }
+            $body .= $chunk;
+            return strlen($chunk);
+        },
+    ]);
+    $executed = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $finalUrl = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    $error = curl_error($ch);
+    curl_close($ch);
+    if ($executed === false || $tooLarge || $status < 200 || $status >= 300) {
+        return ['ok' => false, 'status' => $status, 'msg' => $tooLarge ? 'Profile file is too large' : ($error ?: 'Profile download failed')];
+    }
+    return [
+        'ok' => true,
+        'status' => $status,
+        'body' => $body,
+        'content_type' => (string) ($headers['content-type'] ?? ''),
+        'content_disposition' => (string) ($headers['content-disposition'] ?? ''),
+        'url' => $finalUrl ?: $url,
+    ];
+}
+
+function rebeccaSubscriptionArtifacts($panel, array $user, $fetchSubscription = true, $subscriptionUserAgent = 'MirzaBot-Rebecca/1.0')
+{
+    $artifacts = ['links' => [], 'files' => []];
+    $fileHashes = [];
+    $panelHost = strtolower((string) (parse_url(rebeccaNormalizeUrl($panel['url_panel'] ?? ''), PHP_URL_HOST) ?: ''));
+    $subscriptionUrl = rebeccaAbsoluteUrl($panel, $user['subscription_url'] ?? '');
+    $subscriptionHost = strtolower((string) (parse_url($subscriptionUrl, PHP_URL_HOST) ?: ''));
+    $allowedHosts = array_values(array_filter(array_unique([$panelHost, $subscriptionHost])));
+
+    $addFile = function ($content, $name = '', $type = '') use (&$artifacts, &$fileHashes) {
+        $info = rebeccaProfileInfo($content, $name, $type);
+        if (!$info) {
+            return false;
+        }
+        $hash = hash('sha256', (string) $content);
+        if (isset($fileHashes[$hash])) {
+            return true;
+        }
+        $fileHashes[$hash] = true;
+        $safeName = rebeccaSafeFileName($name);
+        $existingExtension = strtolower((string) pathinfo($safeName, PATHINFO_EXTENSION));
+        $supportedExtensions = ['conf', 'ovpn', 'mobileconfig', 'zip', 'p12', 'pfx', 'crt', 'cer', 'pem', 'key', 'xml'];
+        if (!in_array($existingExtension, $supportedExtensions, true)) {
+            $safeName .= '.' . $info['extension'];
+        }
+        $artifacts['files'][] = [
+            'name' => $safeName,
+            'mime' => $info['mime'],
+            'caption' => $info['caption'],
+            'content' => (string) $content,
+        ];
+        return true;
+    };
+
+    $addLink = function ($link) use (&$artifacts) {
+        $link = trim((string) $link);
+        if ($link !== '' && !in_array($link, $artifacts['links'], true)) {
+            $artifacts['links'][] = $link;
+        }
+    };
+
+    $fileNameFromDownload = function (array $download, $fallback = '') {
+        $disposition = (string) ($download['content_disposition'] ?? '');
+        if (preg_match('/filename\*=UTF-8\'\'([^;]+)/i', $disposition, $match)) {
+            return rawurldecode(trim($match[1], " \t\n\r\0\x0B\"'"));
+        }
+        if (preg_match('/filename\s*=\s*["\']?([^;"\']+)/i', $disposition, $match)) {
+            return trim($match[1]);
+        }
+        $path = (string) (parse_url($download['url'] ?? '', PHP_URL_PATH) ?: '');
+        return basename($path) ?: $fallback;
+    };
+
+    $resourceBaseUrl = $subscriptionUrl ?: (rebeccaNormalizeUrl($panel['url_panel'] ?? '') . '/');
+    $consumeUrl = function ($url, $name = '') use (&$addFile, &$addLink, $allowedHosts, $fileNameFromDownload, $resourceBaseUrl) {
+        $url = rebeccaResolveResourceUrl($resourceBaseUrl, $url);
+        if ($url === '') {
+            return;
+        }
+        $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?: ''));
+        $isFileCandidate = preg_match('/\.(conf|ovpn|mobileconfig|zip|p12|pfx|crt|cer|pem|key|xml)$/i', $path)
+            || preg_match('/(wireguard|openvpn|amnezia|profile|download)/i', $path);
+        if ($isFileCandidate) {
+            $download = rebeccaDownloadResource($url, $allowedHosts);
+            if (!empty($download['ok'])) {
+                $downloadName = $name ?: $fileNameFromDownload($download, 'rebecca-config');
+                if ($addFile($download['body'], $downloadName, $download['content_type'])) {
+                    return;
                 }
             }
-            $links = array_values(array_filter(preg_split('/\r?\n/', trim($content)), 'strlen'));
+        }
+        $addLink($url);
+    };
+
+    $consume = null;
+    $consume = function ($value, $name = '') use (&$consume, &$addFile, &$consumeUrl, &$addLink) {
+        if (is_array($value)) {
+            $descriptorName = (string) ($value['filename'] ?? $value['file_name'] ?? $value['name'] ?? $name);
+            foreach (['content', 'data', 'profile', 'config'] as $contentKey) {
+                if (isset($value[$contentKey]) && is_string($value[$contentKey]) && $addFile($value[$contentKey], $descriptorName, $value['mime_type'] ?? $value['content_type'] ?? '')) {
+                    return;
+                }
+            }
+            foreach (['download_url', 'file_url', 'url'] as $urlKey) {
+                if (!empty($value[$urlKey]) && is_string($value[$urlKey])) {
+                    $consumeUrl($value[$urlKey], $descriptorName);
+                    return;
+                }
+            }
+            foreach ($value as $child) {
+                $consume($child, $descriptorName);
+            }
+            return;
+        }
+        if (!is_string($value)) {
+            return;
+        }
+        $value = trim($value);
+        if ($value === '' || $addFile($value, $name)) {
+            return;
+        }
+        $decoded = null;
+        if (($value[0] === '{' || $value[0] === '[') && is_array($decoded = json_decode($value, true))) {
+            $consume($decoded, $name);
+            return;
+        }
+        if (preg_match('#^https?://#i', $value)) {
+            $consumeUrl($value, $name);
+            return;
+        }
+        if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $value)) {
+            $addLink($value);
+            return;
+        }
+        $compact = preg_replace('/\s+/', '', $value);
+        if ($compact !== '' && strlen($compact) % 4 === 0) {
+            $decodedBase64 = base64_decode($compact, true);
+            if ($decodedBase64 !== false && base64_encode($decodedBase64) === $compact && $addFile($decodedBase64, $name)) {
+                return;
+            }
+        }
+        if (strpos($value, "\n") !== false || strpos($value, "\r") !== false) {
+            foreach (preg_split('/\r?\n/', $value) as $line) {
+                $consume($line, $name);
+            }
+        }
+    };
+
+    foreach (['links', 'files', 'configs', 'profiles', 'subscription_files', 'wireguard_profiles', 'openvpn_profiles'] as $field) {
+        if (array_key_exists($field, $user)) {
+            $consume($user[$field]);
         }
     }
-    return $links;
+
+    if ($fetchSubscription && $subscriptionUrl !== '') {
+        $download = rebeccaDownloadResource($subscriptionUrl, $allowedHosts, 8388608, $subscriptionUserAgent);
+        if (!empty($download['ok'])) {
+            $body = (string) $download['body'];
+            $fileName = $fileNameFromDownload($download, 'rebecca-subscription');
+            if (!$addFile($body, $fileName, $download['content_type'])) {
+                $json = json_decode($body, true);
+                if (is_array($json)) {
+                    $consume($json);
+                } else {
+                    $compact = preg_replace('/\s+/', '', $body);
+                    $decoded = $compact !== '' ? base64_decode($compact, true) : false;
+                    if ($decoded !== false && base64_encode($decoded) === $compact) {
+                        $consume($decoded, $fileName);
+                    } else {
+                        $consume($body, $fileName);
+                    }
+                }
+
+                if (preg_match_all('/<a\b[^>]*href\s*=\s*["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $body, $matches, PREG_SET_ORDER)) {
+                    foreach ($matches as $anchor) {
+                        $href = $anchor[1];
+                        $anchorText = trim(strip_tags(html_entity_decode($anchor[2], ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+                        $resourceUrl = rebeccaResolveResourceUrl($subscriptionUrl, $href);
+                        $resourceHint = $resourceUrl . ' ' . $anchorText;
+                        if ($resourceUrl !== '' && preg_match('/(wireguard|openvpn|amnezia|profile|download|certificate|\.(conf|ovpn|mobileconfig|zip|p12|pfx|crt|cer|pem|key|xml)(?:\?|$))/i', $resourceHint)) {
+                            $consumeUrl($resourceUrl);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return $artifacts;
+}
+
+function rebeccaGetSubscriptionLinks($panel, array $user)
+{
+    $direct = rebeccaSubscriptionArtifacts($panel, $user, false);
+    if ($direct['links']) {
+        return $direct['links'];
+    }
+    $complete = rebeccaSubscriptionArtifacts($panel, $user, true);
+    return $complete['links'];
+}
+
+function rebeccaGetSubscriptionFiles($panel, array $user)
+{
+    $browserUserAgent = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36';
+    $artifacts = rebeccaSubscriptionArtifacts($panel, $user, true, $browserUserAgent);
+    return $artifacts['files'];
 }
 
 function rebeccaCreateUser($panel, $product, $username, $expire, $dataLimit, $note, $isTest = false)

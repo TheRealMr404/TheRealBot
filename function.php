@@ -2824,6 +2824,49 @@ function sendPasarguardWireGuardFiles($panel, $username, $chatId)
     return $sent;
 }
 
+function sendRebeccaSubscriptionFiles($panel, $username, $chatId)
+{
+    if (($panel['type'] ?? '') !== 'rebecca') {
+        return 0;
+    }
+    $userResponse = rebeccaGetUser($panel, $username);
+    if (empty($userResponse['ok']) || !is_array($userResponse['data'] ?? null)) {
+        return 0;
+    }
+
+    $sent = 0;
+    $files = array_slice(rebeccaGetSubscriptionFiles($panel, $userResponse['data']), 0, 10);
+    foreach ($files as $file) {
+        if (empty($file['content']) || empty($file['name'])) {
+            continue;
+        }
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'rb_cfg_');
+        if ($temporaryPath === false || file_put_contents($temporaryPath, $file['content'], LOCK_EX) === false) {
+            if ($temporaryPath !== false) {
+                @unlink($temporaryPath);
+            }
+            continue;
+        }
+        try {
+            $response = telegram('senddocument', [
+                'chat_id' => $chatId,
+                'document' => new CURLFile(
+                    $temporaryPath,
+                    $file['mime'] ?? 'application/octet-stream',
+                    rebeccaSafeFileName($file['name'])
+                ),
+                'caption' => $file['caption'] ?? 'فایل اتصال سرویس شما',
+            ]);
+            if (is_array($response) && !empty($response['ok'])) {
+                $sent++;
+            }
+        } finally {
+            @unlink($temporaryPath);
+        }
+    }
+    return $sent;
+}
+
 function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
 {
     global $setting, $from_id;
@@ -2877,6 +2920,10 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     }
     if (($panel_info['type'] ?? '') === 'pasarguard' && ($panel_info['config'] ?? '') === 'onconfig') {
         sendPasarguardWireGuardFiles($panel_info, $username_service, $user_id);
+    }
+    if (($panel_info['type'] ?? '') === 'rebecca'
+        && (($panel_info['config'] ?? '') === 'onconfig' || ($panel_info['sublink'] ?? '') === 'onsublink')) {
+        sendRebeccaSubscriptionFiles($panel_info, $username_service, $user_id);
     }
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)
