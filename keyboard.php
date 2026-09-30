@@ -1165,6 +1165,27 @@ $optionMarzban = json_encode([
     ],
     'resize_keyboard' => true
 ]);
+$optionRebecca = json_encode([
+    'keyboard' => [
+        [['text' => "⚙️ وضعیت قابلیت ها پنل"]],
+        [['text' => "✍️ نام پنل"], ['text' => "❌ حذف پنل"]],
+        [['text' => "🔐 ویرایش رمز عبور"], ['text' => "👤 ویرایش نام کاربری"]],
+        [['text' => "🔗 ویرایش آدرس پنل"], ['text' => "🧩 سرویس پیش‌فرض ربکا"]],
+        [['text' => "🎨 تنظیم رنگ پنل"], ['text' => "⭐ تنظیم ایموجی پرمیوم"]],
+        [['text' => "🔋 روش تمدید سرویس"], ['text' => "💡 روش ساخت نام کاربری"]],
+        [['text' => "🚨 محدودیت ساخت اکانت"], ['text' => "📍 تغییر گروه کاربری"]],
+        [['text' => "⏳ زمان سرویس تست"], ['text' => "💾 حجم اکانت تست"]],
+        [['text' => "⚙️ قیمت حجم سرویس دلخواه"], ['text' => "➕ قیمت حجم اضافه"]],
+        [['text' => "⏳ قیمت زمان اضافه"], ['text' => "⏳ قیمت زمان دلخواه"]],
+        [['text' => "🌍 قیمت تغییر لوکیشن"]],
+        [['text' => "📍 حداقل حجم دلخواه"], ['text' => "📍 حداکثر حجم دلخواه"]],
+        [['text' => "📍 حداقل زمان دلخواه"], ['text' => "📍 حداکثر زمان دلخواه"]],
+        [['text' => "🫣 مخفی کردن پنل برای یک کاربر"]],
+        [['text' => "❌  حذف کاربر از لیست مخفی شدگان"]],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]],
+    ],
+    'resize_keyboard' => true,
+]);
 $optionibsng = json_encode([
     'keyboard' => [
         [['text' => "⚙️ وضعیت قابلیت ها پنل"]],
@@ -1459,6 +1480,9 @@ $keyboardtypepanel = json_encode([
         [
             ['text' => "مرزبان", 'callback_data' => "typepanel#marzban"],
             ['text' => "مرزنشین", 'callback_data' => "typepanel#marzneshin"]
+        ],
+        [
+            ['text' => "ربکا", 'callback_data' => "typepanel#rebecca"]
         ],
         [
             ['text' => "پاسارگارد", 'callback_data' => "typepanel#pasarguard"]
@@ -1931,24 +1955,27 @@ function keyboard_config($config_split, $id_invoice, $back_active = true)
         ['text' => "✏️نام کانفیگ", 'callback_data' => "none"],
     ];
     for ($i = 0; $i < count($config_split); $i++) {
-        $config = $config_split[$i];
-        $split_config = explode("://", $config);
-        $type_prtocol = $split_config[0];
-        $split_config = $split_config[1];
-        if (isBase64($split_config)) {
-            $split_config = base64_decode($split_config);
+        $config = (string) $config_split[$i];
+        $parts = explode("://", $config, 2);
+        $type_prtocol = strtolower((string) ($parts[0] ?? 'config'));
+        $payload = (string) ($parts[1] ?? '');
+        $split_config = '';
+        if ($type_prtocol === 'vmess' && $payload !== '' && isBase64($payload)) {
+            $vmess = json_decode((string) base64_decode($payload, true), true);
+            $split_config = is_array($vmess) ? (string) ($vmess['ps'] ?? '') : '';
         }
-        if ($type_prtocol == "vmess") {
-            $split_config = json_decode($split_config, true)['ps'];
-        } elseif ($type_prtocol == "ss") {
-            $split_config = $split_config;
-            $split_config = explode("#", $split_config)[1];
-        } else {
-            $split_config = explode("#", $split_config)[1];
+        if ($split_config === '') {
+            $fragment = parse_url($config, PHP_URL_FRAGMENT);
+            $split_config = is_string($fragment) && $fragment !== ''
+                ? urldecode($fragment)
+                : strtoupper($type_prtocol) . ' ' . ($i + 1);
+        }
+        if (function_exists('mb_strlen') && mb_strlen($split_config, 'UTF-8') > 48) {
+            $split_config = mb_substr($split_config, 0, 45, 'UTF-8') . '...';
         }
         $keyboard_config['inline_keyboard'][] = [
             ['text' => "دریافت کانفیگ", 'callback_data' => "configget_{$id_invoice}_$i"],
-            ['text' => urldecode($split_config), 'callback_data' => "none"],
+            ['text' => $split_config, 'callback_data' => "none"],
         ];
 
     }

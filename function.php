@@ -2303,10 +2303,12 @@ function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype
 }
 function outtypepanel($typepanel, $message)
 {
-    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguard, $optionPasarguardReseller;
+    global $from_id, $optionMarzban, $optionRebecca, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguard, $optionPasarguardReseller;
     
     if ($typepanel == "marzban") {
         sendmessage($from_id, $message, $optionMarzban, 'HTML');
+    } elseif ($typepanel == "rebecca") {
+        sendmessage($from_id, $message, $optionRebecca, 'HTML');
     } elseif ($typepanel == "x-ui_single") {
         sendmessage($from_id, $message, $optionX_ui_single, 'HTML');
     } elseif ($typepanel == "hiddify") {

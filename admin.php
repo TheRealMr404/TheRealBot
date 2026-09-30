@@ -885,8 +885,11 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
         return;
     }
-    savedata("save", "url_panel", $text);
     $userdata = json_decode($user['Processing_value'], true);
+    if (($userdata['type'] ?? '') === 'rebecca') {
+        $text = rebeccaNormalizeUrl($text);
+    }
+    savedata("save", "url_panel", $text);
     if ($userdata['type'] == "hiddify") {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
         step('getlimitedpanel', $from_id);
@@ -1009,6 +1012,29 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     savedata("save", "limitpanel", $text);
     $userdata = json_decode($user['Processing_value'], true);
     $randomString = bin2hex(random_bytes(2));
+    $rebeccaDefaultService = 0;
+    if (($userdata['type'] ?? '') === 'rebecca') {
+        $temporaryRebeccaPanel = [
+            'code_panel' => '',
+            'url_panel' => $userdata['url_panel'] ?? '',
+            'username_panel' => $userdata['username'] ?? '',
+            'password_panel' => $userdata['password'] ?? '',
+            'datelogin' => null,
+        ];
+        $services = rebeccaGetServices($temporaryRebeccaPanel);
+        if (!$services['ok']) {
+            $reason = htmlspecialchars((string) $services['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "❌ <b>اتصال به پنل ربکا برقرار نشد.</b>\n\nجزئیات: <code>{$reason}</code>\n\nآدرس، نام کاربری و رمز عبور را بررسی کنید و دوباره افزودن پنل را انجام دهید.", $backadmin, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+        if (empty($services['items'])) {
+            sendmessage($from_id, "❌ در پنل ربکا هیچ سرویسی پیدا نشد. ابتدا در پنل یک سرویس دارای میزبان و پروتکل بسازید، سپس پنل را دوباره اضافه کنید.", $backadmin, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+        $rebeccaDefaultService = (int) ($services['items'][0]['id'] ?? 0);
+    }
     if ($userdata['type'] == "x-ui_single" || $userdata['type'] == "alireza") {
         $marzbanprotocol = $randomString;
         $protocols = "vmess";
@@ -1102,6 +1128,10 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $stmt->bindParam(':customvolume', $VALUE);
     $stmt->bindParam(':on_hold_test', $stauts_on_holed);
     $stmt->execute();
+    if (($userdata['type'] ?? '') === 'rebecca' && $rebeccaDefaultService > 0) {
+        update('marzban_panel', 'inboundid', $rebeccaDefaultService, 'code_panel', $randomString);
+        update('marzban_panel', 'proxies', json_encode([$rebeccaDefaultService]), 'code_panel', $randomString);
+    }
     if (in_array($userdata['type'], ['x-ui_single', 'x-ui_tunnel'], true)) {
         xuiEnsurePanelSchema();
         update('marzban_panel', 'xui_version', $userdata['xui_version'] ?? 'legacy', 'code_panel', $randomString);
@@ -1149,6 +1179,19 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         } else {
             $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             sendmessage($from_id, "⚠️ پنل ذخیره شد اما اتصال API برقرار نشد.\n\nعلت: <code>{$reason}</code>\nاطلاعات ورود را از مدیریت پنل بررسی کنید.", null, 'HTML');
+        }
+    } elseif ($userdata['type'] == "rebecca") {
+        $savedPanel = select('marzban_panel', '*', 'code_panel', $randomString, 'select');
+        $serviceKeyboard = rebeccaServicesKeyboardData(
+            $savedPanel,
+            $rebeccaDefaultService,
+            'rbpanel_' . $randomString . '_',
+            'انتخاب سرویس پیش‌فرض ربکا'
+        );
+        if ($serviceKeyboard['ok']) {
+            sendmessage($from_id, "✅ پنل ربکا متصل و ذخیره شد.\n\n" . $serviceKeyboard['text'], $serviceKeyboard['keyboard'], 'HTML');
+        } else {
+            sendmessage($from_id, "✅ پنل ربکا متصل و ذخیره شد. سرویس پیش‌فرض نیز به‌صورت خودکار انتخاب شد.", null, 'HTML');
         }
     }
 }
@@ -3495,7 +3538,7 @@ $caption";
     savedata("save", "price_product", $text);
     $userdata = json_decode($user['Processing_value'], true);
     $panel = select("marzban_panel", "*", "name_panel", $userdata['Location'], "select");
-    if (in_array($panel['type'], ["marzban", "pasarguard", "marzneshin"], true)) {
+    if (in_array($panel['type'], ["marzban", "rebecca", "pasarguard", "marzneshin"], true)) {
         sendmessage($from_id, $textbotlang['Admin']['Product']['gettimereset'], $keyboardtimereset, 'HTML');
         step('getnote', $from_id);
         return;
@@ -4797,6 +4840,47 @@ elseif (preg_match('/^set_cr_(wallet|network|style|msg)_([a-zA-Z0-9]+)$/', $data
             $text_marzban = $textbotlang['Admin']['managepanel']['errorstateuspanel'] . json_encode($Check_token);
             sendmessage($from_id, $text_marzban, $optionMarzban, 'HTML');
         }
+    } elseif ($marzban_list_get['type'] == "rebecca") {
+        $connection = rebeccaCheckConnection($marzban_list_get);
+        if ($connection['ok']) {
+            $usersSummary = rebeccaUsersSummary($marzban_list_get);
+            $services = rebeccaGetServices($marzban_list_get);
+            $serviceId = rebeccaResolveServiceId($marzban_list_get);
+            $selectedServiceName = 'انتخاب نشده';
+            foreach (($services['items'] ?? []) as $service) {
+                if ((int) ($service['id'] ?? 0) === $serviceId) {
+                    $selectedServiceName = (string) ($service['name'] ?? ('#' . $serviceId));
+                    break;
+                }
+            }
+            $protocols = rebeccaServiceProtocols($marzban_list_get, $serviceId);
+            $protocolText = $protocols ? implode('، ', array_map('strtoupper', $protocols)) : 'براساس میزبان‌های سرویس';
+            $salesQuery = $pdo->prepare("SELECT COUNT(*) AS total_sales, COALESCE(SUM(price_product), 0) AS total_amount FROM invoice WHERE status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold') AND Service_location = :panel AND name_product != 'سرویس تست'");
+            $salesQuery->execute([':panel' => $marzban_list_get['name_panel']]);
+            $sales = $salesQuery->fetch(PDO::FETCH_ASSOC) ?: [];
+            $totalUsers = $usersSummary['ok'] ? number_format($usersSummary['total']) : '-';
+            $activeUsers = $usersSummary['ok'] && $usersSummary['active'] !== null
+                ? number_format($usersSummary['active'])
+                : '-';
+            $serviceCount = $services['ok'] ? number_format(count($services['items'])) : '-';
+            $textRebecca = "🧩 <b>مدیریت پنل ربکا</b>\n\n"
+                . "🖥 <b>وضعیت اتصال:</b> متصل است ✅\n"
+                . "👥 <b>کل کاربران:</b> {$totalUsers}\n"
+                . "👤 <b>کاربران فعال:</b> {$activeUsers}\n"
+                . "🗂 <b>تعداد سرویس‌ها:</b> {$serviceCount}\n"
+                . "🎯 <b>سرویس پیش‌فرض:</b> " . htmlspecialchars($selectedServiceName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+                . "🔌 <b>پروتکل‌ها:</b> " . htmlspecialchars($protocolText, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+                . "🛍 <b>تعداد فروش:</b> " . number_format((int) ($sales['total_sales'] ?? 0)) . "\n"
+                . "💰 <b>مجموع فروش:</b> " . number_format((float) ($sales['total_amount'] ?? 0)) . " تومان\n"
+                . "👥 <b>گروه کاربری ربات:</b> {$marzban_list_get['agent']}\n\n"
+                . "یکی از گزینه‌های مدیریت را انتخاب کنید.";
+        } else {
+            $reason = htmlspecialchars((string) $connection['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $textRebecca = (int) ($connection['status'] ?? 0) === 401
+                ? "❌ نام کاربری یا رمز عبور پنل ربکا صحیح نیست."
+                : "❌ اتصال به پنل ربکا برقرار نشد.\n\nجزئیات: <code>{$reason}</code>";
+        }
+        sendmessage($from_id, $textRebecca, $optionRebecca, 'HTML');
     } elseif ($marzban_list_get['type'] == "x-ui_single") {
         $x_ui_check_connect = login($marzban_list_get['code_panel'], false);
         if ($x_ui_check_connect['success']) {
@@ -5611,6 +5695,9 @@ elseif ($user['step'] == "cr_step_get_panel_emoji" && in_array($from_id, $admin_
         return;
     }
     $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (($typepanel['type'] ?? '') === 'rebecca') {
+        $text = rebeccaNormalizeUrl($text);
+    }
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['ChangedurlPanel']);
     update("marzban_panel", "url_panel", $text, "name_panel", $user['Processing_value']);
     update("marzban_panel", "datelogin", null, "name_panel", $user['Processing_value']);
@@ -9543,6 +9630,8 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     $typepanel = $selectedPanel['type'];
     if ($typepanel == "marzban") {
         sendmessage($from_id, $textbotlang['users']['selectoption'], $optionathmarzban, 'HTML');
+    } elseif ($typepanel == "rebecca") {
+        sendmessage($from_id, $textbotlang['users']['selectoption'], $optionathx_ui, 'HTML');
     } elseif ($typepanel == "pasarguard_reseller") {
         $capabilities = pasarguardPanelCapabilitiesData($selectedPanel);
         sendmessage($from_id, $capabilities['text'], $capabilities['keyboard'], 'HTML');
@@ -11597,6 +11686,49 @@ f,n.n2", $backadmin, 'HTML');
         sendmessage($from_id, "🖼 پس زمینه با موفقیت تنظیم گردید", $setting_panel, 'HTML');
         step("home", $from_id);
     }
+} elseif ($text == "🧩 سرویس پیش‌فرض ربکا" && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
+    if (!$panel || $panel['type'] !== 'rebecca') {
+        sendmessage($from_id, "❌ ابتدا یک پنل ربکا را از فهرست پنل‌ها انتخاب کنید.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $serviceKeyboard = rebeccaServicesKeyboardData(
+        $panel,
+        rebeccaResolveServiceId($panel),
+        'rbpanel_' . $panel['code_panel'] . '_',
+        'سرویس پیش‌فرض پنل ربکا'
+    );
+    if (!$serviceKeyboard['ok']) {
+        $reason = htmlspecialchars((string) $serviceKeyboard['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($from_id, "❌ دریافت سرویس‌های ربکا ناموفق بود.\n\nجزئیات: <code>{$reason}</code>", $optionRebecca, 'HTML');
+        return;
+    }
+    sendmessage($from_id, $serviceKeyboard['text'], $serviceKeyboard['keyboard'], 'HTML');
+} elseif (preg_match('/^rbpanel_([^_]+)_(\d+)$/', $datain, $rbServiceMatch) && $adminrulecheck['rule'] == "administrator") {
+    $panel = select('marzban_panel', '*', 'code_panel', $rbServiceMatch[1], 'select');
+    if (!$panel || $panel['type'] !== 'rebecca') {
+        Editmessagetext($from_id, $message_id, "❌ پنل ربکا پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $serviceId = (int) $rbServiceMatch[2];
+    $services = rebeccaGetServices($panel);
+    $validIds = $services['ok'] ? array_map('intval', array_column($services['items'], 'id')) : [];
+    if (!in_array($serviceId, $validIds, true)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این سرویس در پنل ربکا پیدا نشد.', 'show_alert' => true]);
+        return;
+    }
+    update('marzban_panel', 'inboundid', $serviceId, 'code_panel', $panel['code_panel']);
+    update('marzban_panel', 'proxies', json_encode([$serviceId]), 'code_panel', $panel['code_panel']);
+    $selected = null;
+    foreach ($services['items'] as $service) {
+        if ((int) $service['id'] === $serviceId) {
+            $selected = $service;
+            break;
+        }
+    }
+    $serviceName = htmlspecialchars((string) ($selected['name'] ?? ('#' . $serviceId)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    Editmessagetext($from_id, $message_id, "✅ سرویس پیش‌فرض ربکا روی <b>{$serviceName}</b> تنظیم شد. تمام پروتکل‌های فعال این سرویس به کاربران تحویل داده می‌شوند.", null, 'HTML');
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $optionRebecca, 'HTML');
 } elseif ($text == "⚙️ گروه‌های پاسارگارد" && $adminrulecheck['rule'] == "administrator") {
     $panel = select('marzban_panel', '*', 'name_panel', $user['Processing_value'], 'select');
     if (!$panel || $panel['type'] !== 'pasarguard') {
@@ -11996,6 +12128,25 @@ elseif ($text == "🫣 مخفی کردن پنل برای یک کاربر" && $ad
 } elseif ($text == "🎛 تنظیم اینباند") {
     $product = select('product', '*', 'id', $user['Processing_value'], 'select');
     $selectedPanel = select('marzban_panel', '*', 'code_panel', $user['Processing_value_one'], 'select');
+    if ($product && $selectedPanel && $selectedPanel['type'] === 'rebecca') {
+        $selectedServiceId = rebeccaNormalizeServiceId($product['inbounds'] ?? null);
+        if ($selectedServiceId < 1) {
+            $selectedServiceId = rebeccaResolveServiceId($selectedPanel);
+        }
+        $serviceKeyboard = rebeccaServicesKeyboardData(
+            $selectedPanel,
+            $selectedServiceId,
+            'rbprod_' . $product['id'] . '_',
+            'سرویس اختصاصی این محصول'
+        );
+        if (!$serviceKeyboard['ok']) {
+            $reason = htmlspecialchars((string) $serviceKeyboard['msg'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            sendmessage($from_id, "❌ دریافت سرویس‌های ربکا ناموفق بود.\n\nجزئیات: <code>{$reason}</code>", $shopkeyboard, 'HTML');
+            return;
+        }
+        sendmessage($from_id, $serviceKeyboard['text'], $serviceKeyboard['keyboard'], 'HTML');
+        return;
+    }
     if ($product && $selectedPanel && $selectedPanel['type'] === 'pasarguard') {
         $selectedGroups = pasarguardNormalizeGroupIds($product['inbounds'] ?? null);
         if (!$selectedGroups) {
@@ -12017,6 +12168,31 @@ elseif ($text == "🫣 مخفی کردن پنل برای یک کاربر" && $ad
     }
     sendmessage($from_id, "📌 در صورتی که پنل مرزبان  یا مرزنشین هستید یک نام کاربری کانفیگ از پنل کپی و ارسال نمایید در غیراینصورت برای پنل های ثنایی و علیرضا شناسه اینباند را ارسال نمایید", $backadmin, 'HTML');
     step("getdatainboundproduct", $from_id);
+} elseif (preg_match('/^rbprod_(\d+)_(\d+)$/', $datain, $rbProductMatch) && $adminrulecheck['rule'] == "administrator") {
+    $product = select('product', '*', 'id', (int) $rbProductMatch[1], 'select');
+    $panel = $product ? select('marzban_panel', '*', 'name_panel', $product['Location'], 'select') : false;
+    if (!$product || !$panel || $panel['type'] !== 'rebecca') {
+        Editmessagetext($from_id, $message_id, "❌ محصول یا پنل ربکا پیدا نشد.", null, 'HTML');
+        return;
+    }
+    $serviceId = (int) $rbProductMatch[2];
+    $services = rebeccaGetServices($panel);
+    $validIds = $services['ok'] ? array_map('intval', array_column($services['items'], 'id')) : [];
+    if (!in_array($serviceId, $validIds, true)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این سرویس در پنل ربکا پیدا نشد.', 'show_alert' => true]);
+        return;
+    }
+    update('product', 'inbounds', json_encode([$serviceId]), 'id', $product['id']);
+    $serviceName = '#' . $serviceId;
+    foreach ($services['items'] as $service) {
+        if ((int) ($service['id'] ?? 0) === $serviceId) {
+            $serviceName = (string) ($service['name'] ?? $serviceName);
+            break;
+        }
+    }
+    $serviceName = htmlspecialchars($serviceName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    Editmessagetext($from_id, $message_id, "✅ سرویس محصول روی <b>{$serviceName}</b> تنظیم شد.", null, 'HTML');
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $shopkeyboard, 'HTML');
 } elseif (preg_match('/^pgpgt_(\d+)_(\d+)$/', $datain, $pgProductMatch) && $adminrulecheck['rule'] == "administrator") {
     $product = select('product', '*', 'id', (int) $pgProductMatch[1], 'select');
     $panel = $product ? select('marzban_panel', '*', 'name_panel', $product['Location'], 'select') : false;
@@ -12949,7 +13125,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
         ];
     }
-    if (in_array($panel['type'], ['marzban', 'pasarguard', "x-ui_single", "marzneshin"])) {
+    if (in_array($panel['type'], ['marzban', 'rebecca', 'pasarguard', "x-ui_single", "marzneshin"], true)) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconnecton, 'callback_data' => "editpanel-connecton-{$panel['conecton']}-{$panel['code_panel']}"],
             ['text' => "📊 اولین اتصال", 'callback_data' => "none"],
@@ -13210,7 +13386,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
             ['text' => "⚙️ ارسال لینک اشتراک", 'callback_data' => "none"],
         ];
     }
-    if (in_array($panel['type'], ['marzban', 'pasarguard', "x-ui_single", "marzneshin"])) {
+    if (in_array($panel['type'], ['marzban', 'rebecca', 'pasarguard', "x-ui_single", "marzneshin"], true)) {
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statusconnecton, 'callback_data' => "editpanel-connecton-{$panel['conecton']}-{$panel['code_panel']}"],
             ['text' => "📊 اولین اتصال", 'callback_data' => "none"],

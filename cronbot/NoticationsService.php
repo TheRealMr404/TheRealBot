@@ -156,7 +156,7 @@ class ServiceMonitor
         if (!in_array($userData['status'], ['limited', 'expired']))
             return false;
         $panel = select("marzban_panel", "*", "name_panel", $invoice['Service_location'], "select");
-        if ($panel['type'] != "marzban")
+        if (!in_array($panel['type'], ['marzban', 'rebecca'], true))
             return;
         if ($userData['data_limit_reset'] != "no_reset")
             return;

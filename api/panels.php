@@ -386,6 +386,16 @@ switch ($data['actions'] ?? '') {
             $stmt->bindParam(':id_panel', $data['id']);
             $stmt->execute();
             $datainbound = json_encode($DataUserOut['inbounds']);
+        } elseif ($panel['type'] == "rebecca") {
+            $serviceId = (int) $data['input'];
+            if ($serviceId < 1) {
+                sendJsonResponse(false, "Rebecca service id must be a positive number", [], 200);
+            }
+            $service = rebeccaGetService($panel, $serviceId);
+            if (!$service['ok']) {
+                sendJsonResponse(false, $service['msg'], [], 200);
+            }
+            $datainbound = json_encode([$serviceId]);
         } elseif ($panel['type'] == "marzneshin") {
             $userdata = json_decode(getuserm($data['input'], $panel['name_panel'])['body'], true);
             if (isset($userdata['detail']) and $userdata['detail'] == "User not found")

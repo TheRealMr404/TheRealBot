@@ -211,7 +211,7 @@ switch ($data['actions']) {
             $used_Traffic = $used_traffic_bytes / pow(1024, 3);
             $remaining_traffic = $remaining_traffic_bytes / pow(1024, 3);
             $config = [];
-            if (in_array($panel['type'], ['marzban', 'marzneshin', 'alireza_single', 'x-ui_single', 'hiddify', 'eylanpanel'])) {
+            if (in_array($panel['type'], ['marzban', 'rebecca', 'marzneshin', 'alireza_single', 'x-ui_single', 'hiddify', 'eylanpanel'])) {
                 if ($panel['sublink'] == "onsublink" && !empty($DataUserOut['subscription_url'])) {
                     $config[] = [
                         'type' => "link",

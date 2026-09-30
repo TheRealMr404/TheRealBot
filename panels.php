@@ -11,6 +11,7 @@ require_once __DIR__ . '/s_ui.php';
 require_once __DIR__ . '/ibsng.php';
 require_once __DIR__ . '/mikrotik.php';
 require_once __DIR__ . '/pasarguard.php';
+require_once __DIR__ . '/Rebecca.php';
 
 class ManagePanel
 {
@@ -101,6 +102,34 @@ class ManagePanel
                 $Output['username'] = $data_Output['username'];
                 $Output['subscription_url'] = $data_Output['subscription_url'];
                 $Output['configs'] = $data_Output['links'];
+            }
+        } elseif ($Get_Data_Panel['type'] == "rebecca") {
+            $create = rebeccaCreateUser(
+                $Get_Data_Panel,
+                $Get_Data_Product,
+                $usernameC,
+                $expire,
+                $data_limit,
+                $note,
+                $code_product === 'usertest'
+            );
+            if (!$create['ok']) {
+                $Output = [
+                    'status' => 'Unsuccessful',
+                    'msg' => $create['msg'],
+                ];
+            } else {
+                $panelSubscriptionUrl = rebeccaAbsoluteUrl($Get_Data_Panel, $create['data']['subscription_url'] ?? '');
+                $subscriptionUrl = $inoice != false
+                    ? "https://$domainhosts/sub/" . $inoice['id_invoice']
+                    : $panelSubscriptionUrl;
+                $Output = [
+                    'status' => 'successful',
+                    'username' => (string) ($create['data']['username'] ?? $usernameC),
+                    'subscription_url' => $subscriptionUrl,
+                    'panel_subscription_url' => $panelSubscriptionUrl,
+                    'configs' => rebeccaGetSubscriptionLinks($Get_Data_Panel, $create['data']),
+                ];
             }
         } elseif ($Get_Data_Panel['type'] == "marzneshin") {
             //create user
@@ -524,6 +553,19 @@ class ManagePanel
                     'uuid' => $UsernameData['proxies'],
                     'data_limit_reset' => $UsernameData['data_limit_reset_strategy']
                 );
+            }
+        } elseif ($Get_Data_Panel['type'] == "rebecca") {
+            $userResponse = rebeccaGetUser($Get_Data_Panel, $username);
+            if (!$userResponse['ok']) {
+                $Output = [
+                    'status' => 'Unsuccessful',
+                    'msg' => $userResponse['msg'],
+                ];
+            } else {
+                $customSubscriptionUrl = $inoice != false
+                    ? "https://$domainhosts/sub/" . $inoice['id_invoice']
+                    : null;
+                $Output = rebeccaUserOutput($Get_Data_Panel, $userResponse['data'], $customSubscriptionUrl);
             }
         } elseif ($Get_Data_Panel['type'] == "marzneshin") {
             $UsernameData = getuserm($username, $Get_Data_Panel['name_panel']);
@@ -1046,6 +1088,20 @@ class ManagePanel
                     'subscription_url' => $Data_User['subscription_url']
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "rebecca") {
+            $revoke = rebeccaRevokeSubscription($Get_Data_Panel, $username);
+            if (!$revoke['ok']) {
+                $Output = ['status' => 'Unsuccessful', 'msg' => $revoke['msg']];
+            } else {
+                $data = $ManagePanel->DataUser($name_panel, $username);
+                $Output = $data['status'] === 'Unsuccessful'
+                    ? $data
+                    : [
+                        'status' => 'successful',
+                        'configs' => $data['links'],
+                        'subscription_url' => $data['subscription_url'],
+                    ];
+            }
         } else if ($Get_Data_Panel['type'] == "marzneshin") {
             $revoke_sub = revoke_subm($username, $name_panel);
             if (isset($revoke_sub['detail']) && $revoke_sub['detail']) {
@@ -1268,6 +1324,11 @@ class ManagePanel
                     'username' => $username,
                 );
             }
+        } elseif ($Get_Data_Panel['type'] == "rebecca") {
+            $remove = rebeccaDeleteUser($Get_Data_Panel, $username);
+            $Output = $remove['ok']
+                ? ['status' => 'successful', 'username' => $username]
+                : ['status' => 'Unsuccessful', 'msg' => $remove['msg']];
         } elseif ($Get_Data_Panel['type'] == "marzneshin") {
             $UsernameData = removeuserm($Get_Data_Panel['name_panel'], $username);
             if (isset($UsernameData['detail']) && $UsernameData['detail']) {
@@ -1445,6 +1506,15 @@ class ManagePanel
                 'status' => true,
                 'data' => $modify
             );
+        } elseif ($Get_Data_Panel['type'] == "rebecca") {
+            if (array_key_exists('enable', $config)) {
+                $config['status'] = $config['enable'] ? 'active' : 'disabled';
+                unset($config['enable']);
+            }
+            $modify = rebeccaModifyUser($Get_Data_Panel, $username, $config);
+            return $modify['ok']
+                ? ['status' => true, 'data' => $modify['data']]
+                : ['status' => false, 'msg' => $modify['msg']];
         } elseif ($Get_Data_Panel['type'] == "marzneshin") {
             $config['username'] = $username;
             $modify = Modifyuserm($name_panel, $username, $config);
@@ -1708,7 +1778,7 @@ class ManagePanel
             );
             return $Output;
         }
-        if ($Get_Data_Panel['type'] == "marzban") {
+        if (in_array($Get_Data_Panel['type'], ["marzban", "rebecca"], true)) {
             if ($DataUserOut['status'] == "active") {
                 $status = "disabled";
             } else {
@@ -1837,6 +1907,11 @@ class ManagePanel
                 'status' => true,
                 'msg' => 'successful'
             );
+        } elseif ($panel['type'] == "rebecca") {
+            $reset = rebeccaResetUserUsage($panel, $username);
+            return $reset['ok']
+                ? ['status' => true, 'data' => $reset['data']]
+                : ['status' => false, 'msg' => $reset['msg']];
         } elseif ($panel['type'] == "marzneshin") {
             $reset = ResetUserDataUsagem($username, $panel['name_panel']);
             if (!empty($reset['status']) && $reset['status'] != 200) {
@@ -2037,6 +2112,16 @@ class ManagePanel
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
             }
+        } elseif ($panel['type'] == "rebecca") {
+            $data = [
+                'status' => 'active',
+                'data_limit' => $data_limit_new,
+                'expire' => $time_new > 0 ? $time_new : null,
+            ];
+            $serviceId = rebeccaResolveServiceId($panel, $product);
+            if ($serviceId > 0) {
+                $data['service_id'] = $serviceId;
+            }
         } elseif ($panel['type'] == "pasarguard") {
             $data = [
                 'status' => 'active',
@@ -2211,6 +2296,11 @@ class ManagePanel
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
             }
+        } elseif ($panel['type'] == "rebecca") {
+            $data = [
+                'status' => 'active',
+                'data_limit' => $new_limit,
+            ];
         } elseif ($panel['type'] == "pasarguard") {
             $data = [
                 'status' => 'active',
@@ -2331,6 +2421,11 @@ class ManagePanel
             if ($invoice != false && $invoice['uuid'] != null) {
                 $data['proxies'] = json_decode($invoice['uuid'], true);
             }
+        } elseif ($panel['type'] == "rebecca") {
+            $data = [
+                'status' => 'active',
+                'expire' => $new_limit > 0 ? $new_limit : null,
+            ];
         } elseif ($panel['type'] == "pasarguard") {
             $data = [
                 'status' => 'active',
