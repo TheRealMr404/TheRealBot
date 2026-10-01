@@ -4617,6 +4617,25 @@ $text_expie_agent
     sendmessage($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $keyboardadmin, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "marchent_tronseller");
     step('home', $from_id);
+} elseif ($text == "🔐 کلید IPN نوپیمنت") {
+    $ipnSecret = (string) (select("PaySetting", "ValuePay", "NamePay", "nowpayment_ipn_secret", "select")['ValuePay'] ?? '');
+    $secretStatus = $ipnSecret !== '' && $ipnSecret !== '0' ? 'تنظیم شده' : 'تنظیم نشده';
+    sendmessage(
+        $from_id,
+        "🔐 <b>کلید امنیتی IPN نوپیمنت</b>\n\nوضعیت: {$secretStatus}\n\nکلید IPN Secret دریافت‌شده از Store Settings را ارسال کنید. برای حذف کلید، <code>0</code> را بفرستید.",
+        $backadmin,
+        'HTML'
+    );
+    step('nowpayment_ipn_secret', $from_id);
+} elseif ($user['step'] == "nowpayment_ipn_secret") {
+    $ipnSecret = trim((string) $text);
+    if ($ipnSecret !== '0' && (strlen($ipnSecret) < 16 || strlen($ipnSecret) > 255 || preg_match('/\s/', $ipnSecret))) {
+        sendmessage($from_id, '❌ کلید IPN معتبر نیست. کلید را دقیقاً همان‌طور که در پنل نوپیمنت نمایش داده می‌شود ارسال کنید.', $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", $ipnSecret === '0' ? '' : $ipnSecret, "NamePay", "nowpayment_ipn_secret");
+    sendmessage($from_id, $ipnSecret === '0' ? '✅ کلید IPN حذف شد.' : '✅ کلید IPN با موفقیت ذخیره شد.', $nowpayment_setting_keyboard, 'HTML');
+    step('home', $from_id);
 } elseif ($datain == "abangatewaysetting" && in_array($from_id, $admin_ids)) {
     telegram('answerCallbackQuery', [
         'callback_query_id' => $callback_query_id
@@ -9581,19 +9600,15 @@ elseif ($user['step'] == "cr_step_get_emoji" && in_array($from_id, $admin_ids)) 
     exec($updateCommand, $updateOutput, $updateExitCode);
 
     $updateResult = trim(implode("\n", $updateOutput));
-    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-    if ($updateExitCode === 0) {
-        $updateMessage = "✅ بروزرسانی ربات با موفقیت انجام شد.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
-    } else {
-        $updateMessage = "❌ بروزرسانی ربات ناموفق بود.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
+    if ($updateResult !== '') {
+        error_log(
+            'Bot update command finished with exit code ' . $updateExitCode . ': '
+            . mb_substr($updateResult, 0, 5000)
+        );
     }
+    $updateMessage = $updateExitCode === 0
+        ? "✅ بروزرسانی ربات با موفقیت انجام شد."
+        : "❌ بروزرسانی ربات ناموفق بود.";
 
     sendmessage($from_id, $updateMessage, $keyboardadmin, 'HTML');
     step('home', $from_id);

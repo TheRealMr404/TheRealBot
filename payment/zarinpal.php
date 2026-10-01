@@ -5,6 +5,7 @@ require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../function.php';
+require_once __DIR__ . '/../vpnbot/reseller_features.php';
 require_once __DIR__ . '/../keyboard.php';
 require_once __DIR__ . '/../panels.php';
 require __DIR__ . '/../vendor/autoload.php';
@@ -18,11 +19,15 @@ use Endroid\QrCode\Writer\PngWriter;
 
 $ManagePanel = new ManagePanel();
 
-$Authority = htmlspecialchars($_GET['Authority'], ENT_QUOTES, 'UTF-8');
-$StatusPayment = htmlspecialchars($_GET['Status'], ENT_QUOTES, 'UTF-8');
+$Authority = htmlspecialchars($_GET['Authority'] ?? '', ENT_QUOTES, 'UTF-8');
+$StatusPayment = htmlspecialchars($_GET['Status'] ?? '', ENT_QUOTES, 'UTF-8');
 $setting = select("setting", "*");
 $PaySetting = select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal","select")['ValuePay'];
 $Payment_reports = select("Payment_report", "*", "dec_not_confirmed", $Authority,"select");
+if (!$Payment_reports) {
+    http_response_code(404);
+    exit('Payment not found');
+}
 $price = $Payment_reports['price'];
 $invoice_id = $Payment_reports['id_order'];
     $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
@@ -73,7 +78,9 @@ curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
         ]));
 $response = curl_exec($curl);
 curl_close($curl);
-$response = json_decode($response,true);
+$response = json_decode((string) $response,true);
+$response = is_array($response) ? $response : [];
+$errorCode = (string) ($response['errors']['code'] ?? '');
        $payment_status = [
 			"-9" => "خطا در ارسال داده",
 			"-10" => "ای پی یا مرچنت كد پذیرنده صحیح نیست.",
@@ -98,13 +105,24 @@ $response = json_decode($response,true);
 			"-52" => "	خطای غیر منتظره‌ای رخ داده است. ",
 			"-53" => "پرداخت متعلق به این مرچنت کد نیست.",
 			"-54" => "اتوریتی نامعتبر است.",
-    ][$response['errors']['code']];
- if($response['data']['message'] == "Verified" || $response['data']['message'] == "Paid"){
+    ][$errorCode] ?? 'خطا در ارتباط با درگاه پرداخت';
+ $providerMessage = (string) ($response['data']['message'] ?? '');
+ if($providerMessage == "Verified" || $providerMessage == "Paid"){
     $payment_status = "پرداخت موفق";
     $dec_payment_status = "از انجام تراکنش متشکریم!";
     $Payment_report = select("Payment_report", "*", "id_order", $invoice_id,"select");
     if($Payment_report['payment_Status'] != "paid"){
     $textbotlang = languagechange('../text.json');
+    if (!empty($Payment_report['bottype'])) {
+        $resellerResult = resellerCompleteOnlinePayment($invoice_id, 'زرین‌پال', [
+            'شماره تراکنش' => $response['data']['ref_id'] ?? '',
+            'شماره کارت' => $response['data']['card_pan'] ?? '',
+        ]);
+        if (!$resellerResult['ok']) {
+            $payment_status = 'خطا در ثبت پرداخت';
+            $dec_payment_status = 'پرداخت انجام شد اما ثبت موجودی ناموفق بود؛ لطفاً با پشتیبانی تماس بگیرید.';
+        }
+    } else {
     DirectPayment($invoice_id,"../images.jpg");
     $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackzarinpal","select")['ValuePay'];
     $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
@@ -118,8 +136,8 @@ $response = json_decode($response,true);
     }
     update("Payment_report","payment_Status","paid","id_order",$Payment_report['id_order']);
     $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
-    $refcode = $response['data']['ref_id'];
-    $cart_number = $response['data']['card_pan'];
+    $refcode = $response['data']['ref_id'] ?? '';
+    $cart_number = $response['data']['card_pan'] ?? '';
     $price = number_format($price);
 $text_report = "💵 پرداخت جدید
         
@@ -137,15 +155,19 @@ $text_report = "💵 پرداخت جدید
         'parse_mode' => "HTML"
         ]);
     }
+    }
 }
 }else {
         $payment_status = [
         '0' => "پرداخت انجام نشد",
         '2' => "تراکنش قبلا وریفای و پرداخت شده است",
 
-    ][$response['errors']['code']];
+    ][$errorCode] ?? ($payment_status ?: 'پرداخت ناموفق');
      $dec_payment_status = "";
 }
+} else {
+    $payment_status = 'پرداخت لغو شد';
+    $dec_payment_status = 'تراکنش توسط کاربر لغو شده یا کامل نشده است.';
 }
 ?>
 <html>

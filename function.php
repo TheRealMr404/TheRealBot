@@ -627,6 +627,9 @@ function updatePaymentMessageId($response, $orderId)
 function nowPayments($payment, $price_amount, $order_id, $order_description)
 {
     global $domainhosts;
+    $callbackBaseUrl = preg_match('#^https?://#i', (string) $domainhosts)
+        ? rtrim((string) $domainhosts, '/')
+        : 'https://' . trim((string) $domainhosts, '/');
     $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
     $curl = curl_init();
     curl_setopt_array($curl, array(
@@ -647,7 +650,7 @@ function nowPayments($payment, $price_amount, $order_id, $order_description)
         'price_currency' => 'usd',
         'order_id' => $order_id,
         'order_description' => $order_description,
-        'ipn_callback_url' => "https://" . $domainhosts . "/payment/nowpayment.php"
+        'ipn_callback_url' => $callbackBaseUrl . "/payment/nowpayment.php"
     ]));
 
     $response = curl_exec($curl);
@@ -2971,6 +2974,9 @@ function createPayZarinpal($price, $order_id)
 function createPayaqayepardakht($price, $order_id)
 {
     global $domainhosts;
+    $callbackBaseUrl = preg_match('#^https?://#i', (string) $domainhosts)
+        ? rtrim((string) $domainhosts, '/')
+        : 'https://' . trim((string) $domainhosts, '/');
     $merchant_aqayepardakht = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht", "select")['ValuePay'];
     $curl = curl_init();
     curl_setopt_array($curl, array(
@@ -2990,7 +2996,7 @@ function createPayaqayepardakht($price, $order_id)
     curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
         'pin' => $merchant_aqayepardakht,
         'amount' => $price,
-        'callback' => $domainhosts . "/payment/aqayepardakht.php",
+        'callback' => $callbackBaseUrl . "/payment/aqayepardakht.php",
         'invoice_id' => $order_id,
     ]));
     $response = curl_exec($curl);

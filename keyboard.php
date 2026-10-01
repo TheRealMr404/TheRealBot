@@ -1932,6 +1932,7 @@ function KeyboardCategoryadmin()
 $nowpayment_setting_keyboard = json_encode([
     'keyboard' => [
         [['text' => "API NOWPAYMENT"], ['text' => "🗂 نام درگاه nowpayment"]],
+        [['text' => "🔐 کلید IPN نوپیمنت"]],
         [['text' => "💰 کش بک nowpayment"], ['text' => "📚 تنظیم آموزش nowpayment"]],
         [['text' => "⬇️ حداقل مبلغ nowpayment"], ['text' => "⬆️ حداکثر مبلغ nowpayment"]],
         [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]

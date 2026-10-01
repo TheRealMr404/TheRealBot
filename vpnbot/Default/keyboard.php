@@ -3,6 +3,8 @@
 $botinfo = select("botsaz", "*", "bot_token", $ApiToken, "select");
 $userbot = select("user", "*", "id", $botinfo['id_user'], "select");
 $hide_panel = json_decode($botinfo['hide_panel'], true);
+$hide_panel = is_array($hide_panel) ? $hide_panel : [];
+$resellerSetting = resellerBotNormalizeSettings(json_decode($botinfo['setting'] ?? '{}', true));
 $text_bot_var =  json_decode(file_get_contents('text.json'), true);
 // keyboard bot 
 $keyboarddate = array(
@@ -78,6 +80,10 @@ $keyboardadmin = json_encode([
             ['text' => "⚙️ وضعیت قابلیت ها"],
         ],
         [
+            ['text' => "💳 مدیریت درگاه‌ها"],
+            ['text' => "🎨 شخصی‌سازی ربات"],
+        ],
+        [
             ['text' => "🔍 جستجو کاربر"],
             ['text' => "👨‍🔧  مدیریت ادمین ها"]
         ],
@@ -138,6 +144,34 @@ $keyboard_change_price = json_encode([
     ],
     'resize_keyboard' =>  true
 ]);
+
+$keyboard_reseller_brand = json_encode([
+    'keyboard' => [
+        [
+            ['text' => "📝 متن خوش‌آمدگویی"],
+            ['text' => "🛠 متن حالت تعمیرات"],
+        ],
+        [
+            ['text' => "🧾 متن انتخاب درگاه"],
+            ['text' => "✅ متن پرداخت موفق"],
+        ],
+        [
+            ['text' => "⬇️ حداقل مبلغ شارژ"],
+            ['text' => "⬆️ حداکثر مبلغ شارژ"],
+        ],
+        [
+            ['text' => "📬 مقصد گزارش‌ها"],
+            ['text' => $resellerSetting['bot_enabled'] ? "⏸ غیرفعال‌کردن ربات" : "▶️ فعال‌کردن ربات"],
+        ],
+        [
+            ['text' => $resellerSetting['notify_admin_payment'] ? "🔕 اعلان پرداخت ادمین‌ها" : "🔔 اعلان پرداخت ادمین‌ها"],
+        ],
+        [
+            ['text' => "بازگشت به منوی ادمین"],
+        ],
+    ],
+    'resize_keyboard' => true,
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
 $backadmin = json_encode([
     'keyboard' => [

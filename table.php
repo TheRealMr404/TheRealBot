@@ -947,6 +947,7 @@ try {
         ['minbalance', '20000'],
         ['maxbalance', '1000000'],
         ['marchent_tronseller', '0'],
+        ['nowpayment_ipn_secret', ''],
         ['walletaddress', '0'],
         ['statuscardautoconfirm', 'offautoconfirm'],
         ['urlpaymenttron', 'https://tronseller.storeddownloader.fun/api/GetOrderToken'],
@@ -1469,6 +1470,45 @@ try {
     }
 } catch (Exception $e) {
     file_put_contents('error_log botsaz', $e->getMessage());
+}
+
+// Update only executable reseller-bot files. Per-bot config, user wallets,
+// product overrides, and customized text.json files remain untouched.
+try {
+    $resellerUpdateDirectory = __DIR__ . '/vpnbot/update';
+    $resellerRuntimeFiles = ['admin.php', 'botapi.php', 'func.php', 'index.php', 'keyboard.php', 'version'];
+    if (is_dir($resellerUpdateDirectory)) {
+        $botsResult = $connect->query('SELECT id_user, username FROM botsaz');
+        if ($botsResult) {
+            while ($resellerBot = $botsResult->fetch_assoc()) {
+                $ownerId = preg_replace('/\D+/', '', (string) ($resellerBot['id_user'] ?? ''));
+                $botUsername = preg_replace('/[^A-Za-z0-9_]+/', '', (string) ($resellerBot['username'] ?? ''));
+                if ($ownerId === '' || $botUsername === '') {
+                    continue;
+                }
+                $targetDirectory = __DIR__ . '/vpnbot/' . $ownerId . $botUsername;
+                if (!is_dir($targetDirectory)) {
+                    continue;
+                }
+                foreach ($resellerRuntimeFiles as $runtimeFile) {
+                    $sourcePath = $resellerUpdateDirectory . '/' . $runtimeFile;
+                    $targetPath = $targetDirectory . '/' . $runtimeFile;
+                    if (!is_file($sourcePath)) {
+                        continue;
+                    }
+                    $temporaryPath = $targetPath . '.update-' . bin2hex(random_bytes(3));
+                    if (copy($sourcePath, $temporaryPath)) {
+                        if (!rename($temporaryPath, $targetPath)) {
+                            @unlink($temporaryPath);
+                            error_log('Unable to update reseller bot file: ' . $targetPath);
+                        }
+                    }
+                }
+            }
+        }
+    }
+} catch (Throwable $e) {
+    error_log('Reseller bot runtime update failed: ' . $e->getMessage());
 }
 
 try {
