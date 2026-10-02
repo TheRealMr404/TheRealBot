@@ -415,7 +415,6 @@ try {
         addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
-        addFieldToTable("marzban_panel", "protocol", null, "VARCHAR(60)");
         $max_stmt = $connect->query("SELECT MAX(CAST(SUBSTRING(code_panel, 3) AS UNSIGNED)) as max_num FROM marzban_panel WHERE code_panel LIKE '7e%'");
         $max_row = $max_stmt->fetch_assoc();
         $next_num = $max_row['max_num'] ? (int)$max_row['max_num'] + 1 : 15;
@@ -1490,35 +1489,6 @@ $connect->query("ALTER TABLE `invoice` CHANGE `time_sell` `time_sell` VARCHAR(20
 $connect->query("ALTER TABLE marzban_panel MODIFY name_panel VARCHAR(255) COLLATE utf8mb4_bin");
 $connect->query("ALTER TABLE product MODIFY name_product VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin");
 $connect->query("ALTER TABLE help MODIFY name_os VARCHAR(500) COLLATE utf8mb4_bin");
-
-//----------------------- [ Tunnel Orders ] --------------------- //
-try {
-    $result = $connect->query("SHOW TABLES LIKE 'tunnel_orders'");
-    $table_exists = ($result->num_rows > 0);
-
-    if (!$table_exists) {
-        $result = $connect->query("CREATE TABLE tunnel_orders (
-            id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            user_id VARCHAR(100) NOT NULL,
-            name_panel VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-            inbound_id INT(11) NOT NULL,
-            listen_port INT(11) NOT NULL,
-            target_ip VARCHAR(255) NOT NULL,
-            target_port INT(11) NOT NULL,
-            total_gb INT(11) NOT NULL,
-            expire_time VARCHAR(100) NOT NULL,
-            status VARCHAR(50) DEFAULT 'active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
-        if (!$result) {
-            echo "table tunnel_orders: " . mysqli_error($connect);
-        }
-    }
-} catch (Exception $e) {
-    file_put_contents('error_log tunnel_orders', $e->getMessage());
-}
-
-
 telegram('setwebhook', [
     'url' => "https://$domainhosts/index.php"
 ]);

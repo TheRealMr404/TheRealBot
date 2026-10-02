@@ -15,15 +15,6 @@ $text_panel_admin_login_template = "💎 | Version Bot: $version
 if (!in_array($from_id, $admin_ids))
     return;
 
-// تغییر عنوان دکمه قبلی «گزارش ربات» به «آپدیت ربات» بدون دست‌زدن به ساختار کیبورد.
-if (isset($keyboardadmin) && is_string($keyboardadmin)) {
-    $keyboardadmin = str_replace(
-        "📬 گزارش ربات",
-        "♻️ آپدیت ربات",
-        $keyboardadmin
-    );
-}
-
 $domainhostsEscaped = htmlspecialchars($domainhosts, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 $miniAppInstructionText = <<<HTML
@@ -1615,9 +1606,8 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_dec_fq");
+    update("textbot", "text", $text, "id_text", "text_dec_fq");
     step('home', $from_id);
 } elseif ($text == "📝 تنظیم متن توضیحات عضویت اجباری" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_channel']}</code>", $backadmin, 'HTML');
@@ -1627,9 +1617,8 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_channel");
+    update("textbot", "text", $text, "id_text", "text_channel");
     step('home', $from_id);
 } elseif ($text == "متن دکمه کیف پول" && $adminrulecheck['rule'] == "administrator") {
     $textstart = $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['accountwallet']}</code>";
@@ -1707,9 +1696,8 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_dec_Tariff_list");
+    update("textbot", "text", $text, "id_text", "text_dec_Tariff_list");
     step('home', $from_id);
 } elseif ($text == "متن انتخاب لوکیشن" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textselectlocation']}</code>", $backadmin, 'HTML');
@@ -1719,9 +1707,8 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "textselectlocation");
+    update("textbot", "text", $text, "id_text", "textselectlocation");
     step('home', $from_id);
 } elseif ($text == "متن پیش فاکتور" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_pishinvoice']}</code>", $backadmin, 'HTML');
@@ -1741,9 +1728,8 @@ note : یادداشت
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_pishinvoice");
+    update("textbot", "text", $text, "id_text", "text_pishinvoice");
     step('home', $from_id);
 } elseif ($text == "متن بعد خرید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textafterpay']}</code>", $backadmin, 'HTML');
@@ -1764,9 +1750,8 @@ links2 : لینک ساب بدون کپی شدن
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "textafterpay");
+    update("textbot", "text", $text, "id_text", "textafterpay");
     step('home', $from_id);
 } elseif ($text == "متن بعد خرید ibsng" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textafterpayibsng']}</code>", $backadmin, 'HTML');
@@ -1787,9 +1772,8 @@ links2 : لینک ساب بدون کپی شدن
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "textafterpayibsng");
+    update("textbot", "text", $text, "id_text", "textafterpayibsng");
     step('home', $from_id);
 } elseif ($text == "متن کارت به کارت" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_cart']}</code>", $backadmin, 'HTML');
@@ -1804,9 +1788,8 @@ name_card : نام دارنده کارت
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_cart");
+    update("textbot", "text", $text, "id_text", "text_cart");
     step('home', $from_id);
 } elseif ($text == "تنظیم متن کارت به کارت خودکار" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_cart_auto']}</code>", $backadmin, 'HTML');
@@ -1821,9 +1804,8 @@ name_card : نام دارنده کارت
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_cart_auto");
+    update("textbot", "text", $text, "id_text", "text_cart_auto");
     step('home', $from_id);
 } elseif ($text == "متن بعد گرفتن اکانت تست" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textaftertext']}</code>", $backadmin, 'HTML');
@@ -1844,9 +1826,8 @@ links2 : لینک ساب بدون کپی
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "textaftertext");
+    update("textbot", "text", $text, "id_text", "textaftertext");
     step('home', $from_id);
 } elseif ($text == "متن بعد گرفتن اکانت دستی" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textmanual']}</code>", $backadmin, 'HTML');
@@ -1870,9 +1851,8 @@ username : نام کاربری کانفیگ
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "crontest");
+    update("textbot", "text", $text, "id_text", "crontest");
     step('home', $from_id);
 } elseif ($text == "متن بعد گرفتن اکانت دستی" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['textmanual']}</code>", $backadmin, 'HTML');
@@ -1889,9 +1869,8 @@ config : اطلاعات سرویس
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "textmanual");
+    update("textbot", "text", $text, "id_text", "textmanual");
     step('home', $from_id);
 } elseif ($text == "متن بعد گرفتن اکانت WGDashboard" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_wgdashboard']}</code>", $backadmin, 'HTML');
@@ -1909,9 +1888,8 @@ volume : حجم سرویس
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_wgdashboard");
+    update("textbot", "text", $text, "id_text", "text_wgdashboard");
     step('home', $from_id);
 } elseif ($text == "دکمه تمدید" && $adminrulecheck['rule'] == "administrator") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . "<code>{$datatextbot['text_extend']}</code>", $backadmin, 'HTML');
@@ -3062,9 +3040,8 @@ $caption";
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ChangeTextGet'] . $datatextbot['text_roll'], $backadmin, 'HTML');
     step('text_roll', $from_id);
 } elseif ($user['step'] == "text_roll") {
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_roll");
+    update("textbot", "text", $text, "id_text", "text_roll");
     step('home', $from_id);
 } elseif ($text == "📣 گزارشات ربات" && $adminrulecheck['rule'] == "administrator") {
     $textreports = "📣در این بخش میتوانید آیدی عددی گروه را برای ارسال اعلان ارسال نمایید
@@ -7641,43 +7618,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     update("user", "Processing_value", $userdata['idpanel'], "id", $from_id);
     step("home", $from_id);
-} elseif (($text == "📬 گزارش ربات" || $text == "♻️ بروزرسانی ربات" || $text == "♻️ آپدیت ربات") && $adminrulecheck['rule'] == "administrator") {
-    // فقط ادمین اصلی اجازه جایگزینی فایل‌های ربات را دارد.
-    if ((string) $from_id !== (string) $adminnumber) {
-        sendmessage($from_id, "❌ بروزرسانی فقط توسط ادمین اصلی قابل اجرا است.", $keyboardadmin, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-
-    sendmessage(
-        $from_id,
-        "ربات در حال آپدیت لطفا منتظر بمانید",
-        null,
-        'HTML'
-    );
-
-    $updateOutput = [];
-    $updateExitCode = 0;
-    exec('sudo -n /usr/local/sbin/therealbot-update 2>&1', $updateOutput, $updateExitCode);
-
-    $updateResult = trim(implode("\n", $updateOutput));
-    $safeUpdateResult = htmlspecialchars(mb_substr($updateResult, 0, 3000), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-    if ($updateExitCode === 0) {
-        $updateMessage = "✅ بروزرسانی ربات با موفقیت انجام شد.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
-    } else {
-        $updateMessage = "❌ بروزرسانی ربات ناموفق بود.";
-        if ($safeUpdateResult !== '') {
-            $updateMessage .= "\n\n<pre>{$safeUpdateResult}</pre>";
-        }
-    }
-
-    sendmessage($from_id, $updateMessage, $keyboardadmin, 'HTML');
+} elseif ($text == "📬 گزارش ربات" && $adminrulecheck['rule'] == "administrator") {
+    $textupdate = "💬 | گزارش ربات\n\n🔹 | اگر در عملکرد ربات با <b>باگ یا مشکلی</b> روبه‌رو شدید، لطفاً مورد را برای بررسی به ما اطلاع دهید.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | در صورتی که با <b>باگ جدی</b> یا رفتار غیرعادی مواجه شدید، سریع‌تر گزارش دهید تا رفع شود.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | اگر پیشنهادی برای <b>افزودن قابلیت جدید</b> دارید یا ایده‌ای برای بهبود عملکرد ربات در نظر دارید، خوشحال می‌شویم بشنویم.\n➖➖➖➖➖➖➖➖➖➖➖\n🔹 | همچنین اگر نیاز به <b>راهنمایی</b> یا کمک دارید، می‌توانید از طریق دایرکت با تیم پشتیبانی در ارتباط باشید.\n\n📩 | برای ارسال گزارش، پیشنهاد یا درخواست راهنمایی، در <b>گروه میرزا</b> پیام بگذارید:\n<a href=\"https://t.me/mirzapanelgroup\" rel=\"nofollow\" target=\"_blank\">Mirza Group</a>";
+    sendmessage($from_id, $textupdate, null, 'HTML');
     step('home', $from_id);
-    return;
 } elseif ($text == "🛠 قابلیت های پنل") {
     sendmessage($from_id, "🪚 برای استفاده از این قابلیت یکی از پنل های زیر را انتخاب نمایید", $json_list_marzban_panel, 'HTML');
     step('getlocoption', $from_id);
@@ -7737,27 +7681,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     } else {
         sendmessage($from_id, "📌 در این بخش می توانید نود های پنل مرزبان مدیریت کنید.", $keyboardlistsnode, 'HTML');
     }
-
-} elseif (strpos($datain, 'setproto_') === 0) {
-    $selected_protocol = str_replace('setproto_', '', $datain);
-    
-    $panel_name = $user['Processing_value'];
-    
-    if ($selected_protocol === 'null') {
-        $db_value = ""; 
-        $display_text = "خالی (Null)";
-    } else {
-        $db_value = $selected_protocol;
-        $display_text = strtoupper($selected_protocol);
-    }
-    
-    update("marzban_panel", "protocol", $db_value, "name_panel", $panel_name);
-    
-    $success_text = "✅ پروتکل این پنل با موفقیت روی حالت " . $display_text . "تنظیم شد.";
-    Editmessagetext($from_id, $message_id, $success_text, null);
-}
-
-elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
+} elseif (preg_match('/^node_(.*)/', $datain, $dataget)) {
     $nodeid = $dataget[1];
     update("user", "Processing_value_one", $nodeid, "id", $from_id);
     $node = Get_Node($user['Processing_value'], $nodeid);
@@ -10649,27 +10573,7 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     $stmt = $pdo->prepare("DELETE FROM app WHERE name = :name");
     $stmt->bindParam(':name', $text, PDO::PARAM_STR);
     $stmt->execute();
-}
-elseif ($text == "تنظیم پروتکل کانفیگ") {
-$keyboard = json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => 'VLESS', 'callback_data' => 'setproto_vless'],
-                ['text' => 'VMESS', 'callback_data' => 'setproto_vmess']
-            ],
-            [
-                ['text' => 'Shadowsocks 🔐', 'callback_data' => 'setproto_shadowsocks']
-            ],
-            [
-                ['text' => '✖️ خالی کردن (Null)', 'callback_data' => 'setproto_null']
-            ]
-        ]
-    ]);
-    
-    $text_msg = "⚙️ لطفا پروتکل مورد نظر برای این پنل را انتخاب کنید:\n\n⚠️ نکته: اگر شادوساکس را انتخاب می‌کنید، حتماً تنظیمات اینباند در سرور باید روی Shadowsocks باشد.";
-    sendmessage($from_id, $text_msg, $keyboard, 'HTML');
-}
-elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
+} elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck['rule'] == "administrator") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
         update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
@@ -11515,9 +11419,8 @@ elseif ($text == "⚙️ وضعیت قابلیت ها پنل" && $adminrulecheck
         sendmessage($from_id, $textbotlang['Admin']['ManageUser']['ErrorText'], $textbot, 'HTML');
         return;
     }
-    $savetext = convertCustomEmojiToHTML($update['message']);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['SaveText'], $textbot, 'HTML');
-    update("textbot", "text", $savetext, "id_text", "text_request_agent_dec");
+    update("textbot", "text", $text, "id_text", "text_request_agent_dec");
     step('home', $from_id);
 } elseif (preg_match('/changestatusadmin_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
