@@ -290,7 +290,8 @@ IP_CACHE="/tmp/.mirza_server_ip"
 
 # ── Telegram panel auto-updater ──────────────────────────────
 # Creates the updater used by the admin-panel button. It synchronizes the
-# installed bot with GitHub main and preserves only config.php.
+# installed bot with GitHub main and preserves only config.php. The bot root is
+# supplied by the calling admin.php, so every installation updates itself.
 install_bot_auto_updater() {
     local updater="/usr/local/sbin/therealbot-update"
     local sudoers="/etc/sudoers.d/therealbot-update"
@@ -299,28 +300,154 @@ install_bot_auto_updater() {
 #!/bin/bash
 set -Eeuo pipefail
 
-BOT_DIR="/var/www/html/mirzaprobotconfig"
 ZIP_URL="https://github.com/TheRealMr404/TheRealBot/archive/refs/heads/main.zip"
-BACKUP_DIR="/var/backups/therealbot"
-LOCK_FILE="/run/lock/therealbot-update.lock"
+WEB_ROOT="/var/www/html"
 
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-    echo "UPDATE_ALREADY_RUNNING"
-    exit 20
-fi
-
-for cmd in curl unzip rsync php tar; do
+for cmd in awk basename curl cut dirname find flock grep php readlink rsync sha256sum tar tr unzip; do
     command -v "$cmd" >/dev/null 2>&1 || {
         echo "MISSING_COMMAND:$cmd"
         exit 21
     }
 done
 
-[ -d "$BOT_DIR" ] || {
+bot_installation_exists() {
+    local candidate="$1"
+    [ -n "$candidate" ] && [ -d "$candidate" ] \
+        && [ -f "$candidate/index.php" ] \
+        && [ -f "$candidate/config.php" ] \
+        && [ -f "$candidate/table.php" ]
+}
+
+apache_document_roots() {
+    local config
+    [ -d /etc/apache2/sites-enabled ] || return 0
+    while IFS= read -r config; do
+        awk '
+            tolower($1) == "documentroot" {
+                root = $2
+                gsub(/^"|"$/, "", root)
+                if (root != "") print root
+            }
+        ' "$config" 2>/dev/null
+    done < <(find -L /etc/apache2/sites-enabled -maxdepth 1 -type f -name '*.conf' -print 2>/dev/null)
+}
+
+apache_document_root_for_host() {
+    local requested_host="${1%%:*}" config
+    [ -n "$requested_host" ] && [ -d /etc/apache2/sites-enabled ] || return 1
+    while IFS= read -r config; do
+        awk -v wanted="$requested_host" '
+            function clean(value) { gsub(/^"|"$/, "", value); return value }
+            tolower($1) ~ /^<virtualhost/ { inside = 1; matched = 0; root = ""; next }
+            inside && tolower($1) == "servername" && tolower(clean($2)) == tolower(wanted) { matched = 1 }
+            inside && tolower($1) == "serveralias" {
+                for (i = 2; i <= NF; i++) if (tolower(clean($i)) == tolower(wanted)) matched = 1
+            }
+            inside && tolower($1) == "documentroot" { root = clean($2) }
+            inside && tolower($1) == "</virtualhost>" {
+                if (matched && root != "") print root
+                inside = 0
+            }
+        ' "$config" 2>/dev/null
+    done < <(find -L /etc/apache2/sites-enabled -maxdepth 1 -type f -name '*.conf' -print 2>/dev/null)
+}
+
+is_allowed_bot_directory() {
+    local target="$1" configured configured_real web_root_real
+    web_root_real="$(readlink -f -- "$WEB_ROOT" 2>/dev/null || true)"
+    if [ -n "$web_root_real" ]; then
+        case "$target" in
+            "$web_root_real"/*) return 0 ;;
+        esac
+    fi
+
+    while IFS= read -r configured; do
+        configured_real="$(readlink -f -- "$configured" 2>/dev/null || true)"
+        [ -n "$configured_real" ] && [ "$configured_real" = "$target" ] && return 0
+    done < <(apache_document_roots)
+    return 1
+}
+
+REQUESTED_BOT_DIR="${1:-}"
+
+# Compatibility for bots whose old admin.php still invokes the updater without
+# a path. Request variables are preferred, then Apache's host mapping, then cwd.
+if [ -z "$REQUESTED_BOT_DIR" ]; then
+    if [ -n "${SCRIPT_FILENAME:-}" ]; then
+        candidate="$(dirname -- "$SCRIPT_FILENAME")"
+        bot_installation_exists "$candidate" && REQUESTED_BOT_DIR="$candidate"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ] && bot_installation_exists "${DOCUMENT_ROOT:-}"; then
+        REQUESTED_BOT_DIR="$DOCUMENT_ROOT"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ] && [ -n "${HTTP_HOST:-${SERVER_NAME:-}}" ]; then
+        while IFS= read -r candidate; do
+            if bot_installation_exists "$candidate"; then
+                REQUESTED_BOT_DIR="$candidate"
+                break
+            fi
+        done < <(apache_document_root_for_host "${HTTP_HOST:-${SERVER_NAME:-}}")
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ]; then
+        legacy_candidate=""
+        legacy_count=0
+        declare -A seen_legacy_roots=()
+        while IFS= read -r candidate; do
+            candidate="$(readlink -f -- "$candidate" 2>/dev/null || true)"
+            [ -n "$candidate" ] || continue
+            [ -z "${seen_legacy_roots[$candidate]:-}" ] || continue
+            seen_legacy_roots["$candidate"]=1
+            if bot_installation_exists "$candidate" \
+                && [ -f "$candidate/admin.php" ] \
+                && ! grep -qF '$botRoot = realpath(__DIR__);' "$candidate/admin.php"; then
+                legacy_candidate="$candidate"
+                legacy_count=$((legacy_count + 1))
+            fi
+        done < <(apache_document_roots)
+        [ "$legacy_count" -eq 1 ] && REQUESTED_BOT_DIR="$legacy_candidate"
+    fi
+    if [ -z "$REQUESTED_BOT_DIR" ]; then
+        candidate="$(pwd -P)"
+        bot_installation_exists "$candidate" && REQUESTED_BOT_DIR="$candidate"
+    fi
+fi
+
+[ -n "$REQUESTED_BOT_DIR" ] || {
+    echo "BOT_DIRECTORY_NOT_DETECTED"
+    exit 22
+}
+
+BOT_DIR="$(readlink -f -- "$REQUESTED_BOT_DIR" 2>/dev/null || true)"
+
+[ -n "$BOT_DIR" ] && [ -d "$BOT_DIR" ] || {
     echo "BOT_DIRECTORY_NOT_FOUND"
     exit 22
 }
+
+BOT_NAME="$(basename -- "$BOT_DIR")"
+if ! is_allowed_bot_directory "$BOT_DIR"; then
+    echo "INVALID_BOT_DIRECTORY"
+    exit 26
+fi
+
+for required_file in index.php config.php table.php; do
+    [ -f "$BOT_DIR/$required_file" ] || {
+        echo "INVALID_BOT_INSTALLATION:$required_file"
+        exit 27
+    }
+done
+
+INSTANCE_SLUG="$(printf '%s' "$BOT_NAME" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-48)"
+INSTANCE_HASH="$(printf '%s' "$BOT_DIR" | sha256sum | cut -c1-12)"
+INSTANCE_KEY="${INSTANCE_SLUG}_${INSTANCE_HASH}"
+BACKUP_DIR="/var/backups/therealbot/$INSTANCE_KEY"
+LOCK_FILE="/run/lock/therealbot-update-$INSTANCE_KEY.lock"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "UPDATE_ALREADY_RUNNING"
+    exit 20
+fi
 
 TMP_DIR="$(mktemp -d /tmp/therealbot-update.XXXXXX)"
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -980,6 +1107,1134 @@ function renew_ssl() {
     show_menu
 }
 
+# ── Docker multi-bot manager ─────────────────────────────────
+DOCKER_ROOT="${MIRZA_DOCKER_ROOT:-/opt/mirza}"
+DOCKER_INSTANCES="$DOCKER_ROOT/instances"
+DOCKER_BACKUPS="$DOCKER_ROOT/backups"
+DOCKER_GATEWAY="$DOCKER_ROOT/gateway"
+DOCKER_NETWORK="mirza-gateway"
+CONTROL_PANEL_ROOT="${MIRZA_PANEL_ROOT:-/opt/mirza-control-panel}"
+
+valid_bot_slug() { [[ "$1" =~ ^[a-z][a-z0-9-]{1,30}$ ]]; }
+
+docker_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        docker compose "$@"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose "$@"
+    else
+        return 127
+    fi
+}
+
+docker_instance_dir() {
+    valid_bot_slug "$1" || return 1
+    printf '%s/%s' "$DOCKER_INSTANCES" "$1"
+}
+
+docker_env_value() {
+    local key="$1" file="$2"
+    [ -f "$file" ] || return 1
+    sed -n "s/^${key}=//p" "$file" | tail -1
+}
+
+docker_port_in_use() {
+    local port="$1"
+    ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)${port}$"
+}
+
+docker_gateway_mode() {
+    local running
+    running=$(docker inspect -f '{{.State.Running}}' mirza-gateway 2>/dev/null || true)
+    if [ "$running" = "true" ]; then
+        printf 'direct'
+        return 0
+    fi
+    if systemctl is-active --quiet apache2 2>/dev/null || pgrep -x apache2 >/dev/null 2>&1; then
+        printf 'apache'
+        return 0
+    fi
+    if docker_port_in_use 80 || docker_port_in_use 443; then
+        echo "Ports 80/443 are occupied by an unsupported service:" >&2
+        ss -ltnp 2>/dev/null | awk '$4 ~ /:80$|:443$/ {print}' >&2
+        echo "Stop that service or use Apache as the host gateway, then retry." >&2
+        return 1
+    fi
+    printf 'direct'
+}
+
+docker_allocate_app_port() {
+    local port env_file used
+    for ((port=19000; port<=19999; port++)); do
+        used=0
+        docker_port_in_use "$port" && used=1
+        if [ "$used" -eq 0 ]; then
+            for env_file in "$DOCKER_INSTANCES"/*/.env; do
+                [ -f "$env_file" ] || continue
+                [ "$(docker_env_value APP_PORT "$env_file")" = "$port" ] && { used=1; break; }
+            done
+        fi
+        [ "$used" -eq 0 ] && { printf '%s' "$port"; return 0; }
+    done
+    echo "No free local application port is available in range 19000-19999." >&2
+    return 1
+}
+
+docker_configure_apache_route() {
+    local slug="$1" domain="$2" port="$3" site acme_root cert_dir
+    valid_bot_slug "$slug" || return 1
+    validate_domain "$domain" || return 1
+    [[ "$port" =~ ^19[0-9]{3}$ ]] || return 1
+    site="/etc/apache2/sites-available/mirza-docker-$slug.conf"
+    acme_root="/var/www/mirza-acme"
+    cert_dir="/etc/letsencrypt/live/$domain"
+    mkdir -p "$acme_root/.well-known/acme-challenge"
+
+    cat > "$site" <<EOF
+<VirtualHost *:80>
+    ServerName $domain
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass /.well-known/acme-challenge/ !
+    Alias /.well-known/acme-challenge/ $acme_root/.well-known/acme-challenge/
+    <Directory "$acme_root/.well-known/acme-challenge/">
+        Require all granted
+    </Directory>
+    RequestHeader unset X-Forwarded-For early
+    ProxyPass / http://127.0.0.1:$port/ connectiontimeout=5 timeout=120
+    ProxyPassReverse / http://127.0.0.1:$port/
+</VirtualHost>
+EOF
+    a2ensite "mirza-docker-$slug.conf" >/dev/null 2>&1 || return 1
+    apache2ctl configtest >/dev/null 2>&1 || return 1
+    systemctl reload apache2 || return 1
+
+    if [ ! -s "$cert_dir/fullchain.pem" ] || [ ! -s "$cert_dir/privkey.pem" ] \
+        || ! openssl x509 -checkend 604800 -noout -in "$cert_dir/fullchain.pem" >/dev/null 2>&1; then
+        certbot certonly --webroot -w "$acme_root" -d "$domain" \
+            --non-interactive --agree-tos --register-unsafely-without-email || return 1
+    fi
+
+    cat > "$site" <<EOF
+<VirtualHost *:80>
+    ServerName $domain
+    ProxyPass /.well-known/acme-challenge/ !
+    Alias /.well-known/acme-challenge/ $acme_root/.well-known/acme-challenge/
+    <Directory "$acme_root/.well-known/acme-challenge/">
+        Require all granted
+    </Directory>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/.well-known/acme-challenge/
+    RewriteRule ^ https://$domain%{REQUEST_URI} [R=301,L,NE]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName $domain
+    SSLEngine On
+    SSLCertificateFile $cert_dir/fullchain.pem
+    SSLCertificateKeyFile $cert_dir/privkey.pem
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+    RequestHeader unset X-Forwarded-For early
+    RequestHeader set X-Forwarded-Proto "https"
+    ProxyPass / http://127.0.0.1:$port/ connectiontimeout=5 timeout=120
+    ProxyPassReverse / http://127.0.0.1:$port/
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+</VirtualHost>
+EOF
+    apache2ctl configtest >/dev/null 2>&1 || return 1
+    systemctl reload apache2 || return 1
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    cat > /etc/letsencrypt/renewal-hooks/deploy/mirza-apache-reload <<'EOF'
+#!/bin/sh
+systemctl reload apache2
+EOF
+    chmod 750 /etc/letsencrypt/renewal-hooks/deploy/mirza-apache-reload
+}
+
+docker_remove_apache_route() {
+    local slug="$1" site="/etc/apache2/sites-available/mirza-docker-$1.conf"
+    valid_bot_slug "$slug" || return 1
+    a2dissite "mirza-docker-$slug.conf" >/dev/null 2>&1 || true
+    rm -f "$site"
+    apache2ctl configtest >/dev/null 2>&1 && systemctl reload apache2 >/dev/null 2>&1 || true
+}
+
+docker_install_engine() {
+    local current_script missing_tools=0 tool gateway_mode
+    mkdir -p "$DOCKER_INSTANCES" "$DOCKER_BACKUPS" "$DOCKER_GATEWAY"
+    chmod 700 "$DOCKER_ROOT" "$DOCKER_INSTANCES" "$DOCKER_BACKUPS" 2>/dev/null || true
+
+    # Keep a stable manager path for cron jobs, even when this installer was
+    # launched from a temporary upload location.
+    current_script=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)
+    [ -n "$current_script" ] && [ -f "$current_script" ] || return 1
+    if [ "$current_script" != "/root/install.sh" ]; then
+        install -m 0755 "$current_script" /root/install.sh || return 1
+    fi
+    _link_mirza /root/install.sh /usr/local/bin/mirza
+
+    if ! command -v docker >/dev/null 2>&1; then
+        apt-get update || return 1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io ca-certificates curl unzip rsync cron openssl iproute2 || return 1
+    else
+        for tool in curl unzip rsync crontab openssl ss; do
+            command -v "$tool" >/dev/null 2>&1 || missing_tools=1
+        done
+        if [ "$missing_tools" -eq 1 ]; then
+            apt-get update || return 1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl unzip rsync cron openssl iproute2 || return 1
+        fi
+    fi
+    systemctl enable --now docker >/dev/null 2>&1 || return 1
+    systemctl enable --now cron >/dev/null 2>&1 || return 1
+
+    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2 >/dev/null 2>&1 \
+            || DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1 \
+            || DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose >/dev/null 2>&1 \
+            || return 1
+    fi
+
+    gateway_mode=$(docker_gateway_mode) || return 1
+    printf '%s\n' "$gateway_mode" > "$DOCKER_GATEWAY/mode"
+
+    if [ "$gateway_mode" = "apache" ]; then
+        if [ -f "$DOCKER_GATEWAY/compose.yml" ]; then
+            docker_compose -f "$DOCKER_GATEWAY/compose.yml" down >/dev/null 2>&1 || true
+        else
+            docker rm -f mirza-gateway >/dev/null 2>&1 || true
+        fi
+        if ! command -v certbot >/dev/null 2>&1; then
+            apt-get update || return 1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y certbot || return 1
+        fi
+        a2enmod proxy proxy_http headers ssl rewrite >/dev/null 2>&1 || return 1
+        systemctl enable --now apache2 >/dev/null 2>&1 || return 1
+        echo -e "${C_OK}Apache detected; Docker bots will use Apache without taking ports 80/443.${CR}"
+        return 0
+    fi
+
+    docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1 || docker network create "$DOCKER_NETWORK" >/dev/null
+
+    cat > "$DOCKER_GATEWAY/compose.yml" <<EOF
+services:
+  gateway:
+    image: caddy:2-alpine
+    container_name: mirza-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - gateway
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  gateway:
+    external: true
+    name: $DOCKER_NETWORK
+volumes:
+  caddy_data:
+    name: mirza-caddy-data
+  caddy_config:
+    name: mirza-caddy-config
+EOF
+
+    [ -s "$DOCKER_GATEWAY/Caddyfile" ] || printf ':80 {\n    respond "Mirza gateway is ready" 200\n}\n' > "$DOCKER_GATEWAY/Caddyfile"
+    docker_compose -f "$DOCKER_GATEWAY/compose.yml" up -d >/dev/null || return 1
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+        ufw allow 80/tcp >/dev/null 2>&1 || true
+        ufw allow 443/tcp >/dev/null 2>&1 || true
+        ufw allow 443/udp >/dev/null 2>&1 || true
+    fi
+}
+
+docker_refresh_gateway() {
+    local tmp env_file slug domain port edge_network found=0 gateway_mode panel_env panel_domain panel_port
+    mkdir -p "$DOCKER_GATEWAY"
+    panel_env="$CONTROL_PANEL_ROOT/.env"
+    gateway_mode=$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null || printf 'direct')
+    if [ "$gateway_mode" = "apache" ]; then
+        for env_file in "$DOCKER_INSTANCES"/*/.env; do
+            [ -f "$env_file" ] || continue
+            slug=$(docker_env_value BOT_SLUG "$env_file")
+            domain=$(docker_env_value DOMAIN "$env_file")
+            port=$(docker_env_value APP_PORT "$env_file")
+            valid_bot_slug "$slug" || continue
+            validate_domain "$domain" || continue
+            [[ "$port" =~ ^19[0-9]{3}$ ]] || { echo "Invalid app port for '$slug'."; return 1; }
+            docker_configure_apache_route "$slug" "$domain" "$port" || {
+                echo "Apache/SSL route setup failed for '$slug'."
+                return 1
+            }
+        done
+        if [ -f "$panel_env" ]; then
+            panel_domain=$(docker_env_value PANEL_DOMAIN "$panel_env")
+            panel_port=$(docker_env_value APP_PORT "$panel_env")
+            validate_domain "$panel_domain" || { echo "Invalid control-panel domain."; return 1; }
+            [[ "$panel_port" =~ ^18[0-9]{3}$ ]] || { echo "Invalid control-panel port."; return 1; }
+            docker_configure_apache_route "control-panel" "$panel_domain" "$panel_port" || {
+                echo "Apache/SSL route setup failed for the control panel."
+                return 1
+            }
+        else
+            [ -f /etc/apache2/sites-available/mirza-docker-control-panel.conf ] && docker_remove_apache_route "control-panel"
+        fi
+        return 0
+    fi
+    tmp=$(mktemp "$DOCKER_GATEWAY/Caddyfile.XXXXXX") || return 1
+    for env_file in "$DOCKER_INSTANCES"/*/.env; do
+        [ -f "$env_file" ] || continue
+        slug=$(docker_env_value BOT_SLUG "$env_file")
+        domain=$(docker_env_value DOMAIN "$env_file")
+        valid_bot_slug "$slug" || continue
+        validate_domain "$domain" || continue
+        found=1
+        cat >> "$tmp" <<EOF
+$domain {
+    encode zstd gzip
+    reverse_proxy mirza-$slug-app:80 {
+        header_up X-Real-IP {http.request.remote.host}
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+}
+
+EOF
+    done
+    if [ -f "$panel_env" ]; then
+        panel_domain=$(docker_env_value PANEL_DOMAIN "$panel_env")
+        if validate_domain "$panel_domain"; then
+            found=1
+            cat >> "$tmp" <<EOF
+$panel_domain {
+    encode zstd gzip
+    reverse_proxy mirza-control-panel:80 {
+        header_up X-Real-IP {http.request.remote.host}
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+}
+
+EOF
+        fi
+    fi
+    if [ "$found" -eq 0 ]; then
+        printf ':80 {\n    respond "Mirza gateway is ready" 200\n}\n' > "$tmp"
+    fi
+    mv "$tmp" "$DOCKER_GATEWAY/Caddyfile"
+    docker_compose -f "$DOCKER_GATEWAY/compose.yml" up -d >/dev/null || return 1
+    # Each application has a private edge network. Only Caddy joins it, so
+    # application containers cannot directly reach one another.
+    for env_file in "$DOCKER_INSTANCES"/*/.env; do
+        [ -f "$env_file" ] || continue
+        slug=$(docker_env_value BOT_SLUG "$env_file")
+        valid_bot_slug "$slug" || continue
+        edge_network="mirza-$slug-edge"
+        docker network inspect "$edge_network" >/dev/null 2>&1 || continue
+        docker network connect "$edge_network" mirza-gateway >/dev/null 2>&1 || true
+    done
+    if [ -f "$panel_env" ] && docker network inspect mirza-control-edge >/dev/null 2>&1; then
+        docker network connect mirza-control-edge mirza-gateway >/dev/null 2>&1 || true
+    fi
+    docker exec mirza-gateway caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
+        || docker restart mirza-gateway >/dev/null
+}
+
+docker_source_url() {
+    if docker_local_source_dir >/dev/null 2>&1; then
+        printf 'local-managed://source'
+        return 0
+    fi
+    if [ -n "$ARG_VERSION" ]; then
+        printf 'https://github.com/%s/archive/refs/tags/%s.zip' "$GIT_REPO" "$ARG_VERSION"
+    else
+        printf 'https://github.com/%s/archive/refs/heads/main.zip' "$GIT_REPO"
+    fi
+}
+
+docker_local_source_dir() {
+    local source_dir script_dir
+    if [ -n "${ARG_SOURCE_DIR:-}" ]; then
+        source_dir=$(readlink -f "$ARG_SOURCE_DIR" 2>/dev/null) || return 1
+    else
+        script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)")
+        [ -f "$script_dir/index.php" ] && [ -f "$script_dir/table.php" ] || return 1
+        source_dir="$script_dir"
+    fi
+    [ -f "$source_dir/index.php" ] && [ -f "$source_dir/table.php" ] || return 1
+    printf '%s' "$source_dir"
+}
+
+docker_fetch_source() {
+    local destination="$1" temp_dir zip_url extracted source_dir
+    mkdir -p "$destination"
+    if source_dir=$(docker_local_source_dir); then
+        rsync -a --delete --exclude='.git/' --exclude='config.php' "$source_dir/" "$destination/"
+    elif [ -n "${ARG_SOURCE_DIR:-}" ]; then
+        echo "Invalid --source-dir: index.php or table.php is missing."
+        return 1
+    else
+        temp_dir=$(mktemp -d /tmp/mirza-docker-source.XXXXXX) || return 1
+        zip_url=$(docker_source_url)
+        curl -fL --retry 3 --connect-timeout 15 --max-time 240 "$zip_url" -o "$temp_dir/source.zip" \
+            || { rm -rf "$temp_dir"; return 1; }
+        unzip -q "$temp_dir/source.zip" -d "$temp_dir/extracted" \
+            || { rm -rf "$temp_dir"; return 1; }
+        extracted=$(find "$temp_dir/extracted" -mindepth 1 -maxdepth 1 -type d | head -1)
+        [ -f "$extracted/index.php" ] && [ -f "$extracted/table.php" ] \
+            || { rm -rf "$temp_dir"; return 1; }
+        rsync -a --delete --exclude='.git/' --exclude='config.php' "$extracted/" "$destination/"
+        rm -rf "$temp_dir"
+    fi
+    [ -f "$destination/index.php" ] && [ -f "$destination/table.php" ]
+}
+
+docker_write_instance_files() {
+    local dir="$1" slug="$2" domain="$3" token="$4" admin_id="$5" bot_name="$6"
+    local db_user="$7" db_pass="$8" db_root_pass="$9" app_port="${10}" source_url
+    [[ "$app_port" =~ ^19[0-9]{3}$ ]] || return 1
+    source_url=$(docker_source_url)
+
+    cat > "$dir/.env" <<EOF
+COMPOSE_PROJECT_NAME=mirza_$slug
+BOT_SLUG=$slug
+DOMAIN=$domain
+BOT_TOKEN=$token
+ADMIN_ID=$admin_id
+BOT_USERNAME=$bot_name
+APP_PORT=$app_port
+DB_NAME=VpnBot
+DB_USER=$db_user
+DB_PASSWORD=$db_pass
+DB_ROOT_PASSWORD=$db_root_pass
+SOURCE_URL=$source_url
+EOF
+    chmod 600 "$dir/.env"
+
+    cat > "$dir/app/config.php" <<EOF
+<?php
+\$request_exec_timeout = null;
+\$dbhost = 'db';
+\$dbname = 'VpnBot';
+\$usernamedb = '$db_user';
+\$passworddb = '$db_pass';
+\$connect = mysqli_init();
+if (\$connect === false) { die('Database initialization failed'); }
+\$connect->options(MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+if (!\$connect->real_connect(\$dbhost, \$usernamedb, \$passworddb, \$dbname)) { die('Database connection failed'); }
+mysqli_set_charset(\$connect, 'utf8mb4');
+\$options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false, PDO::ATTR_PERSISTENT => false, PDO::ATTR_TIMEOUT => 5];
+\$dsn = "mysql:host=\$dbhost;dbname=\$dbname;charset=utf8mb4";
+\$pdo = null;
+try { \$pdo = new PDO(\$dsn, \$usernamedb, \$passworddb, \$options); } catch (PDOException \$e) { error_log('Database connection failed'); }
+if (!function_exists('mirzaCloseDatabaseConnections')) {
+    function mirzaCloseDatabaseConnections() {
+        global \$pdo, \$connect;
+        \$pdo = null;
+        if (\$connect instanceof mysqli) {
+            try { \$connect->close(); } catch (Throwable \$e) {}
+        }
+        \$connect = null;
+    }
+    register_shutdown_function('mirzaCloseDatabaseConnections');
+}
+\$APIKEY = '$token';
+\$adminnumber = '$admin_id';
+\$domainhosts = '$domain';
+\$usernamebot = '$bot_name';
+?>
+EOF
+
+    cat > "$dir/Dockerfile" <<'EOF'
+FROM php:8.2-apache
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cron curl unzip rsync sudo ca-certificates git util-linux \
+    libcurl4-openssl-dev libfreetype6-dev libicu-dev libjpeg62-turbo-dev \
+    libonig-dev libpng-dev libssh2-1-dev libxml2-dev libzip-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" mysqli pdo_mysql mbstring zip gd curl intl xml bcmath soap \
+    && printf '\n' | pecl install ssh2-1.4.1 \
+    && docker-php-ext-enable ssh2 \
+    && a2enmod rewrite headers expires \
+    && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
+    && printf '<IfModule mpm_prefork_module>\nStartServers 2\nMinSpareServers 2\nMaxSpareServers 8\nMaxRequestWorkers 40\nMaxConnectionsPerChild 500\n</IfModule>\n' > /etc/apache2/mods-available/mpm_prefork.conf \
+    && printf 'ServerTokens Prod\nServerSignature Off\n' > /etc/apache2/conf-available/mirza-security.conf \
+    && a2enconf mirza-security \
+    && echo 'www-data ALL=(root) NOPASSWD: /usr/local/sbin/therealbot-update' > /etc/sudoers.d/therealbot-update \
+    && chmod 0440 /etc/sudoers.d/therealbot-update \
+    && rm -rf /var/lib/apt/lists/*
+COPY container-update.sh /usr/local/sbin/therealbot-update
+RUN chmod 0750 /usr/local/sbin/therealbot-update
+WORKDIR /var/www/html
+CMD ["sh", "-c", "cron && exec apache2-foreground"]
+EOF
+
+    cat > "$dir/container-update.sh" <<'EOF'
+#!/bin/bash
+set -Eeuo pipefail
+SOURCE_URL="${MIRZA_SOURCE_URL:?missing source url}"
+REQUESTED_BOT_DIR="${1:-/var/www/html}"
+BOT_DIR=$(readlink -f -- "$REQUESTED_BOT_DIR" 2>/dev/null || true)
+[ "$BOT_DIR" = "/var/www/html" ] || {
+    echo INVALID_BOT_DIRECTORY
+    exit 26
+}
+for required_file in index.php config.php table.php; do
+    [ -f "$BOT_DIR/$required_file" ] || {
+        echo "INVALID_BOT_INSTALLATION:$required_file"
+        exit 27
+    }
+done
+TMP_DIR=$(mktemp -d /tmp/mirza-container-update.XXXXXX)
+BACKUP_DIR=/var/backups/therealbot
+LOCK_FILE=/run/lock/therealbot-update.lock
+command -v flock >/dev/null 2>&1 || {
+    echo MISSING_COMMAND:flock
+    exit 21
+}
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo UPDATE_ALREADY_RUNNING
+    exit 20
+fi
+STAMP=$(date +%Y%m%d_%H%M%S)
+cleanup() { rm -rf "$TMP_DIR"; }
+trap cleanup EXIT
+case "$SOURCE_URL" in
+    local-managed://*)
+        echo "LOCAL_SOURCE_UPDATE_REQUIRES_HOST_MANAGER"
+        exit 25
+        ;;
+esac
+mkdir -p "$BACKUP_DIR"
+curl -fL --retry 3 --connect-timeout 15 --max-time 240 "$SOURCE_URL" -o "$TMP_DIR/source.zip"
+unzip -q "$TMP_DIR/source.zip" -d "$TMP_DIR/extracted"
+SOURCE_DIR=$(find "$TMP_DIR/extracted" -mindepth 1 -maxdepth 1 -type d | head -1)
+[ -f "$SOURCE_DIR/index.php" ] && [ -f "$SOURCE_DIR/table.php" ] || exit 23
+find "$SOURCE_DIR" -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null; done
+tar -czf "$BACKUP_DIR/source_${STAMP}.tar.gz" -C "$BOT_DIR" .
+rsync -a --delete --exclude='/config.php' --exclude='/error_log' "$SOURCE_DIR/" "$BOT_DIR/"
+chown -R www-data:www-data "$BOT_DIR"
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'source_*.tar.gz' -printf '%T@ %p\n' \
+    | sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -f
+echo UPDATE_SUCCESS
+EOF
+    chmod 750 "$dir/container-update.sh"
+
+    cat > "$dir/compose.yml" <<EOF
+services:
+  db:
+    image: mysql:8.0
+    container_name: mirza-$slug-db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: \${DB_NAME}
+      MYSQL_USER: \${DB_USER}
+      MYSQL_PASSWORD: \${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: \${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\$\$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+  app:
+    image: mirza-$slug-app:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mirza-$slug-app
+    restart: unless-stopped
+    environment:
+      MIRZA_DOCKER_INSTANCE: \${BOT_SLUG}
+      MIRZA_SOURCE_URL: \${SOURCE_URL}
+    volumes:
+      - ./app:/var/www/html
+      - ./updater-backups:/var/backups/therealbot
+    ports:
+      - "127.0.0.1:\${APP_PORT}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/app/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 40s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  internal:
+    name: mirza-$slug-internal
+    internal: true
+  edge:
+    name: mirza-$slug-edge
+volumes:
+  db_data:
+    name: mirza-$slug-db-data
+EOF
+    chown -R 33:33 "$dir/app"
+    mkdir -p "$dir/updater-backups"
+    chmod 700 "$dir/updater-backups"
+}
+
+docker_wait_healthy() {
+    local container="$1" retries="${2:-60}" status i
+    for ((i=0; i<retries; i++)); do
+        status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null)
+        [ "$status" = "healthy" ] && return 0
+        case "$status" in
+            unhealthy|exited|dead) return 1 ;;
+        esac
+        sleep 2
+    done
+    return 1
+}
+
+docker_prompt_slug() {
+    local prompt="${1:-Instance id}" slug
+    printf "  ${C_PROMPT}❯${CR} %s: " "$prompt"
+    read -r slug
+    valid_bot_slug "$slug" || { echo "Invalid id. Use lowercase letters, digits and hyphens."; return 1; }
+    printf '%s' "$slug"
+}
+
+docker_bot_add() {
+    local slug domain token admin_id bot_name dir db_user db_pass db_root_pass app_port schedule answer webhook_response token_file
+    docker_install_engine || { echo "Docker gateway setup failed."; return 1; }
+
+    slug="${ARG_ID:-}"
+    [ -n "$slug" ] || slug=$(docker_prompt_slug "Bot id (example: shop1)") || return 1
+    valid_bot_slug "$slug" || { echo "Invalid bot id."; return 1; }
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ ! -e "$dir" ] || { echo "Bot '$slug' already exists."; return 1; }
+
+    domain="${ARG_DOMAIN:-}"
+    [ -n "$domain" ] || { printf "Domain: "; read -r domain; }
+    validate_domain "$domain" || { echo "Invalid domain."; return 1; }
+    if grep -Rqx "DOMAIN=$domain" "$DOCKER_INSTANCES"/*/.env 2>/dev/null; then
+        echo "This domain is already assigned to another bot."
+        return 1
+    fi
+    if [ "$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null)" = "apache" ] \
+        && grep -RhsE '^[[:space:]]*ServerName[[:space:]]+' /etc/apache2/sites-enabled 2>/dev/null \
+            | awk -v expected="$domain" '$1 == "ServerName" && $2 == expected { found=1 } END { exit !found }'; then
+        echo "This domain already belongs to an existing Apache site. Use a new subdomain for this bot."
+        return 1
+    fi
+
+    token="${ARG_TOKEN:-}"
+    token_file="${ARG_TOKEN_FILE:-}"
+    if [ -n "$token_file" ]; then
+        token_file=$(readlink -f -- "$token_file" 2>/dev/null) || { echo "Invalid --token-file path."; return 1; }
+        [ -f "$token_file" ] && [ ! -L "$token_file" ] || { echo "Telegram token file was not found."; return 1; }
+        token=$(head -n 1 -- "$token_file" | tr -d '\r\n')
+    fi
+    [ -n "$token" ] || { printf "Telegram bot token: "; read -rs token; echo; }
+    validate_token "$token"; case $? in
+        0) ;;
+        1) echo "Invalid Telegram token format."; return 1 ;;
+        2) echo "Telegram rejected the token or is unreachable."; return 1 ;;
+    esac
+
+    admin_id="${ARG_ADMIN:-}"
+    [ -n "$admin_id" ] || { printf "Admin numeric id: "; read -r admin_id; }
+    [[ "$admin_id" =~ ^-?[0-9]+$ ]] || { echo "Invalid admin id."; return 1; }
+
+    bot_name="${ARG_NAME:-}"
+    [ -n "$bot_name" ] || { printf "Bot username: "; read -r bot_name; }
+    bot_name="${bot_name#@}"
+    [[ "$bot_name" =~ ^[A-Za-z0-9_]{5,32}$ ]] || { echo "Invalid bot username."; return 1; }
+
+    if ! domain_points_here "$domain"; then
+        echo -e "${C_WARN}Warning: $domain does not currently resolve directly to this server. Caddy cannot issue SSL until DNS is correct.${CR}"
+        if [ "$ARG_FORCE" != "1" ]; then
+            printf "Continue anyway? (y/N): "; read -r answer
+            [[ "$answer" =~ ^[Yy]$ ]] || return 1
+        fi
+    fi
+
+    mkdir -p "$dir/app"
+    if ! docker_fetch_source "$dir/app"; then
+        rm -rf "$dir"
+        echo "Failed to download or validate bot source."
+        return 1
+    fi
+    db_user="u_$(openssl rand -hex 6)"
+    db_pass=$(openssl rand -hex 16)
+    db_root_pass=$(openssl rand -hex 20)
+    app_port=$(docker_allocate_app_port) || { rm -rf "$dir"; return 1; }
+    docker_write_instance_files "$dir" "$slug" "$domain" "$token" "$admin_id" "$bot_name" "$db_user" "$db_pass" "$db_root_pass" "$app_port" \
+        || { rm -rf "$dir"; return 1; }
+
+    echo "Building isolated containers for $slug..."
+    if ! docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d --build; then
+        docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
+        rm -rf "$dir"
+        return 1
+    fi
+    docker_wait_healthy "mirza-$slug-db" 90 || {
+        echo "Database container did not become healthy. Installation was rolled back."
+        docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
+        rm -rf "$dir"
+        return 1
+    }
+    docker_wait_healthy "mirza-$slug-app" 90 || {
+        echo "Application container did not become healthy. Installation was rolled back."
+        docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
+        rm -rf "$dir"
+        return 1
+    }
+
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
+        "find /var/www/html -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" \
+        || {
+            echo "PHP validation failed. Installation was rolled back."
+            docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+            docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
+            rm -rf "$dir"
+            return 1
+        }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app php /var/www/html/table.php >/dev/null \
+        || {
+            echo "Database initialization failed. Installation was rolled back."
+            docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+            docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v >/dev/null 2>&1 || true
+            rm -rf "$dir"
+            return 1
+        }
+
+    if ! docker_refresh_gateway; then
+        echo "Containers are installed, but the domain/SSL route is not ready. Fix DNS or Apache, then run: mirza bot-restart --id $slug"
+        return 1
+    fi
+    sleep 3
+    webhook_response=$(curl -fsS --retry 4 --retry-delay 3 \
+        -F "url=https://$domain/index.php" "https://api.telegram.org/bot$token/setWebhook" 2>/dev/null || true)
+    echo "$webhook_response" | grep -q '"ok":true' || {
+        echo "Bot is running, but Telegram webhook setup failed. Check DNS/SSL and retry the update command."
+    }
+
+    schedule="${ARG_SCHEDULE:-daily}"
+    if ! docker_bot_schedule_backup "$slug" "$schedule" "${ARG_RETENTION:-7}" >/dev/null; then
+        echo "Warning: automatic backup scheduling failed; the bot itself is installed."
+    fi
+    if [ -n "$ARG_BACKUP" ]; then
+        docker_bot_restore "$slug" "$ARG_BACKUP" || return 1
+    fi
+    echo -e "${C_OK}Bot '$slug' installed: https://$domain${CR}"
+}
+
+docker_bot_list() {
+    local env_file slug domain status count=0
+    printf '%-20s %-36s %-12s\n' "INSTANCE" "DOMAIN" "STATUS"
+    for env_file in "$DOCKER_INSTANCES"/*/.env; do
+        [ -f "$env_file" ] || continue
+        slug=$(docker_env_value BOT_SLUG "$env_file")
+        domain=$(docker_env_value DOMAIN "$env_file")
+        status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "mirza-$slug-app" 2>/dev/null || echo stopped)
+        printf '%-20s %-36s %-12s\n' "$slug" "$domain" "$status"
+        count=$((count + 1))
+    done
+    [ "$count" -gt 0 ] || echo "No Docker bots installed."
+}
+
+docker_bot_backup() {
+    local slug="${1:-${ARG_ID:-}}" dir backup_dir temp_dir stamp archive retention
+    valid_bot_slug "$slug" || { echo "Invalid or missing --id."; return 1; }
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || { echo "Bot '$slug' not found."; return 1; }
+    backup_dir="$DOCKER_BACKUPS/$slug"
+    mkdir -p "$backup_dir"
+    chmod 700 "$backup_dir"
+    temp_dir=$(mktemp -d "$backup_dir/.build.XXXXXX") || return 1
+    stamp=$(date +%Y%m%d_%H%M%S)
+    archive="$backup_dir/${slug}_${stamp}.tar.gz"
+
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d db >/dev/null || { rm -rf "$temp_dir"; return 1; }
+    docker_wait_healthy "mirza-$slug-db" 60 || { rm -rf "$temp_dir"; return 1; }
+    if ! docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T db sh -c \
+        'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --quick --routines --triggers "$MYSQL_DATABASE"' \
+        > "$temp_dir/database.sql"; then
+        rm -rf "$temp_dir"; echo "Database backup failed."; return 1
+    fi
+    tar -czf "$temp_dir/app.tar.gz" -C "$dir" app || { rm -rf "$temp_dir"; return 1; }
+    cp "$dir/.env" "$temp_dir/instance.env"
+    cat > "$temp_dir/manifest.txt" <<EOF
+format=mirza-docker-backup-v1
+instance=$slug
+domain=$(docker_env_value DOMAIN "$dir/.env")
+created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+    (cd "$temp_dir" && sha256sum database.sql app.tar.gz instance.env > SHA256SUMS)
+    tar -czf "$archive" -C "$temp_dir" database.sql app.tar.gz instance.env manifest.txt SHA256SUMS \
+        || { rm -rf "$temp_dir"; return 1; }
+    rm -rf "$temp_dir"
+    chmod 600 "$archive"
+    retention="${ARG_RETENTION:-7}"
+    [[ "$retention" =~ ^[0-9]+$ ]] || retention=7
+    [ "$retention" -lt 1 ] && retention=1
+    find "$backup_dir" -maxdepth 1 -type f -name "${slug}_*.tar.gz" -printf '%T@ %p\n' \
+        | sort -rn | tail -n +$((retention + 1)) | cut -d' ' -f2- \
+        | while IFS= read -r old_backup; do [ -n "$old_backup" ] && rm -f -- "$old_backup"; done
+    echo "$archive"
+}
+
+docker_bot_restore() {
+    local slug="${1:-${ARG_ID:-}}" archive="${2:-${ARG_BACKUP:-}}" dir temp_dir restore_dir current_config
+    local image validation_db
+    valid_bot_slug "$slug" || { echo "Invalid or missing bot id."; return 1; }
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || { echo "Bot '$slug' not found."; return 1; }
+    [ -f "$archive" ] || { echo "Backup file not found."; return 1; }
+    tar -tzf "$archive" >/dev/null 2>&1 || { echo "Invalid backup archive."; return 1; }
+    if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+        echo "Unsafe paths detected in backup."; return 1
+    fi
+    temp_dir=$(mktemp -d /tmp/mirza-restore.XXXXXX) || return 1
+    tar -xzf "$archive" -C "$temp_dir" || { rm -rf "$temp_dir"; return 1; }
+    (cd "$temp_dir" && sha256sum -c SHA256SUMS >/dev/null) \
+        || { rm -rf "$temp_dir"; echo "Backup checksum verification failed."; return 1; }
+    grep -qx 'format=mirza-docker-backup-v1' "$temp_dir/manifest.txt" \
+        || { rm -rf "$temp_dir"; echo "Unsupported backup format."; return 1; }
+
+    docker_bot_backup "$slug" >/dev/null || { rm -rf "$temp_dir"; echo "Safety backup failed; restore cancelled."; return 1; }
+    restore_dir="$temp_dir/restored"
+    mkdir -p "$restore_dir"
+    if ! tar -tzf "$temp_dir/app.tar.gz" >/dev/null 2>&1 \
+        || tar -tzf "$temp_dir/app.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+        rm -rf "$temp_dir"
+        echo "Unsafe application archive detected."
+        return 1
+    fi
+    tar -xzf "$temp_dir/app.tar.gz" -C "$restore_dir" || { rm -rf "$temp_dir"; return 1; }
+    [ -f "$restore_dir/app/index.php" ] || { rm -rf "$temp_dir"; echo "Backup has no valid app source."; return 1; }
+    image=$(docker inspect -f '{{.Config.Image}}' "mirza-$slug-app" 2>/dev/null)
+    [ -n "$image" ] || { rm -rf "$temp_dir"; echo "Application image is missing."; return 1; }
+    docker run --rm --entrypoint sh -v "$restore_dir/app:/candidate:ro" "$image" -c \
+        "find /candidate -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" \
+        || { rm -rf "$temp_dir"; echo "Backup contains invalid PHP files."; return 1; }
+    current_config="$temp_dir/current-config.php"
+    cp "$dir/app/config.php" "$current_config" || {
+        rm -rf "$temp_dir"; echo "Current bot configuration could not be preserved."; return 1
+    }
+
+    # Validate the SQL using the restricted application account in a temporary
+    # database before touching the live database.
+    validation_db="mirza_restore_$(openssl rand -hex 5)"
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d db >/dev/null \
+        || { rm -rf "$temp_dir"; return 1; }
+    docker_wait_healthy "mirza-$slug-db" 60 || { rm -rf "$temp_dir"; return 1; }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T -e RESTORE_DB="$validation_db" db sh -c \
+        'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$RESTORE_DB\`; CREATE DATABASE \`$RESTORE_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON \`$RESTORE_DB\`.* TO '\''$MYSQL_USER'\''@'\''%'\'';"' \
+        || { rm -rf "$temp_dir"; return 1; }
+    if ! docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T -e RESTORE_DB="$validation_db" db sh -c \
+        'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$RESTORE_DB"' < "$temp_dir/database.sql"; then
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T -e RESTORE_DB="$validation_db" db sh -c \
+            'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE ALL PRIVILEGES ON \`$RESTORE_DB\`.* FROM '\''$MYSQL_USER'\''@'\''%'\''; DROP DATABASE IF EXISTS \`$RESTORE_DB\`;"' >/dev/null 2>&1 || true
+        rm -rf "$temp_dir"
+        echo "Backup database validation failed; live data was not changed."
+        return 1
+    fi
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T -e RESTORE_DB="$validation_db" db sh -c \
+        'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE ALL PRIVILEGES ON \`$RESTORE_DB\`.* FROM '\''$MYSQL_USER'\''@'\''%'\''; DROP DATABASE IF EXISTS \`$RESTORE_DB\`;"' >/dev/null \
+        || { rm -rf "$temp_dir"; return 1; }
+
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" stop app >/dev/null 2>&1 || true
+    rsync -a --delete "$restore_dir/app/" "$dir/app/" || {
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+        rm -rf "$temp_dir"
+        return 1
+    }
+    cp "$current_config" "$dir/app/config.php" || {
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+        rm -rf "$temp_dir"
+        return 1
+    }
+    chown -R 33:33 "$dir/app"
+
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d db >/dev/null || {
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+        rm -rf "$temp_dir"; return 1
+    }
+    docker_wait_healthy "mirza-$slug-db" 60 || {
+        docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+        rm -rf "$temp_dir"; return 1
+    }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T db sh -c \
+        'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`; CREATE DATABASE \`$MYSQL_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"' \
+        || {
+            docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+            rm -rf "$temp_dir"; return 1
+        }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T db sh -c \
+        'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < "$temp_dir/database.sql" \
+        || {
+            docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d app >/dev/null 2>&1 || true
+            rm -rf "$temp_dir"; echo "Database restore failed."; return 1
+        }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d --force-recreate app >/dev/null || {
+        rm -rf "$temp_dir"; return 1
+    }
+    docker_wait_healthy "mirza-$slug-app" 90 || {
+        rm -rf "$temp_dir"; echo "Application did not become healthy after restore."; return 1
+    }
+    rm -rf "$temp_dir"
+    echo "Backup restored successfully for '$slug'."
+}
+
+docker_bot_update() {
+    local slug="${1:-${ARG_ID:-}}" dir temp_dir config_backup image backup_path
+    valid_bot_slug "$slug" || { echo "Invalid or missing --id."; return 1; }
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || { echo "Bot '$slug' not found."; return 1; }
+    backup_path=$(docker_bot_backup "$slug") || { echo "Pre-update backup failed; update cancelled."; return 1; }
+    temp_dir=$(mktemp -d /tmp/mirza-update.XXXXXX) || return 1
+    mkdir -p "$temp_dir/app"
+    docker_fetch_source "$temp_dir/app" || { rm -rf "$temp_dir"; return 1; }
+    image=$(docker inspect -f '{{.Config.Image}}' "mirza-$slug-app" 2>/dev/null)
+    [ -n "$image" ] || { rm -rf "$temp_dir"; echo "Application image is missing."; return 1; }
+    docker run --rm --entrypoint sh -v "$temp_dir/app:/candidate:ro" "$image" -c \
+        "find /candidate -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" \
+        || { rm -rf "$temp_dir"; echo "Update source contains invalid PHP files."; return 1; }
+    config_backup="$temp_dir/config.php"
+    cp "$dir/app/config.php" "$config_backup" || { rm -rf "$temp_dir"; return 1; }
+    rsync -a --delete --exclude='config.php' "$temp_dir/app/" "$dir/app/"
+    cp "$config_backup" "$dir/app/config.php"
+    chown -R 33:33 "$dir/app"
+    rm -rf "$temp_dir"
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" up -d --build --force-recreate app || {
+        echo "Update failed; restoring the pre-update backup."
+        docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
+        return 1
+    }
+    docker_wait_healthy "mirza-$slug-app" 90 || {
+        echo "Updated app is unhealthy; restoring the pre-update backup."
+        docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
+        return 1
+    }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app sh -c \
+        "find /var/www/html -type f -name '*.php' -print0 | xargs -0 -r -n1 php -l >/dev/null" || {
+            echo "PHP validation failed after update; restoring the pre-update backup."
+            docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
+            return 1
+        }
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" exec -T app php /var/www/html/table.php >/dev/null || {
+        echo "Database migration failed; restoring the pre-update backup."
+        docker_bot_restore "$slug" "$backup_path" >/dev/null || echo "Automatic rollback failed. Restore manually from: $backup_path"
+            return 1
+    }
+    docker_refresh_gateway || { echo "Gateway refresh failed after update."; return 1; }
+    local domain token response
+    domain=$(docker_env_value DOMAIN "$dir/.env")
+    token=$(docker_env_value BOT_TOKEN "$dir/.env")
+    response=$(curl -fsS -F "url=https://$domain/index.php" "https://api.telegram.org/bot$token/setWebhook" 2>/dev/null || true)
+    echo "$response" | grep -q '"ok":true' || echo "Warning: webhook refresh failed."
+    echo "Bot '$slug' updated successfully."
+}
+
+docker_bot_schedule_backup() {
+    local slug="${1:-${ARG_ID:-}}" schedule="${2:-${ARG_SCHEDULE:-daily}}" retention="${3:-${ARG_RETENTION:-7}}"
+    local cron_file manager minute
+    valid_bot_slug "$slug" || return 1
+    [ -f "$DOCKER_INSTANCES/$slug/.env" ] || return 1
+    [[ "$retention" =~ ^[0-9]+$ ]] || retention=7
+    cron_file="/etc/cron.d/mirza-$slug-backup"
+    if [ "$schedule" = "off" ]; then
+        rm -f "$cron_file"
+        return 0
+    fi
+    manager="/usr/local/bin/mirza"
+    [ -x "$manager" ] || { echo "Mirza manager command is missing."; return 1; }
+    minute=$(( $(printf '%s' "$slug" | cksum | awk '{print $1}') % 50 + 5 ))
+    case "$schedule" in
+        daily)  schedule="$minute 3 * * *" ;;
+        weekly) schedule="$minute 3 * * 0" ;;
+        *) echo "Schedule must be daily, weekly or off."; return 1 ;;
+    esac
+    printf '%s root %q bot-backup --id %q --retention %q >> /var/log/mirza-backup.log 2>&1\n' \
+        "$schedule" "$manager" "$slug" "$retention" > "$cron_file"
+    chmod 644 "$cron_file"
+}
+
+docker_bot_remove() {
+    local slug="${1:-${ARG_ID:-}}" dir answer gateway_mode
+    valid_bot_slug "$slug" || { echo "Invalid or missing --id."; return 1; }
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || { echo "Bot '$slug' not found."; return 1; }
+    if [ "$ARG_FORCE" != "1" ]; then
+        printf "Remove '$slug', its containers and database volume? Type the instance id: "
+        read -r answer
+        [ "$answer" = "$slug" ] || { echo "Cancelled."; return 1; }
+    fi
+    docker_bot_backup "$slug" >/dev/null || { echo "Final backup failed; removal cancelled."; return 1; }
+    docker network disconnect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+    if ! docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" down -v --remove-orphans; then
+        docker network connect "mirza-$slug-edge" mirza-gateway >/dev/null 2>&1 || true
+        return 1
+    fi
+    gateway_mode=$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null || printf 'direct')
+    [ "$gateway_mode" = "apache" ] && docker_remove_apache_route "$slug"
+    rm -f "/etc/cron.d/mirza-$slug-backup"
+    rm -rf "$dir"
+    docker_refresh_gateway || true
+    echo "Bot '$slug' removed. Its backups remain in $DOCKER_BACKUPS/$slug."
+}
+
+docker_bot_restart() {
+    local slug="${1:-${ARG_ID:-}}" dir
+    valid_bot_slug "$slug" || return 1
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || return 1
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" restart || return 1
+    docker_refresh_gateway
+}
+
+docker_bot_logs() {
+    local slug="${1:-${ARG_ID:-}}" dir
+    valid_bot_slug "$slug" || return 1
+    dir=$(docker_instance_dir "$slug") || return 1
+    [ -f "$dir/.env" ] || return 1
+    docker_compose --env-file "$dir/.env" -f "$dir/compose.yml" logs --tail 200 -f app
+}
+
+docker_manager_menu() {
+    local option slug archive schedule retention
+    while true; do
+        clear; banner; _sec "Docker multi-bot manager"
+        _mi "1" "Add isolated bot"
+        _mi "2" "List bots"
+        _mi "3" "Update a bot"
+        _mi "4" "Create backup"
+        _mi "5" "Restore backup"
+        _mi "6" "Automatic backup schedule"
+        _mi "7" "Restart a bot"
+        _mi "8" "View app logs"
+        _mi "9" "Remove a bot"
+        _mi "0" "Back"
+        _rule; printf "  ${C_PROMPT}❯${CR} Select: "; read -r option
+        case "$option" in
+            1) docker_bot_add ;;
+            2) docker_bot_list ;;
+            3) slug=$(docker_prompt_slug) && docker_bot_update "$slug" ;;
+            4) slug=$(docker_prompt_slug) && docker_bot_backup "$slug" ;;
+            5) slug=$(docker_prompt_slug) || continue; printf "Backup path: "; read -r archive; docker_bot_restore "$slug" "$archive" ;;
+            6) slug=$(docker_prompt_slug) || continue; printf "Schedule (daily/weekly/off): "; read -r schedule; printf "Retention count [7]: "; read -r retention; docker_bot_schedule_backup "$slug" "$schedule" "${retention:-7}" ;;
+            7) slug=$(docker_prompt_slug) && docker_bot_restart "$slug" ;;
+            8) slug=$(docker_prompt_slug) && docker_bot_logs "$slug" ;;
+            9) slug=$(docker_prompt_slug) && docker_bot_remove "$slug" ;;
+            0) show_menu; return ;;
+            *) echo "Invalid option." ;;
+        esac
+        echo; printf "Press Enter to continue... "; read -r _
+    done
+}
+
+control_panel_execute() {
+    local action="${1:-install}" script_dir installer temp_dir archive extracted
+    local -a panel_args
+    script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)")
+    installer="$script_dir/control-panel/install.sh"
+
+    if [ "$action" = "install" ]; then
+        docker_install_engine || return 1
+    fi
+
+    if [ "$action" != "install" ] && [ -f "$CONTROL_PANEL_ROOT/source/install.sh" ]; then
+        installer="$CONTROL_PANEL_ROOT/source/install.sh"
+    elif [ ! -f "$installer" ]; then
+        temp_dir=$(mktemp -d /tmp/mirza-control-panel.XXXXXX) || return 1
+        archive="$temp_dir/source.zip"
+        curl -fL --retry 3 --connect-timeout 15 --max-time 240 \
+            "https://github.com/$GIT_REPO/archive/refs/heads/main.zip" -o "$archive" \
+            || { rm -rf "$temp_dir"; echo "Failed to download the control-panel source."; return 1; }
+        unzip -q "$archive" -d "$temp_dir/extracted" \
+            || { rm -rf "$temp_dir"; echo "Failed to extract the control-panel source."; return 1; }
+        extracted=$(find "$temp_dir/extracted" -mindepth 1 -maxdepth 1 -type d | head -1)
+        installer="$extracted/control-panel/install.sh"
+        [ -f "$installer" ] || { rm -rf "$temp_dir"; echo "Control-panel installer is missing from the source."; return 1; }
+    fi
+
+    panel_args=("$action")
+    [ -n "${ARG_PANEL_DOMAIN:-}" ] && panel_args+=(--domain "$ARG_PANEL_DOMAIN")
+    [ -n "${ARG_PANEL_USERNAME:-}" ] && panel_args+=(--username "$ARG_PANEL_USERNAME")
+    [ -n "${ARG_PANEL_PASSWORD:-}" ] && panel_args+=(--password "$ARG_PANEL_PASSWORD")
+    [ "$ARG_FORCE" = "1" ] && panel_args+=(--yes)
+    bash "$installer" "${panel_args[@]}"
+    local result=$?
+    [ -n "${temp_dir:-}" ] && rm -rf "$temp_dir"
+    return "$result"
+}
+
+control_panel_menu() {
+    local option
+    while true; do
+        clear; banner; _sec "Web multi-bot control panel"
+        _mi "1" "Install or update the web panel"
+        _mi "2" "Show panel and agent status"
+        _mi "3" "Reset administrator password"
+        _mi "4" "Remove only the web panel"
+        _mi "0" "Back"
+        _rule; printf "  ${C_PROMPT}❯${CR} Select: "; read -r option
+        case "$option" in
+            1)
+                printf "Management domain: "; read -r ARG_PANEL_DOMAIN
+                printf "Admin username [admin]: "; read -r ARG_PANEL_USERNAME
+                ARG_PANEL_USERNAME="${ARG_PANEL_USERNAME:-admin}"
+                control_panel_execute install
+                ;;
+            2) control_panel_execute status ;;
+            3)
+                printf "Admin username [admin]: "; read -r ARG_PANEL_USERNAME
+                ARG_PANEL_USERNAME="${ARG_PANEL_USERNAME:-admin}"
+                control_panel_execute reset-password
+                ;;
+            4) control_panel_execute remove ;;
+            0) show_menu; return ;;
+            *) echo "Invalid option." ;;
+        esac
+        echo; printf "Press Enter to continue... "; read -r _
+    done
+}
+
 function show_menu() {
     show_logo
     _sec "Menu"
@@ -989,10 +2244,12 @@ function show_menu() {
     _mi "4" "Migrate: Free -> Pro (Beta)"
     _mi "5" "Renew SSL certificate"
     _mi "6" "Help & Parameters"
-    _mi "7" "Exit"
+    _mi "7" "Docker multi-bot manager"
+    _mi "8" "Web multi-bot control panel"
+    _mi "9" "Exit"
     _rule
     echo ""
-    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-7]${CR}: "
+    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-9]${CR}: "
     read -r option
     case $option in
         1) install_bot ;;
@@ -1001,7 +2258,9 @@ function show_menu() {
         4) migrate_to_pro ;;
         5) renew_ssl ;;
         6) show_help_screen ;;
-        7) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
+        7) docker_manager_menu ;;
+        8) control_panel_menu ;;
+        9) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
         *) echo -e "\n${C_BAD}Invalid option. Please try again.${CR}"; sleep 1; show_menu ;;
     esac
 }
@@ -1017,6 +2276,21 @@ function show_help_screen() {
     _kv "remove" "${C_DIM}Remove Mirza and its services${CR}"
     _kv "migrate" "${C_DIM}Migrate Free -> Pro${CR}"
     _kv "renew" "${C_DIM}Renew the bot domain SSL certificate${CR}"
+    _kv "updater-refresh" "${C_DIM}Reinstall the admin-panel auto-updater${CR}"
+    _kv "bot-add" "${C_DIM}Install a new isolated Docker bot${CR}"
+    _kv "bot-list" "${C_DIM}List Docker bot instances${CR}"
+    _kv "bot-update" "${C_DIM}Backup and update one Docker bot${CR}"
+    _kv "bot-backup" "${C_DIM}Create app + database backup${CR}"
+    _kv "bot-restore" "${C_DIM}Restore a backup into one bot${CR}"
+    _kv "bot-remove" "${C_DIM}Backup and remove one Docker bot${CR}"
+    _kv "bot-restart" "${C_DIM}Restart one Docker bot${CR}"
+    _kv "bot-logs" "${C_DIM}Follow one Docker bot's app logs${CR}"
+    _kv "bot-backup-schedule" "${C_DIM}Configure daily/weekly backups${CR}"
+    _kv "panel-install" "${C_DIM}Install or update the web multi-bot panel${CR}"
+    _kv "panel-status" "${C_DIM}Show web panel and agent status${CR}"
+    _kv "panel-reset-password" "${C_DIM}Reset the web panel administrator${CR}"
+    _kv "panel-remove" "${C_DIM}Remove the web panel without removing customer bots${CR}"
+    _kv "docker-init" "${C_DIM}Initialize Docker and the shared HTTPS gateway${CR}"
     _kv "menu" "${C_DIM}Open this interactive panel (default)${CR}"
 
     _sec "Install parameters"
@@ -1030,6 +2304,15 @@ function show_help_screen() {
     _sec "Source parameters"
     _kv "--version" "${C_DIM}Specific release tag (e.g. 0.1.7)${CR}"
     _kv "--channel" "${C_DIM}beta | release | auto${CR}"
+    _kv "--id" "${C_DIM}Docker instance id (e.g. shop1)${CR}"
+    _kv "--backup" "${C_DIM}Backup archive used by add/restore${CR}"
+    _kv "--schedule" "${C_DIM}daily | weekly | off${CR}"
+    _kv "--retention" "${C_DIM}Number of backups to keep${CR}"
+    _kv "--source-dir" "${C_DIM}Install from a local source directory${CR}"
+    _kv "--panel-domain" "${C_DIM}HTTPS domain for the web management panel${CR}"
+    _kv "--panel-user" "${C_DIM}Web panel administrator username${CR}"
+    _kv "--panel-password" "${C_DIM}Initial/reset web panel password${CR}"
+    _kv "--yes" "${C_DIM}Skip interactive confirmations${CR}"
     _kv "-h, --help" "${C_DIM}Show CLI help and exit${CR}"
 
     _sec "Examples"
@@ -1039,6 +2322,11 @@ function show_help_screen() {
     printf "    ${C_KEY}mirza update --version 0.1.6${CR}\n"
     printf "    ${C_KEY}mirza update --channel release${CR}\n"
     printf "    ${C_KEY}mirza remove${CR}\n"
+    printf "    ${C_KEY}mirza bot-add --id shop1 --name ShopBot --token TOKEN \\\${CR}\n"
+    printf "    ${C_DIM}              --admin 111 --domain shop1.example.com${CR}\n"
+    printf "    ${C_KEY}mirza bot-backup --id shop1 --retention 14${CR}\n"
+    printf "    ${C_KEY}mirza bot-restore --id shop1 --backup /path/to/backup.tar.gz${CR}\n"
+    printf "    ${C_KEY}mirza panel-install --panel-domain manager.example.com${CR}\n"
 
     echo ""
     _rule
@@ -1133,7 +2421,7 @@ domain_points_here() {
 
 # 0 = valid+live, 1 = bad format, 2 = format ok but token rejected/unreachable
 validate_token() {
-    [[ "$1" =~ ^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$ ]] || return 1
+    [[ "$1" =~ ^[0-9]{6,15}:[a-zA-Z0-9_-]{30,100}$ ]] || return 1
     local r; r=$(curl -fsSL --max-time 8 "https://api.telegram.org/bot$1/getMe" 2>/dev/null)
     echo "$r" | grep -q '"ok":true' && return 0
     return 2
@@ -1722,7 +3010,7 @@ EOF
             "curl -s -F \"url=https://${YOUR_DOMAIN}/index.php\" -F \"secret_token=${secrettoken}\" \"https://api.telegram.org/bot${YOUR_BOT_TOKEN}/setWebhook\"" \
             || { show_step_error; install_pause "Setting Telegram webhook"; }
 
-        MESSAGE="✅ The VPN bot is installed! for start the bot send /start command."
+        MESSAGE="✅ The Mirza bot is installed! for start the bot send /start command."
         curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" -d chat_id="${YOUR_CHAT_ID}" -d text="$MESSAGE" > /dev/null 2>&1
         sleep 3
         run_step "Starting Apache" "systemctl start apache2" \
@@ -2238,8 +3526,11 @@ EOF
 
 # ── Command-line argument parsing ────────────────────────────
 # Globals filled from flags (consumed by install/update where relevant)
-ARG_NAME=""     ARG_TOKEN=""   ARG_ADMIN=""    ARG_DOMAIN=""
-ARG_DBUSER=""   ARG_DBPASS=""  ARG_VERSION=""  ARG_CHANNEL=""
+ARG_NAME=""       ARG_TOKEN=""      ARG_ADMIN=""      ARG_DOMAIN=""
+ARG_DBUSER=""     ARG_DBPASS=""     ARG_VERSION=""    ARG_CHANNEL=""
+ARG_ID=""         ARG_BACKUP=""     ARG_SCHEDULE=""   ARG_RETENTION="7"
+ARG_SOURCE_DIR="" ARG_FORCE="0"
+ARG_TOKEN_FILE="" ARG_PANEL_DOMAIN="" ARG_PANEL_USERNAME="" ARG_PANEL_PASSWORD=""
 
 print_usage() {
     cat <<USAGE
@@ -2255,6 +3546,22 @@ print_usage() {
     remove             Remove Mirza
     migrate            Migrate Free -> Pro
     renew              Renew the bot domain SSL certificate
+    updater-refresh    Reinstall the admin-panel auto-updater
+    bot-add            Add an isolated Docker bot
+    bot-list           List Docker bots
+    bot-update         Backup and update a Docker bot
+    bot-backup         Create a full Docker bot backup
+    bot-restore        Restore a Docker bot backup
+    bot-remove         Backup and remove a Docker bot
+    bot-restart        Restart a Docker bot
+    bot-logs           Follow Docker bot logs
+    bot-backup-schedule Configure automatic backups
+    panel-install      Install or update the web multi-bot control panel
+    panel-status       Show control-panel status
+    panel-reset-password Reset the control-panel administrator password
+    panel-remove       Remove only the web panel; customer bots remain intact
+    gateway-refresh    Refresh HTTPS routes for bots and the control panel
+    docker-init        Initialize the isolated Docker runtime and gateway
     menu               Show interactive menu (default)
 
   Options:
@@ -2266,6 +3573,16 @@ print_usage() {
     --db-pass <pass>   Database password
     --version <tag>    Install/update a specific release tag (e.g. 0.1.7)
     --channel <name>   Source channel: beta | release | auto
+    --id <name>        Docker instance id
+    --backup <path>    Backup archive for add/restore
+    --schedule <mode>  daily | weekly | off
+    --retention <n>    Number of backups to keep
+    --source-dir <path> Use a local bot source directory
+    --token-file <path> Read Telegram token from a protected file
+    --panel-domain <domain> HTTPS domain for the web control panel
+    --panel-user <name> Web panel administrator username
+    --panel-password <password> Initial/reset web panel password
+    --yes              Skip destructive confirmations
     -h, --help         Show this help and exit
 
   Examples:
@@ -2273,6 +3590,12 @@ print_usage() {
     mirza install --name myvpnbot --token 123:ABC --admin 111 --domain bot.example.com --version 0.1.7
     mirza update --channel release
     mirza update --version 0.1.6
+    mirza updater-refresh
+    mirza bot-add --id shop1 --name ShopBot --token TOKEN --admin 111 --domain shop.example.com
+    mirza bot-add --id shop2 --name ShopBot2 --token TOKEN --admin 111 --domain shop2.example.com --source-dir /path/to/custom-source
+    mirza bot-backup --id shop1 --retention 14
+    mirza bot-restore --id shop1 --backup /opt/mirza/backups/shop1/file.tar.gz
+    mirza panel-install --panel-domain manager.example.com
 
 USAGE
 }
@@ -2281,7 +3604,7 @@ process_arguments() {
     local cmd="menu"
     # First non-flag token is the command
     case "$1" in
-        install|update|remove|migrate|renew|menu) cmd="$1"; shift ;;
+        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule|panel-install|panel-status|panel-reset-password|panel-remove|gateway-refresh|docker-init) cmd="$1"; shift ;;
         -h|--help) print_usage; exit 0 ;;
         "") cmd="menu" ;;
         --*) cmd="menu" ;;            # only flags given -> menu, but still parse flags
@@ -2291,14 +3614,29 @@ process_arguments() {
     # Parse remaining flags
     while [ $# -gt 0 ]; do
         case "$1" in
+            --name|--token|--token-file|--admin|--domain|--db-user|--db-pass|--version|--channel|--id|--backup|--schedule|--retention|--source-dir|--panel-domain|--panel-user|--panel-password)
+                [ $# -ge 2 ] || { echo -e "\e[91mMissing value for $1\033[0m"; exit 1; }
+                ;;
+        esac
+        case "$1" in
             --name)    ARG_NAME="$2";    shift 2 ;;
             --token)   ARG_TOKEN="$2";   shift 2 ;;
+            --token-file) ARG_TOKEN_FILE="$2"; shift 2 ;;
             --admin)   ARG_ADMIN="$2";   shift 2 ;;
             --domain)  ARG_DOMAIN="$2";  shift 2 ;;
             --db-user) ARG_DBUSER="$2";  shift 2 ;;
             --db-pass) ARG_DBPASS="$2";  shift 2 ;;
             --version) ARG_VERSION="$2"; shift 2 ;;
             --channel) ARG_CHANNEL="$2"; shift 2 ;;
+            --id) ARG_ID="$2"; shift 2 ;;
+            --backup) ARG_BACKUP="$2"; shift 2 ;;
+            --schedule) ARG_SCHEDULE="$2"; shift 2 ;;
+            --retention) ARG_RETENTION="$2"; shift 2 ;;
+            --source-dir) ARG_SOURCE_DIR="$2"; shift 2 ;;
+            --panel-domain) ARG_PANEL_DOMAIN="$2"; shift 2 ;;
+            --panel-user) ARG_PANEL_USERNAME="$2"; shift 2 ;;
+            --panel-password) ARG_PANEL_PASSWORD="$2"; shift 2 ;;
+            --yes) ARG_FORCE="1"; shift ;;
             -h|--help) print_usage; exit 0 ;;
             *) echo -e "\e[91mUnknown option: $1\033[0m"; print_usage; exit 1 ;;
         esac
@@ -2310,6 +3648,26 @@ process_arguments() {
         remove)  remove_bot ;;
         migrate) migrate_to_pro ;;
         renew)   renew_ssl ;;
+        updater-refresh)
+            install_bot_auto_updater \
+                && echo "Admin-panel auto-updater refreshed successfully." \
+                || { echo "Failed to refresh the admin-panel auto-updater."; return 1; }
+            ;;
+        bot-add) docker_bot_add ;;
+        bot-list) docker_bot_list ;;
+        bot-update) docker_bot_update "$ARG_ID" ;;
+        bot-backup) docker_bot_backup "$ARG_ID" ;;
+        bot-restore) docker_bot_restore "$ARG_ID" "$ARG_BACKUP" ;;
+        bot-remove) docker_bot_remove "$ARG_ID" ;;
+        bot-restart) docker_bot_restart "$ARG_ID" ;;
+        bot-logs) docker_bot_logs "$ARG_ID" ;;
+        bot-backup-schedule) docker_bot_schedule_backup "$ARG_ID" "${ARG_SCHEDULE:-daily}" "$ARG_RETENTION" ;;
+        panel-install) control_panel_execute install ;;
+        panel-status) control_panel_execute status ;;
+        panel-reset-password) control_panel_execute reset-password ;;
+        panel-remove) control_panel_execute remove ;;
+        gateway-refresh) docker_refresh_gateway ;;
+        docker-init) docker_install_engine ;;
         menu|*)  show_menu ;;
     esac
 }
