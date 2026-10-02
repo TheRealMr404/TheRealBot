@@ -13,7 +13,6 @@ require_once $Pathfiles . 'function.php';
 require_once $Pathfiles . 'config.php';
 require_once $Pathfiles . 'jdf.php';
 require_once $Pathfiles . 'panels.php';
-require_once $Pathfiles . 'vpnbot/reseller_features.php';
 require_once 'func.php';
 require_once 'botapi.php';
 require_once 'keyboard.php';
@@ -27,18 +26,7 @@ if (!checktelegramip())
 $textbotlang = json_decode(file_get_contents($Pathfiles . 'text.json'), true)['fa'];
 $dataBase = select("botsaz", "*", "bot_token", $ApiToken, "select");
 $admin_ids = json_decode($dataBase['admin_ids']);
-$admin_ids = is_array($admin_ids) ? $admin_ids : [];
-$storedSetting = json_decode($dataBase['setting'], true);
-$setting = resellerBotNormalizeSettings($storedSetting);
-if (!is_array($storedSetting) || $setting !== $storedSetting) {
-    resellerBotSaveSettings($ApiToken, $setting);
-}
-$admin_idsmain = select("admin", "id_admin", null, null, "FETCH_COLUMN");
-$admin_idsmain = is_array($admin_idsmain) ? $admin_idsmain : [];
-if (!$setting['bot_enabled'] && !in_array($from_id, $admin_ids) && !in_array($from_id, $admin_idsmain)) {
-    sendmessage($from_id, htmlspecialchars($setting['maintenance_text'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), null, 'HTML');
-    return;
-}
+$setting = json_decode($dataBase['setting'], true);
 if (!empty($setting['channel'])) {
     $channel = channel_check("@" . $setting['channel']);
     if (count($channel) != 0) {
@@ -128,9 +116,9 @@ if ($user['username'] != $username) {
     update("user", "username", $username, "id", $from_id);
 }
 if ($text == "/start") {
-    $safeFirstName = htmlspecialchars((string) $first_name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $welcomeTemplate = htmlspecialchars($setting['welcome_text'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $textstart = str_replace(['{name}', '\\n'], [$safeFirstName, "\n"], $welcomeTemplate);
+    $textstart = "✋سلام $first_name عزیز به ربات ما خوش اومدی.
+
+برای ادامه  یک بخش را انتخاب کنید:";
     if (!in_array($from_id, $admin_ids)) {
         if ($setting['minpricetime'] > $setting['pricetime'] or $setting['minpricevolume'] > $setting['pricevolume']) {
             foreach ($admin_ids as $admin) {
@@ -342,7 +330,7 @@ if ($text == "/start") {
     $Keyboardsupport = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => "📞 ارتباط با پشتیبانی", 'url' => 'https://t.me/' . ltrim((string) $setting['support_username'], '@')],
+                ['text' => "📞 ارتباط با پشتیبانی", 'url' => 'https://t.me/' . $setting['support_username']],
             ],
         ]
     ]);
@@ -1256,7 +1244,6 @@ $textonebuy
             'parse_mode' => "HTML"
         ], $APIKEY);
     }
-    resellerSendConfiguredReport($setting, $text_report);
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
 } elseif ($datain == "AddBalance") {
@@ -1274,142 +1261,17 @@ $textonebuy
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backuser, 'HTML');
         return;
     }
-    $amount = (int) $text;
-    if ($amount < $setting['min_deposit'] || $amount > $setting['max_deposit']) {
-        sendmessage(
-            $from_id,
-            '❌ مبلغ شارژ باید بین ' . number_format($setting['min_deposit']) . ' تا ' . number_format($setting['max_deposit']) . ' تومان باشد.',
-            $backuser,
-            'HTML'
-        );
-        return;
-    }
-    $availableGateways = array_filter(resellerGatewayCatalog($setting), function ($gateway) {
-        return $gateway['enabled'] && $gateway['available'];
-    });
-    if (!$availableGateways) {
-        sendmessage($from_id, '❌ در حال حاضر روش پرداخت فعالی وجود ندارد. لطفاً با پشتیبانی در ارتباط باشید.', $backuser, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    savedata('clear', 'deposit_amount', $amount);
-    $paymentIntroText = resellerRenderTextTemplate($setting['payment_intro_text'], [
-        'amount' => number_format($amount),
-    ]);
-    sendmessage(
-        $from_id,
-        $paymentIntroText,
-        resellerPaymentKeyboard($setting),
-        'HTML'
-    );
-    step('choose_reseller_gateway', $from_id);
-} elseif (preg_match('/^reseller_pay_(card|zarinpal|aqayepardakht|nowpayments)$/', $datain, $resellerPayMatch)) {
-    if (($user['step'] ?? '') !== 'choose_reseller_gateway') {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'این درخواست منقضی شده است. دوباره مبلغ شارژ را وارد کنید.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-    $gatewayKey = $resellerPayMatch[1];
-    $gatewayConfig = $setting['payment_gateways'][$gatewayKey] ?? null;
-    if (!$gatewayConfig || !$gatewayConfig['enabled'] || !resellerGatewayIsAvailable($gatewayKey)) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'این روش پرداخت در حال حاضر فعال نیست.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-    $paymentData = json_decode($user['Processing_value'], true);
-    $amount = (int) ($paymentData['deposit_amount'] ?? 0);
-    if ($amount < $setting['min_deposit'] || $amount > $setting['max_deposit']) {
-        sendmessage($from_id, '❌ مبلغ پرداخت نامعتبر یا منقضی شده است. دوباره درخواست شارژ ثبت کنید.', $backuser, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    $gatewayRange = resellerGatewayAmountRange($gatewayKey);
-    if ($amount < $gatewayRange['min'] || $amount > $gatewayRange['max']) {
-        $maximumText = $gatewayRange['max'] === PHP_INT_MAX ? 'نامحدود' : number_format($gatewayRange['max']) . ' تومان';
-        sendmessage(
-            $from_id,
-            '❌ بازه مجاز این درگاه از ' . number_format($gatewayRange['min']) . ' تومان تا ' . $maximumText . ' است.',
-            $backuser,
-            'HTML'
-        );
-        return;
-    }
     $dateacc = date('Y/m/d H:i:s');
     $randomString = bin2hex(random_bytes(5));
+    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice,bottype) VALUES (?,?,?,?,?,?,?,?)");
     $payment_Status = "Unpaid";
+    $Payment_Method = "cart to cart";
     $invoice = "0 | 0";
-    $authority = '';
-    $paymentUrl = '';
-    if ($gatewayKey === 'card') {
-        $Payment_Method = 'cart to cart';
-    } elseif ($gatewayKey === 'zarinpal') {
-        $Payment_Method = 'zarinpal';
-        $pay = createPayZarinpal($amount, $randomString);
-        $authority = (string) ($pay['data']['authority'] ?? '');
-        if ($authority === '') {
-            sendmessage($from_id, '❌ ساخت پرداخت زرین‌پال ناموفق بود. کمی بعد دوباره تلاش کنید.', $backuser, 'HTML');
-            return;
-        }
-        $paymentUrl = 'https://www.zarinpal.com/pg/StartPay/' . rawurlencode($authority);
-    } elseif ($gatewayKey === 'aqayepardakht') {
-        $Payment_Method = 'aqayepardakht';
-        $pay = createPayaqayepardakht($amount, $randomString);
-        $authority = (string) ($pay['transid'] ?? '');
-        if ((string) ($pay['code'] ?? '') !== '1' || $authority === '') {
-            sendmessage($from_id, '❌ ساخت پرداخت آقای پرداخت ناموفق بود. کمی بعد دوباره تلاش کنید.', $backuser, 'HTML');
-            return;
-        }
-        $paymentUrl = 'https://panel.aqayepardakht.ir/startpay/' . rawurlencode($authority);
-    } else {
-        $Payment_Method = 'nowpayment';
-        $rates = rate_arze();
-        $usdRate = (int) ($rates['USD'] ?? 0);
-        if ($usdRate <= 0) {
-            sendmessage($from_id, '❌ دریافت نرخ دلار ناموفق بود. کمی بعد دوباره تلاش کنید.', $backuser, 'HTML');
-            return;
-        }
-        $usdPrice = round($amount / $usdRate, 2);
-        $pay = nowPayments('invoice', $usdPrice, $randomString, 'Reseller wallet deposit');
-        $authority = (string) ($pay['id'] ?? '');
-        $paymentUrl = (string) ($pay['invoice_url'] ?? '');
-        if ($authority === '' || !filter_var($paymentUrl, FILTER_VALIDATE_URL)) {
-            error_log('NOWPayments reseller invoice failed: ' . json_encode($pay, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            sendmessage($from_id, '❌ ساخت فاکتور NOWPayments ناموفق بود. کمی بعد دوباره تلاش کنید.', $backuser, 'HTML');
-            return;
-        }
-    }
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice,bottype,dec_not_confirmed) VALUES (?,?,?,?,?,?,?,?,?)");
-    $stmt->bind_param("sssssssss", $from_id, $randomString, $dateacc, $amount, $payment_Status, $Payment_Method, $invoice, $ApiToken, $authority);
+    $stmt->bind_param("ssssssss", $from_id, $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice, $ApiToken);
     $stmt->execute();
-    if ($gatewayKey === 'card') {
-        sendmessage($from_id, $setting['cart_info'], $backuser, 'HTML');
-        step("getresidcart", $from_id);
-        savedata("clear", "id_order", $randomString);
-        return;
-    }
-    $payKeyboard = json_encode([
-        'inline_keyboard' => [
-            [['text' => 'پرداخت آنلاین', 'url' => $paymentUrl, 'style' => 'success']],
-            [['text' => 'بازگشت', 'callback_data' => 'account']],
-        ],
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $providerDetails = '';
-    if ($gatewayKey === 'nowpayments') {
-        $providerDetails = "\nمعادل دلاری: <code>" . number_format($usdPrice, 2, '.', '') . " USD</code>\nنرخ دلار: " . number_format($usdRate) . ' تومان';
-    }
-    sendmessage(
-        $from_id,
-        "✅ <b>فاکتور پرداخت ایجاد شد.</b>\n\nشماره سفارش: <code>{$randomString}</code>\nمبلغ: " . number_format($amount) . " تومان{$providerDetails}\n\nپس از پرداخت، کیف پول شما خودکار شارژ می‌شود.",
-        $payKeyboard,
-        'HTML'
-    );
-    step('home', $from_id);
+    sendmessage($from_id, $setting['cart_info'], $backuser, 'HTML');
+    step("getresidcart", $from_id);
+    savedata("clear", "id_order", $randomString);
 } elseif ($user['step'] == "getresidcart") {
     $userdate = json_decode($user['Processing_value'], true);
     $PaymentReport = select("Payment_report", '*', "id_order", $userdate['id_order'], "select");
@@ -1443,9 +1305,6 @@ $textonebuy
         }
         sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
         step('home', $id_admin);
-    }
-    if ($setting['report_chat_id'] !== '' && !in_array($setting['report_chat_id'], array_map('strval', $admin_ids), true)) {
-        sendmessage($setting['report_chat_id'], $textsendrasid, null, 'HTML');
     }
     step('home', $from_id);
     sendmessage($from_id, "💎 رسید شما ارسال و پس از بررسی حساب کاربری شما شارژ خواهد شد.", $keyboard, 'HTML');
@@ -2004,7 +1863,6 @@ $output
             'parse_mode' => "HTML"
         ], $APIKEY);
     }
-    resellerSendConfiguredReport($setting, $text_report);
 } elseif (preg_match('/changelink_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");

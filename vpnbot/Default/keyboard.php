@@ -3,8 +3,6 @@
 $botinfo = select("botsaz", "*", "bot_token", $ApiToken, "select");
 $userbot = select("user", "*", "id", $botinfo['id_user'], "select");
 $hide_panel = json_decode($botinfo['hide_panel'], true);
-$hide_panel = is_array($hide_panel) ? $hide_panel : [];
-$resellerSetting = resellerBotNormalizeSettings(json_decode($botinfo['setting'] ?? '{}', true));
 $text_bot_var =  json_decode(file_get_contents('text.json'), true);
 // keyboard bot 
 $keyboarddate = array(
@@ -80,10 +78,6 @@ $keyboardadmin = json_encode([
             ['text' => "⚙️ وضعیت قابلیت ها"],
         ],
         [
-            ['text' => "💳 مدیریت درگاه‌ها"],
-            ['text' => "🎨 شخصی‌سازی ربات"],
-        ],
-        [
             ['text' => "🔍 جستجو کاربر"],
             ['text' => "👨‍🔧  مدیریت ادمین ها"]
         ],
@@ -145,34 +139,6 @@ $keyboard_change_price = json_encode([
     'resize_keyboard' =>  true
 ]);
 
-$keyboard_reseller_brand = json_encode([
-    'keyboard' => [
-        [
-            ['text' => "📝 متن خوش‌آمدگویی"],
-            ['text' => "🛠 متن حالت تعمیرات"],
-        ],
-        [
-            ['text' => "🧾 متن انتخاب درگاه"],
-            ['text' => "✅ متن پرداخت موفق"],
-        ],
-        [
-            ['text' => "⬇️ حداقل مبلغ شارژ"],
-            ['text' => "⬆️ حداکثر مبلغ شارژ"],
-        ],
-        [
-            ['text' => "📬 مقصد گزارش‌ها"],
-            ['text' => $resellerSetting['bot_enabled'] ? "⏸ غیرفعال‌کردن ربات" : "▶️ فعال‌کردن ربات"],
-        ],
-        [
-            ['text' => $resellerSetting['notify_admin_payment'] ? "🔕 اعلان پرداخت ادمین‌ها" : "🔔 اعلان پرداخت ادمین‌ها"],
-        ],
-        [
-            ['text' => "بازگشت به منوی ادمین"],
-        ],
-    ],
-    'resize_keyboard' => true,
-], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
 $backadmin = json_encode([
     'keyboard' => [
         [
@@ -216,35 +182,8 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
     global $pdo, $textbotlang;
     $product = ['inline_keyboard' => []];
     $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
-    $agent = null;
-    $category = null;
-    $serviceTime = null;
-    if (is_string($query) && preg_match("/\\bagent\\s*=\\s*'([^']*)'/i", $query, $matches)) {
-        $agent = $matches[1];
-        if (preg_match("/\\bcategory\\s*=\\s*'([^']*)'/i", $query, $matches)) {
-            $category = $matches[1];
-        }
-        if (preg_match("/\\bService_time\\s*=\\s*'([^']*)'/i", $query, $matches)) {
-            $serviceTime = $matches[1];
-        }
-    }
-    if ($agent === null) {
-        return json_encode(['inline_keyboard' => [[
-            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $backuser, 'style' => 'danger'],
-        ]]]);
-    }
-    $sql = "SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent";
-    $params = [':location' => (string)$location, ':agent' => $agent];
-    if ($category !== null) {
-        $sql .= " AND category = :category";
-        $params[':category'] = $category;
-    }
-    if ($serviceTime !== null) {
-        $sql .= " AND Service_time = :service_time";
-        $params[':service_time'] = $serviceTime;
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    $stmt = $pdo->prepare($query);
+    $stmt->execute();
     $valuetow = $valuetow != null ? "-$valuetow" : "";
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $productlist = readJsonFileIfExists('product.json');

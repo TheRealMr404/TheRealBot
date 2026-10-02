@@ -9,9 +9,6 @@ require_once 'config.php';
 require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
-require_once 'telegram_products.php';
-require_once 'telegram_products_features.php';
-require_once 'telegram_products_admin.php';
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -43,7 +40,7 @@ $setting = select("setting", "*");
 $ManagePanel = new ManagePanel();
 $keyboard_check = json_decode($setting['keyboardmain'], true);
 if (is_array($keyboard_check) && preg_match('/[\x{600}-\x{6FF}\x{FB50}-\x{FDFF}]/u', $keyboard_check['keyboard'][0][0]['text'])) {
-    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_virtual_services"}],[{"text":"text_support"},{"text":"text_help"}]]}';
+    $keyboardmain = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
     update("setting", "keyboardmain", $keyboardmain, null, null);
 }
 
@@ -247,7 +244,6 @@ $datatextbot = array(
     'textpaymentnotverify' => "",
     'text_star_telegram' => '',
     'text_extend' => '',
-    'text_virtual_services' => 'خدمات مجازی',
     'text_wgdashboard' => '',
     'text_Discount' => '',
 );
@@ -256,7 +252,6 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
-
 $time_Start = jdate('Y/m/d');
 $date_start = jdate('H:i:s', time());
 $time_string = "📆 $date_start → ⏰ $time_Start";
@@ -493,34 +488,6 @@ if ($user['joinchannel'] != "active") {
         }
     }
 }
-
-// Virtual services has its own callback namespace. Dispatch it before the
-// legacy VPN command chain so unrelated states cannot consume these updates.
-$virtualServicesIncomingText = trim(telegramProductsPlainText((string) $text));
-$virtualServicesButtonText = trim(telegramProductsPlainText(telegramProductsButtonText()));
-$isVirtualServicesAdminRoute = in_array((string) $from_id, array_map('strval', (array) $admin_ids), true)
-    && (
-        in_array($virtualServicesIncomingText, ['🛍 خدمات مجازی', 'مدیریت خدمات مجازی'], true)
-        || strpos((string) $datain, 'vsa_') === 0
-        || (strpos((string) ($user['step'] ?? ''), 'vsa_') === 0
-            && !in_array($virtualServicesIncomingText, ['/start', 'start', 'panel', '/panel'], true))
-    );
-if ($isVirtualServicesAdminRoute) {
-    telegramProductsAdminPanelHandleRequest();
-    return;
-}
-
-$isVirtualServicesUserRoute = strpos((string) $datain, 'tgp_') === 0
-    || strpos((string) $text, '/tg_') === 0
-    || strpos((string) ($user['step'] ?? ''), 'tg_product_input_') === 0
-    || strpos((string) ($user['step'] ?? ''), 'tgp_') === 0
-    || $virtualServicesIncomingText === telegramProductsPlainText(TELEGRAM_PRODUCTS_BUTTON)
-    || ($virtualServicesButtonText !== '' && $virtualServicesIncomingText === $virtualServicesButtonText);
-if ($isVirtualServicesUserRoute) {
-    telegramProductsHandleRequest();
-    return;
-}
-
 if ($text == "/start" || $datain == "start" || $text == "start") {
 
     sendmessage($from_id, '<tg-emoji emoji-id="5247133031235329609">❤️</tg-emoji>', null, "HTML");
@@ -532,7 +499,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_four", "0", "id", $from_id);
     step('home', $from_id);
     return;
-} elseif ($text == "version") {
+}
+
+ elseif ($text == "version") {
     sendmessage($from_id, $version, null, 'html');
 } elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser") {
     if ($datain == "backuser")
@@ -568,66 +537,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         null,
         "HTML"
     );
-
-    // ۱. بررسی وجود پورت تانل برای کاربر
-    $stmt_tun = $pdo->prepare("SELECT COUNT(*) FROM tunnel_orders WHERE user_id = ? AND status != 'removed'");
-    $stmt_tun->execute([$from_id]);
-    $has_tunnel = $stmt_tun->fetchColumn();
-
-    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
-    $stmt_reseller = $pdo->prepare("SELECT COUNT(*) FROM invoice i INNER JOIN marzban_panel p ON p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller' WHERE i.id_user = ? AND LOWER(i.Status) IN ({$resellerStatuses})");
-    $stmt_reseller->execute([$from_id]);
-    $has_pasarguard_reseller = (int) $stmt_reseller->fetchColumn();
-
-    $stmt_configs = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND LOWER(i.Status) IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
-    $stmt_configs->execute([$from_id]);
-    $has_configs = (int) $stmt_configs->fetchColumn();
-
-    // سرویس‌های تخصصی در منوی جدا نمایش داده می‌شوند.
-    if (($has_tunnel > 0 || $has_pasarguard_reseller > 0) && $datain != "my_configs_list") {
-        $serviceMenuRows = [];
-        if ($has_configs > 0) {
-            $serviceMenuRows[] = [[
-                'text' => "کانفیگ‌های من",
-                'callback_data' => "my_configs_list",
-                'style' => 'primary',
-                'icon_custom_emoji_id' => 5359719332542718652,
-            ]];
-        }
-        if ($has_pasarguard_reseller > 0) {
-            $serviceMenuRows[] = [[
-                'text' => "پنل نمایندگی من",
-                'callback_data' => "my_pasarguard_panels",
-                'style' => 'primary',
-                'icon_custom_emoji_id' => 5359719332542718652,
-            ]];
-        }
-        if ($has_tunnel > 0) {
-            $serviceMenuRows[] = [[
-                'text' => "پورت‌های تانل من",
-                'callback_data' => "my_tunnels_list",
-                'style' => 'primary',
-                'icon_custom_emoji_id' => 5359719332542718652,
-            ]];
-        }
-        $serviceMenuRows[] = [[
-            'text' => "بازگشت به منوی اصلی",
-            'callback_data' => 'backuser',
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909,
-        ]];
-        $select_menu = json_encode(['inline_keyboard' => $serviceMenuRows], JSON_UNESCAPED_UNICODE);
-
-        if ($datain == "backorder") {
-            Editmessagetext($from_id, $message_id, "📂 لطفاً بخش مورد نظر خود را جهت مشاهده سرویس‌ها انتخاب کنید:", $select_menu, 'HTML');
-        } else {
-            sendmessage($from_id, "📂 لطفاً بخش مورد نظر خود را جهت مشاهده سرویس‌ها انتخاب کنید:", $select_menu, 'HTML');
-        }
-        return;
-    }
-
-    // ۲. کد دقیق، اصلی و دست‌نخورده نمایش کانفیگ‌های ربات شما
-    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = :id_user AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.Status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
     $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -644,7 +554,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -653,7 +563,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -664,7 +574,7 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -700,767 +610,8 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     } else {
         sendmessage($from_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json, 'html');
     }
-
-    // هندلر باز کردن لیست کانفیگ‌ها بعد از زدن دکمه شیشه‌ای
-} elseif ($datain == "my_configs_list") {
-    $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
-    $page = 1;
-    $items_per_page = 20;
-    $start_index = ($page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => purchasedServiceDisplayName($row, false, true),
-                    'callback_data' => "product_" . $row['id_invoice'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5359719332542718652
-                ],
-            ];
-        }
-    } else {
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => purchasedServiceDisplayName($row),
-                    'callback_data' => "product_" . $row['id_invoice'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5359719332542718652
-                ],
-            ];
-        }
-    }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]
-    ];
-    $backbtn = [
-        [
-            'text' => "بازگشت",
-            'callback_data' => 'backorder',
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-    }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboardlists['inline_keyboard'][] = $backbtn;
-    $keyboard_json = json_encode($keyboardlists);
-    Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-
-} elseif ($datain == "my_pasarguard_panels") {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
-    $stmt = $pdo->prepare("SELECT i.*, p.panel_color, p.panel_emoji FROM invoice i INNER JOIN marzban_panel p ON p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller' WHERE i.id_user = :id_user AND LOWER(i.Status) IN ({$resellerStatuses}) ORDER BY i.time_sell DESC");
-    $stmt->execute([':id_user' => $from_id]);
-    $resellerInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (!$resellerInvoices) {
-        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5350626912546865231\">ℹ️</tg-emoji> پنل نمایندگی خریداری‌شده‌ای برای حساب شما پیدا نشد.", json_encode([
-            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backorder', 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]],
-        ], JSON_UNESCAPED_UNICODE), 'HTML');
-        return;
-    }
-
-    $resellerKeyboard = ['inline_keyboard' => []];
-    foreach ($resellerInvoices as $resellerInvoice) {
-        $button = applyPanelAppearanceToButton([
-            'text' => purchasedServiceDisplayName($resellerInvoice, true),
-            'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
-        ], $resellerInvoice);
-        $resellerKeyboard['inline_keyboard'][] = [$button];
-    }
-    $resellerKeyboard['inline_keyboard'][] = [[
-        'text' => 'بازگشت به سرویس‌های من',
-        'callback_data' => 'backorder',
-        'style' => 'danger',
-        'icon_custom_emoji_id' => 5258236805890710909,
-    ]];
-    Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5350295774863311434\">🧩</tg-emoji> <b>پنل‌های نمایندگی من</b>\n\n<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> برای مشاهده مشخصات و مدیریت نمایندگی، پلن مورد نظر را انتخاب کنید.", json_encode($resellerKeyboard, JSON_UNESCAPED_UNICODE), 'HTML');
-} elseif (preg_match('/^my_pasarguard_panel_([a-zA-Z0-9]+)$/', $datain, $resellerMatch)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-    $resellerStatuses = "'active','end_of_time','end_of_volume','sendedwarn','send_on_hold','disabled','disabledn'";
-    $stmt = $pdo->prepare("SELECT i.* FROM invoice i WHERE i.id_invoice = :invoice AND i.id_user = :id_user AND LOWER(i.Status) IN ({$resellerStatuses}) AND EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') LIMIT 1");
-    $stmt->execute([':invoice' => $resellerMatch[1], ':id_user' => $from_id]);
-    $resellerInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$resellerInvoice) {
-        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> این پنل نمایندگی پیدا نشد یا متعلق به حساب شما نیست.", json_encode([
-            'inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'my_pasarguard_panels', 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]],
-        ], JSON_UNESCAPED_UNICODE), 'HTML');
-        return;
-    }
-    $resellerPanel = select('marzban_panel', '*', 'name_panel', $resellerInvoice['Service_location'], 'select');
-    if (!$resellerPanel || $resellerPanel['type'] !== 'pasarguard_reseller') {
-        Editmessagetext($from_id, $message_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> پنل نمایندگی در دسترس نیست.", null, 'HTML');
-        return;
-    }
-    $resellerData = $ManagePanel->DataUser($resellerInvoice['Service_location'], $resellerInvoice['username']);
-    $resellerText = pasarguardBuildCustomerPanelText($resellerPanel, $resellerInvoice, $resellerData);
-    $resellerButtons = ['inline_keyboard' => []];
-    $dashboardUrl = pasarguardDashboardUrl($resellerPanel['url_panel']);
-    if (filter_var($dashboardUrl, FILTER_VALIDATE_URL)) {
-        $resellerButtons['inline_keyboard'][] = [applyPanelAppearanceToButton([
-            'text' => 'ورود به پنل نمایندگی',
-            'url' => $dashboardUrl,
-            'style' => 'success',
-        ], $resellerPanel)];
-    }
-    $resellerButtons['inline_keyboard'][] = [applyPanelColorToButton([
-        'text' => 'تازه‌سازی اطلاعات',
-        'callback_data' => 'my_pasarguard_panel_' . $resellerInvoice['id_invoice'],
-        'style' => 'primary',
-    ], $resellerPanel)];
-    if ($resellerInvoice['name_product'] !== 'سرویس تست' && $resellerPanel['status_extend'] === 'on_extend') {
-        $resellerButtons['inline_keyboard'][] = [applyPanelColorToButton([
-            'text' => 'تمدید نمایندگی',
-            'callback_data' => 'extend_' . $resellerInvoice['id_invoice'],
-            'style' => 'success',
-        ], $resellerPanel)];
-    }
-    $resellerButtons['inline_keyboard'][] = [[
-        'text' => 'بازگشت به پنل‌های من',
-        'callback_data' => 'my_pasarguard_panels',
-        'style' => 'danger',
-        'icon_custom_emoji_id' => 5258236805890710909,
-    ]];
-    Editmessagetext($from_id, $message_id, $resellerText, json_encode($resellerButtons, JSON_UNESCAPED_UNICODE), 'HTML');
-} elseif ($datain == "my_tunnels_list") {
-    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE user_id = ? AND status != 'removed' ORDER BY id DESC");
-    $stmt->execute([$from_id]);
-    $tunnels = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if (empty($tunnels)) {
-        Editmessagetext($from_id, $message_id, "ℹ️ شما در حال حاضر هیچ پورت تانل فعالی ندارید.", json_encode([
-            'inline_keyboard' => [[['text' => "بازگشت", 'callback_data' => "backorder", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]]
-        ]), 'HTML');
-        return;
-    }
-
-    $keyboard = [];
-    foreach ($tunnels as $tun) {
-        $btn_text = "پورت: {$tun['listen_port']} | لوکیشن: {$tun['name_panel']}";
-        $keyboard[] = [
-            [
-                'text' => $btn_text,
-                'callback_data' => "view_tunnel_" . $tun['id'],
-                'style' => 'primary',
-                'icon_custom_emoji_id' => 5350572310627632617
-            ]
-        ];
-    }
-    $keyboard[] = [
-        [
-            'text' => "بازگشت",
-            'callback_data' => "backorder",
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
-
-    $tunnel_list_text = "<tg-emoji emoji-id=\"5350295774863311434\">📋</tg-emoji> <b>لیست پورت‌های تانل شما:</b>\n\n";
-    $tunnel_list_text .= "<tg-emoji emoji-id=\"5350626912546865231\">⚠️</tg-emoji> برای مشاهده مشخصات یا ویرایش آی‌پی مقصد، روی پورت کلیک کنید:";
-
-    Editmessagetext($from_id, $message_id, $tunnel_list_text, json_encode(['inline_keyboard' => $keyboard]), 'HTML');
-
-} elseif (preg_match('/^view_tunnel_(\d+)/', $datain, $matches)) {
-    $tunnel_id = intval($matches[1]);
-    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE id = ? AND user_id = ? LIMIT 1");
-    $stmt->execute([$tunnel_id, $from_id]);
-    $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ اطلاعات پورت یافت نشد.", null, 'HTML');
-        return;
-    }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-
-    if (!empty($panel['linksubx']) && $panel['linksubx'] != "null") {
-        $server_host = trim($panel['linksubx']);
-    } else {
-        $server_host = parse_url($panel['url_panel'], PHP_URL_HOST);
-    }
-
-    $current_listen_port = intval($tunnel['listen_port']);
-    $used_bytes = intval($tunnel['used_traffic'] ?? 0);
-
-
-    $list_res = getInboundsList($tunnel['name_panel']);
-
-    if (isset($list_res['body'])) {
-        $list_data = json_decode($list_res['body'], true);
-        if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-            $matched = null;
-
-            foreach ($list_data['obj'] as $inb) {
-                if (intval($inb['port']) === $current_listen_port) {
-                    $matched = $inb;
-                    break;
-                }
-            }
-
-            if (!$matched && !empty($tunnel['inbound_id'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['id']) === intval($tunnel['inbound_id'])) {
-                        $matched = $inb;
-                        $current_listen_port = intval($inb['port']);
-                        $tunnel['listen_port'] = $current_listen_port;
-                        break;
-                    }
-                }
-            }
-
-            if ($matched) {
-                $used_bytes = intval($matched['up'] ?? 0) + intval($matched['down'] ?? 0);
-                $stmt_up = $pdo->prepare("UPDATE tunnel_orders SET used_traffic = ?, inbound_id = ?, listen_port = ? WHERE id = ?");
-                $stmt_up->execute([$used_bytes, intval($matched['id']), $current_listen_port, $tunnel['id']]);
-            }
-        }
-    }
-
-
-    $expire_text = ($tunnel['expire_time'] > 0) ? jdate('Y/m/d H:i', $tunnel['expire_time']) : "نامحدود";
-    $total_gb_val = floatval($tunnel['total_gb'] ?? 0);
-    $volume_text = ($total_gb_val > 0) ? "{$total_gb_val} گیگابایت" : "نامحدود";
-
-    $total_bytes = intval($total_gb_val * 1073741824);
-    $expire_time = intval($tunnel['expire_time'] ?? 0);
-
-    $used_volume_text = formatBytes($used_bytes);
-    if ($total_bytes > 0) {
-        $remaining_bytes = max(0, $total_bytes - $used_bytes);
-        $remaining_volume_text = formatBytes($remaining_bytes);
-    } else {
-        $remaining_volume_text = "نامحدود";
-    }
-
-    if ($tunnel['status'] != 'active') {
-        $status_badge = '<tg-emoji emoji-id="5350470691701407492">❌</tg-emoji> غیرفعال (توسط مدیریت)';
-    } elseif ($expire_time > 0 && time() > $expire_time) {
-        $status_badge = '<tg-emoji emoji-id="5348090777308251395">⌛️</tg-emoji> منقضی شده (اتمام زمان)';
-    } elseif ($total_bytes > 0 && $used_bytes >= $total_bytes) {
-        $status_badge = '<tg-emoji emoji-id="5258236805890710909">🚫</tg-emoji> پایان حجم';
-    } else {
-        $status_badge = '<tg-emoji emoji-id="5350572310627632617">✅</tg-emoji> فعال';
-    }
-
-
-    $txt = "<tg-emoji emoji-id=\"5348404473129614535\">🔌</tg-emoji> <b>اطلاعات و وضعیت پورت تانل:</b>\n\n";
-    $txt .= "<tg-emoji emoji-id=\"5257969839313526622\">📍</tg-emoji> <b>اطلاعات سرور:</b> <code>{$server_host}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5260348422266822411\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$current_listen_port}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>ایپی سرور مقصد:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل:</b> {$volume_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5429571366384842791\">📉</tg-emoji> <b>حجم مصرف شده:</b> {$used_volume_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5350572310627632617\">📈</tg-emoji> <b>حجم باقی‌مانده:</b> {$remaining_volume_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5348090777308251395\">⏳</tg-emoji> <b>تاریخ انقضا:</b> {$expire_text}\n";
-    $txt .= "<tg-emoji emoji-id=\"5348498060466996739\">📌</tg-emoji> <b>وضعیت سرویس:</b> {$status_badge}\n";
-    $tun_keyboard = json_encode([
-        'inline_keyboard' => [
-
-            [
-                [
-                    'text' => "خرید حجم اضافه",
-                    'callback_data' => "tun_add_vol_" . $tunnel['id'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5350374591808158927
-                ],
-                [
-                    'text' => "تمدید زمان پورت",
-                    'callback_data' => "tun_extend_time_" . $tunnel['id'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5258113901106580375
-                ]
-            ],
-
-            [
-                [
-                    'text' => "ویرایش آی‌پی و پورت خارج",
-                    'callback_data' => "edit_tunnel_target_" . $tunnel['id'],
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5429571366384842791
-                ]
-            ],
-            [
-                [
-                    'text' => "بازگشت به لیست پورت‌ها",
-                    'callback_data' => "my_tunnels_list",
-                    'style' => 'danger',
-                    'icon_custom_emoji_id' => 5258236805890710909
-                ]
-            ]
-        ]
-    ]);
-
-    Editmessagetext($from_id, $message_id, $txt, $tun_keyboard, 'HTML');
-
-} elseif (preg_match('/^tun_add_vol_(\d+)$/', $datain, $matches)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $tunnel_id = intval($matches[1]);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
-        return;
-    }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_map = json_decode($panel['priceextravolume'] ?? '[]', true);
-    $extra_price = $price_map[$user['agent']] ?? 5000;
-
-    savedata("clear", "tun_action_id", $tunnel_id);
-
-    $txt_get_vol = "<tg-emoji emoji-id=\"5350481089817232086\">🔋</tg-emoji> <b>خرید حجم اضافه برای پورت تانل:</b>\n\n";
-    $txt_get_vol .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $txt_get_vol .= "<tg-emoji emoji-id=\"5348418461838098123\">📌</tg-emoji> تعرفه هر گیگابایت: <code>" . number_format($extra_price) . "</code> تومان\n\n";
-    $txt_get_vol .= "لطفاً مقدار حجم مورد نظر خود را به <b>گیگابایت</b> ارسال کنید:";
-
-    sendmessage($from_id, $txt_get_vol, $backuser, 'HTML');
-    step("tun_get_extra_vol", $from_id);
-} elseif ($user['step'] == "tun_get_extra_vol") {
-    $vol = intval($text);
-    if ($vol < 1) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً یک عدد معتبر (حداقل ۱ گیگابایت) وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_map = json_decode($panel['priceextravolume'] ?? '[]', true);
-    $unit_price = $price_map[$user['agent']] ?? 5000;
-    $total_price = $vol * $unit_price;
-
-    savedata("save", "tun_vol_amount", $vol);
-    savedata("save", "tun_vol_price", $total_price);
-
-    $inv_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور افزایش حجم پورت تانل</b>\n\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
-
-    $keys = json_encode([
-        'inline_keyboard' => [
-            [['text' => "پرداخت و افزایش حجم", 'callback_data' => "tun_confirm_pay_vol", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
-        ]
-    ]);
-
-    sendmessage($from_id, $inv_text, $keys, 'HTML');
-    step("home", $from_id);
-} elseif ($datain == "tun_confirm_pay_vol") {
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
-    $vol = intval($userdata['tun_vol_amount'] ?? 0);
-    $price = intval($userdata['tun_vol_price'] ?? 0);
-
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel || $vol <= 0) {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ نشست نامعتبر است.", 'show_alert' => true]);
-        return;
-    }
-
-    if ($user['Balance'] < $price && $user['agent'] != "n2") {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
-        return;
-    }
-
-    $new_total_gb = intval($tunnel['total_gb']) + $vol;
-
-    $res = updateTunnelForward(
-        $tunnel['name_panel'],
-        $tunnel['inbound_id'],
-        $tunnel['listen_port'],
-        $tunnel['target_ip'],
-        $tunnel['target_port'],
-        "User_{$from_id}",
-        $tunnel['expire_time'],
-        $new_total_gb
-    );
-
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
-        update("tunnel_orders", "total_gb", $new_total_gb, "id", $tunnel_id);
-
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>حجم پورت با موفقیت افزایش یافت.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5350481089817232086\">➕</tg-emoji> <b>حجم افزوده شده:</b> {$vol} گیگابایت\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم کل جدید:</b> <code>{$new_total_gb} گیگابایت</code>";
-
-        Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
-    } else {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در برقراری ارتباط با سرور سنایی.", 'show_alert' => true]);
-    }
-    step("home", $from_id);
-}
-
-// ==================== ۲. بخش تمدید زمان تانل ====================
-
-// کلیک روی دکمه «تمدید زمان پورت»
-elseif (preg_match('/^tun_extend_time_(\d+)$/', $datain, $matches)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $tunnel_id = intval($matches[1]);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
-        return;
-    }
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_map = json_decode($panel['priceextratime'] ?? '[]', true);
-    $extra_time_price = $price_map[$user['agent']] ?? 2000;
-
-    savedata("clear", "tun_action_id", $tunnel_id);
-
-    $txt_get_time = "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>تمدید زمان پورت تانل:</b>\n\n";
-    $txt_get_time .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $txt_get_time .= "<tg-emoji emoji-id=\"5348418461838098123\">📌</tg-emoji> تعرفه هر روز تمدید: <code>" . number_format($extra_time_price) . "</code> تومان\n\n";
-    $txt_get_time .= "لطفاً تعداد روز مورد نظر برای تمدید را ارسال کنید:";
-
-    sendmessage($from_id, $txt_get_time, $backuser, 'HTML');
-    step("tun_get_extra_days", $from_id);
-}
-
-// دریافت تعداد روز از کاربر
-elseif ($user['step'] == "tun_get_extra_days") {
-    $days = intval($text);
-    if ($days < 1) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5260342697075416641\">❌</tg-emoji> لطفاً عددی بزرگتر از صفر (تعداد روز) وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    $panel = select("marzban_panel", "*", "name_panel", $tunnel['name_panel'], "select");
-    $price_map = json_decode($panel['priceextratime'] ?? '[]', true);
-    $unit_price = $price_map[$user['agent']] ?? 2000;
-    $total_price = $days * $unit_price;
-
-    savedata("save", "tun_days_amount", $days);
-    savedata("save", "tun_days_price", $total_price);
-
-    $inv_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور تمدید زمان پورت تانل</b>\n\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت تمدید:</b> {$days} روز\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی حساب:</b> " . number_format($user['Balance']) . " تومان";
-
-    $keys = json_encode([
-        'inline_keyboard' => [
-            [['text' => "پرداخت و تمدید زمان", 'callback_data' => "tun_confirm_pay_time", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "بازگشت به پورت", 'callback_data' => "view_tunnel_{$tunnel_id}", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
-        ]
-    ]);
-
-    sendmessage($from_id, $inv_text, $keys, 'HTML');
-    step("home", $from_id);
-}
-
-// تایید پرداخت تمدید زمان
-elseif ($datain == "tun_confirm_pay_time") {
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_action_id'] ?? 0);
-    $days = intval($userdata['tun_days_amount'] ?? 0);
-    $price = intval($userdata['tun_days_price'] ?? 0);
-
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel || $days <= 0) {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ نشست نامعتبر است.", 'show_alert' => true]);
-        return;
-    }
-
-    if ($user['Balance'] < $price && $user['agent'] != "n2") {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
-        return;
-    }
-
-    $current_expire = (intval($tunnel['expire_time']) > time()) ? intval($tunnel['expire_time']) : time();
-    $new_expire_time = $current_expire + ($days * 86400);
-
-    $res = updateTunnelForward(
-        $tunnel['name_panel'],
-        $tunnel['inbound_id'],
-        $tunnel['listen_port'],
-        $tunnel['target_ip'],
-        $tunnel['target_port'],
-        "User_{$from_id}",
-        $new_expire_time,
-        $tunnel['total_gb']
-    );
-
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
-        update("tunnel_orders", "expire_time", $new_expire_time, "id", $tunnel_id);
-        update("tunnel_orders", "status", "active", "id", $tunnel_id);
-
-        $expire_formatted = jdate('Y/m/d H:i', $new_expire_time);
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت تمدید گردید.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت:</b> <code>{$tunnel['listen_port']}</code>\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت افزوده شده:</b> {$days} روز\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5348270285466385224\">📅</tg-emoji> <b>تاریخ انقضای جدید:</b> <code>{$expire_formatted}</code>";
-
-        Editmessagetext($from_id, $message_id, $succ_txt, null, 'HTML');
-    } else {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در برقراری ارتباط با سرور سنایی.", 'show_alert' => true]);
-    }
-    step("home", $from_id);
-}
-
-// ==================== ۳. بخش ویرایش آی‌پی و پورت خارج ====================
-
-// کلیک روی دکمه «ویرایش آی‌پی و پورت خارج» (فرمت یک‌جای IP:Port)
-elseif (preg_match('/^edit_tunnel_target_(\d+)$/', $datain, $matches)) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $tunnel_id = intval($matches[1]);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
-        return;
-    }
-
-    savedata("clear", "tun_edit_id", $tunnel_id);
-
-    $txt_edit = "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>ویرایش مقصد تانل (سرور خارج):</b>\n\n";
-    $txt_edit .= "<b>مقصد فعلی:</b> <code>{$tunnel['target_ip']}:{$tunnel['target_port']}</code>\n";
-    $txt_edit .= "<b>پورت ورودی فعلی:</b> <code>{$tunnel['listen_port']}</code>\n\n";
-    $txt_edit .= "لطفاً آی‌پی و پورت جدید سرور خارج را به فرمت زیر ارسال کنید:\n";
-    $txt_edit .= "<code>IP:Port</code> (مثال: <code>45.12.34.56:443</code>)";
-
-    sendmessage($from_id, $txt_edit, $backuser, 'HTML');
-    step("tun_get_new_target", $from_id);
-}
-
-// دریافت IP:Port جدید و ذخیره در پنل و دیتابیس
-elseif ($user['step'] == "tun_get_new_target") {
-    $parts = explode(':', trim($text));
-    if (count($parts) != 2 || empty($parts[0]) || !is_numeric($parts[1]) || intval($parts[1]) < 1 || intval($parts[1]) > 65535) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> فرمت ارسالی نامعتبر است. لطفاً مجدداً ارسال کنید:\nمثال: <code>45.12.34.56:443</code>", $backuser, 'HTML');
-        return;
-    }
-
-    $new_ip = trim($parts[0]);
-    $new_port = intval($parts[1]);
-
-    if (!isValidPublicIpv4($new_ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $tunnel_id = intval($userdata['tun_edit_id'] ?? 0);
-    $tunnel = select("tunnel_orders", "*", "id", $tunnel_id, "select");
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ خطایی در بازخوانی مشخصات تانل رخ داد.", $keyboard, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    // ۱. بررسی اشغال بودن پورت روی همین سرور
-    if ($new_port != intval($tunnel['listen_port'])) {
-        $stmt_check = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND id != ? LIMIT 1");
-        $stmt_check->execute([$tunnel['name_panel'], $new_port, $tunnel_id]);
-        if ($stmt_check->rowCount() > 0) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} در حال حاضر روی این سرور اشغال است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:\nمثال: <code>45.12.34.56:8080</code>", $backuser, 'HTML');
-            return;
-        }
-
-        // بررسی از روی پنل سنایی
-        $list_res = getInboundsList($tunnel['name_panel']);
-        if (isset($list_res['body'])) {
-            $list_data = json_decode($list_res['body'], true);
-            if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['port']) === $new_port && intval($inb['id']) !== intval($tunnel['inbound_id'])) {
-                        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط سرویس دیگری روی سرور اشغال شده است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:\nمثال: <code>45.12.34.56:8080</code>", $backuser, 'HTML');
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // ۲. ارسال آپدیت به سرور
-    $res = updateTunnelForward(
-        $tunnel['name_panel'],
-        $tunnel['inbound_id'],
-        $new_port,
-        $new_ip,
-        $new_port,
-        "User_{$from_id}",
-        $tunnel['expire_time'],
-        $tunnel['total_gb']
-    );
-
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
-        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
-
-        $succ_txt = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>مشخصات تانل با موفقیت تغییر یافت.</b>\n\n";
-        $succ_txt .= "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>مقصد جدید:</b> <code>{$new_ip}:{$new_port}</code>\n";
-        $succ_txt .= "<b>پورت ورودی تانل:</b> <code>{$new_port}</code>";
-
-        sendmessage($from_id, $succ_txt, $keyboard, 'HTML');
-        step("home", $from_id);
-    } else {
-        $err = $resData['msg'] ?? '';
-        if (stripos($err, 'port') !== false || stripos($err, 'already in use') !== false || stripos($err, 'duplicate') !== false) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط پنل سرور پذیرفته نشد (اشغال است).</b>\nلطفاً یک پورت دیگر وارد کنید:", $backuser, 'HTML');
-        } else {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> خطا در ارتباط با سرور سنایی.", $keyboard, 'HTML');
-            step("home", $from_id);
-        }
-    }
-}
-
-// دریافت مرحله‌به‌مرحله آی‌پی
-elseif ($user['step'] == "tunnel_edit_get_ip") {
-    $new_ip = trim($text);
-    if (!isValidPublicIpv4($new_ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-    if (!filter_var($new_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً IPv4 صحیح بفرستید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tunnel_temp_new_ip", $new_ip);
-    sendmessage($from_id, "🔌 لطفاً <b>پورت جدید سرور خارج</b> را ارسال کنید:", $backuser, 'HTML');
-    step("tunnel_edit_get_port", $from_id);
-}
-
-// دریافت مرحله‌به‌مرحله پورت و ذخیره نهایی
-elseif ($user['step'] == "tunnel_edit_get_port") {
-    $new_port = intval($text);
-    if ($new_port < 1 || $new_port > 65535) {
-        sendmessage($from_id, "❌ پورت باید عددی بین ۱ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $tunnel_id = intval($user['Processing_value_one']);
-    $stmt = $pdo->prepare("SELECT * FROM tunnel_orders WHERE id = ? AND user_id = ? LIMIT 1");
-    $stmt->execute([$tunnel_id, $from_id]);
-    $tunnel = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$tunnel) {
-        sendmessage($from_id, "❌ سرویس یافت نشد.", $keyboard, 'HTML');
-        step("home", $from_id);
-        return;
-    }
-
-    // ۱. بررسی اشغال بودن پورت روی همین سرور
-    if ($new_port != intval($tunnel['listen_port'])) {
-        $stmt_check = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND id != ? LIMIT 1");
-        $stmt_check->execute([$tunnel['name_panel'], $new_port, $tunnel_id]);
-        if ($stmt_check->rowCount() > 0) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} در حال حاضر روی این سرور اشغال است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:", $backuser, 'HTML');
-            return;
-        }
-
-        // بررسی از روی پنل سنایی
-        $list_res = getInboundsList($tunnel['name_panel']);
-        if (isset($list_res['body'])) {
-            $list_data = json_decode($list_res['body'], true);
-            if (isset($list_data['success']) && $list_data['success'] === true && !empty($list_data['obj'])) {
-                foreach ($list_data['obj'] as $inb) {
-                    if (intval($inb['port']) === $new_port && intval($inb['id']) !== intval($tunnel['inbound_id'])) {
-                        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط سرویس دیگری روی سرور اشغال شده است!</b>\n\nلطفاً یک پورت دیگر ارسال کنید:", $backuser, 'HTML');
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $new_ip = $userdata['tunnel_temp_new_ip'];
-
-    // ۲. ارسال تغییرات به سرور
-    $res = updateTunnelForward(
-        $tunnel['name_panel'],
-        $tunnel['inbound_id'],
-        $new_port,
-        $new_ip,
-        $new_port,
-        "User_{$from_id}",
-        $tunnel['expire_time'],
-        $tunnel['total_gb']
-    );
-
-    $resData = [];
-    if (isset($res['body'])) {
-        $resData = json_decode($res['body'], true);
-    } elseif (is_string($res)) {
-        $resData = json_decode($res, true);
-    }
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $update_stmt = $pdo->prepare("UPDATE tunnel_orders SET target_ip = ?, target_port = ?, listen_port = ? WHERE id = ?");
-        $update_stmt->execute([$new_ip, $new_port, $new_port, $tunnel_id]);
-
-        sendmessage($from_id, "✅ <b>مشخصات مقصد با موفقیت ویرایش شد!</b>\n\n🌐 مقصد جدید: <code>{$new_ip}:{$new_port}</code>\n🔌 پورت تانل: <code>{$new_port}</code>", $keyboard, 'HTML');
-        step("home", $from_id);
-    } else {
-        $err = $resData['msg'] ?? '';
-        if (stripos($err, 'port') !== false || stripos($err, 'already in use') !== false || stripos($err, 'duplicate') !== false) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$new_port} توسط پنل سرور پذیرفته نشد (اشغال است).</b>\nلطفاً یک پورت دیگر وارد کنید:", $backuser, 'HTML');
-        } else {
-            sendmessage($from_id, "❌ خطا در برقراری ارتباط با سرور یا ذخیره تغییرات.", $keyboard, 'HTML');
-            step("home", $from_id);
-        }
-    }
 } elseif ($datain == 'next_page') {
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
-    $countStmt->execute([$from_id]);
-    $numpage = (int) $countStmt->fetchColumn();
+    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
     $sum = $user['pagenumber'] * $items_per_page;
@@ -1473,7 +624,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $start_index, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1482,7 +633,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1493,7 +644,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1501,29 +652,29 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
             ];
         }
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page',
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+$pagination_buttons = [
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $backuser = [
-        [
-            'text' => $textbotlang['users']['backbtn'],
-            'callback_data' => 'backuser',
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]];
+    [
+        'text' => $textbotlang['users']['backbtn'],
+        'callback_data' => 'backuser',
+        'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice' , 'style' => 'success', 'icon_custom_emoji_id' => 5429571366384842791]];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
@@ -1533,9 +684,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 } elseif ($datain == 'previous_page') {
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice i WHERE i.id_user = ? AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')");
-    $countStmt->execute([$from_id]);
-    $numpage = (int) $countStmt->fetchColumn();
+    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
     $sum = $user['pagenumber'] * $items_per_page;
@@ -1548,7 +697,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice i WHERE i.id_user = '$from_id' AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') ORDER BY i.time_sell DESC LIMIT $previous_page, $items_per_page");
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT $previous_page, $items_per_page");
     $stmt->execute();
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1557,7 +706,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1568,7 +717,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'],
                     'callback_data' => "product_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -1576,21 +725,21 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
             ];
         }
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page',
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
-    $backuser = [
+$pagination_buttons = [
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
+     $backuser = [
         [
             'text' => "بازگشت به منوی اصلی",
             'callback_data' => 'backuser',
@@ -1729,7 +878,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
 } elseif (preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
     if ($user['step'] == "getuseragnetservice") {
         $username = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
-        $sql = "SELECT * FROM invoice i WHERE (i.username LIKE CONCAT('%', :username, '%') OR i.note LIKE CONCAT('%', :notes, '%') OR i.Volume LIKE CONCAT('%',:Volume, '%') OR i.Service_time LIKE CONCAT('%',:Service_time, '%')) AND i.id_user = :id_user AND (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.Status = 'send_on_hold') AND NOT EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller')";
+        $sql = "SELECT * FROM invoice WHERE (username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%') OR Volume LIKE CONCAT('%',:Volume, '%') OR Service_time LIKE CONCAT('%',:Service_time, '%')) AND id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')";
         $stmt = $pdo->prepare($sql);
         $stmt->bindParam(':username', $username, PDO::PARAM_STR);
         $stmt->bindParam(':Service_time', $username, PDO::PARAM_STR);
@@ -1782,10 +931,8 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
                     $data = " | {$row['note']}";
                 $keyboardlists['inline_keyboard'][] = [
                     [
-                        'text' => purchasedServiceDisplayName($row, false, true),
-                        'callback_data' => "product_" . $row['id_invoice'],
-                        'style' => 'primary',
-                        'icon_custom_emoji_id' => 5359719332542718652,
+                        'text' => "✨" . $row['username'] . $data . "✨",
+                        'callback_data' => "product_" . $row['id_invoice']
                     ],
                 ];
             }
@@ -1793,20 +940,16 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $keyboardlists['inline_keyboard'][] = [
                     [
-                        'text' => purchasedServiceDisplayName($row),
-                        'callback_data' => "product_" . $row['id_invoice'],
-                        'style' => 'primary',
-                        'icon_custom_emoji_id' => 5359719332542718652,
+                        'text' => "✨" . $row['username'] . "✨",
+                        'callback_data' => "product_" . $row['id_invoice']
                     ],
                 ];
             }
         }
         $backuser = [
             [
-                'text' => "بازگشت به منوی اصلی",
-                'callback_data' => 'backuser',
-                'style' => 'danger',
-                'icon_custom_emoji_id' => 5258236805890710909,
+                'text' => "🔙 بازگشت به منوی اصلی",
+                'callback_data' => 'backuser'
             ]
         ];
         if ($setting['NotUser'] == "onnotuser") {
@@ -1814,7 +957,7 @@ elseif ($user['step'] == "tunnel_edit_get_port") {
         }
         $keyboardlists['inline_keyboard'][] = $backuser;
         $keyboard_json = json_encode($keyboardlists);
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>{$countservice} سرویس پیدا شد</b>\n\nبرای مشاهده مشخصات و مدیریت، سرویس مورد نظر را انتخاب کنید.", $keyboard_json, 'html');
+        sendmessage($from_id, "🛍 $countservice عدد سرویس یافت برای مشاهده و مدیریت سرویس روی یکی از سرویس ها کلیک کنید", $keyboard_json, 'html');
         step("home", $from_id);
         return;
     }
@@ -2258,9 +1401,6 @@ $textconnect
         ]);
         unlink($urlimage);
     }
-    if (($marzban_list_get['type'] ?? '') === 'rebecca') {
-        sendRebeccaSubscriptionFiles($marzban_list_get, $nameloc['username'], $from_id);
-    }
 } elseif (preg_match('/removeauto-(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -2298,24 +1438,8 @@ $textconnect
         sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
         return;
     }
-    $configPanel = select('marzban_panel', '*', 'name_panel', $nameloc['Service_location'], 'select');
-    $sentFiles = 0;
-    if ($configPanel && $configPanel['type'] === 'pasarguard') {
-        $sentFiles = sendPasarguardWireGuardFiles($configPanel, $nameloc['username'], $from_id);
-    } elseif ($configPanel && $configPanel['type'] === 'rebecca') {
-        $sentFiles = sendRebeccaSubscriptionFiles($configPanel, $nameloc['username'], $from_id);
-    }
-    if (!is_array($DataUserOut['links']) || !$DataUserOut['links']) {
-        if ($sentFiles > 0) {
-            $filesBackKeyboard = json_encode([
-                'inline_keyboard' => [[
-                    ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => 'productcheckdata'],
-                ]],
-            ]);
-            Editmessagetext($from_id, $message_id, "✅ فایل‌های اتصال سرویس برای شما ارسال شد.", $filesBackKeyboard);
-        } else {
-            sendmessage($from_id, "❌ خطا در خواندن اطلاعات کانفیگ؛ لطفاً با پشتیبانی در ارتباط باشید.", null, 'html');
-        }
+    if (!is_array($DataUserOut['links'])) {
+        sendmessage($from_id, "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.", null, 'html');
         return;
     }
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", keyboard_config($DataUserOut['links'], $nameloc['id_invoice']));
@@ -2440,9 +1564,7 @@ $textconnect
     }
 } elseif (preg_match('/extend_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :invoice AND id_user = :id_user LIMIT 1");
-    $stmt->execute([':invoice' => $id_invoice, ':id_user' => $from_id]);
-    $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
+    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
     if ($nameloc == false) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
@@ -2459,45 +1581,6 @@ $textconnect
     }
     if ($DataUserOut['status'] == "on_hold") {
         sendmessage($from_id, "❌ هنوز به سرویس متصل نشده اید برای تمدید سرویس ابتدا به سرویس متصل شوید سپس اقدام به تمدید کنید", null, 'html');
-        return;
-    }
-    if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
-        if ($nameloc['name_product'] === 'سرویس تست') {
-            telegram('answerCallbackQuery', [
-                'callback_query_id' => $callback_query_id,
-                'text' => 'نمایندگی آزمایشی قابل تمدید نیست.',
-                'show_alert' => true,
-            ]);
-            return;
-        }
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-        $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
-        savedata('clear', 'id_invoice', $nameloc['id_invoice']);
-        savedata('save', 'extension_flow', 'pasarguard_custom');
-        savedata('save', 'time', $selection['days']);
-        savedata('save', 'data_limit', $selection['volume']);
-        savedata('save', 'code_product', 'custom_volume');
-        update('user', 'Processing_value_one', $selection['code'], 'id', $from_id);
-        $renewalInvoice = customServiceInvoice(
-            $marzban_list_get,
-            $user['agent'],
-            $selection['days'],
-            $selection['volume'],
-            1,
-            $user['pricediscount'],
-            [
-                'callback_prefix' => 'pgext',
-                'confirm_callback' => 'confirmserivce',
-                'back_callback' => 'my_pasarguard_panel_' . $nameloc['id_invoice'],
-                'is_extension' => true,
-                'username' => $nameloc['username'],
-                'colored_adjustments' => false,
-                'value_button_emoji' => false,
-            ]
-        );
-        savedata('save', 'price_product', $renewalInvoice['unit_price']);
-        step('pasarguard_extend_custom', $from_id);
-        customServiceReply($from_id, $message_id, $renewalInvoice['text'], $renewalInvoice['keyboard']);
         return;
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
@@ -2570,86 +1653,6 @@ $textconnect
         $monthkeyboard = keyboardTimeCategory($nameloc['Service_location'], $user['agent'], "productextendmonths_", "product_$id_invoice", false, true);
         Editmessagetext($from_id, $message_id, $textbotlang['Admin']['month']['title'], $monthkeyboard);
     }
-} elseif ($datain == 'pgext_none') {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-} elseif (preg_match('/^pgext_(v|d)_(inc|dec)$/', $datain, $pasarguardExtendAction)) {
-    $extensionData = json_decode((string) $user['Processing_value'], true);
-    $extensionInvoiceId = is_array($extensionData) ? ($extensionData['id_invoice'] ?? '') : '';
-    if (($extensionData['extension_flow'] ?? '') !== 'pasarguard_custom' || $extensionInvoiceId === '') {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'این فاکتور تمدید منقضی شده است؛ دوباره از پنل نمایندگی وارد شوید.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-    $stmt = $pdo->prepare("SELECT i.* FROM invoice i WHERE i.id_invoice = :invoice AND i.id_user = :id_user AND EXISTS (SELECT 1 FROM marzban_panel p WHERE p.name_panel = i.Service_location AND p.type = 'pasarguard_reseller') LIMIT 1");
-    $stmt->execute([':invoice' => $extensionInvoiceId, ':id_user' => $from_id]);
-    $extensionInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
-    $extensionPanel = $extensionInvoice
-        ? select('marzban_panel', '*', 'name_panel', $extensionInvoice['Service_location'], 'select')
-        : false;
-    if (!$extensionInvoice || !$extensionPanel || $extensionPanel['status_extend'] !== 'on_extend') {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => 'امکان تمدید این نمایندگی در حال حاضر وجود ندارد.',
-            'show_alert' => true,
-        ]);
-        return;
-    }
-
-    $selection = customServiceSelection($user['Processing_value_one'], $extensionPanel, $user['agent']);
-    $days = $selection['days'];
-    $volume = $selection['volume'];
-    $limits = $selection['limits'];
-    $direction = $pasarguardExtendAction[2] === 'inc' ? 1 : -1;
-    $notice = null;
-    if ($pasarguardExtendAction[1] === 'v') {
-        $newVolume = customServiceNextVolume($volume, $direction, $limits['min_volume'], $limits['max_volume']);
-        if ($newVolume === $volume) {
-            $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
-        }
-        $volume = $newVolume;
-    } else {
-        $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
-        if ($newDays === $days) {
-            $notice = "زمان مجاز بین {$limits['min_days']} تا {$limits['max_days']} روز است.";
-        }
-        $days = $newDays;
-    }
-    if ($notice !== null) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => $notice,
-            'show_alert' => true,
-        ]);
-        return;
-    }
-
-    $customCode = "customvolume_{$days}_{$volume}";
-    update('user', 'Processing_value_one', $customCode, 'id', $from_id);
-    savedata('save', 'time', $days);
-    savedata('save', 'data_limit', $volume);
-    $renewalInvoice = customServiceInvoice(
-        $extensionPanel,
-        $user['agent'],
-        $days,
-        $volume,
-        1,
-        $user['pricediscount'],
-        [
-            'callback_prefix' => 'pgext',
-            'confirm_callback' => 'confirmserivce',
-            'back_callback' => 'my_pasarguard_panel_' . $extensionInvoice['id_invoice'],
-            'is_extension' => true,
-            'username' => $extensionInvoice['username'],
-            'colored_adjustments' => false,
-            'value_button_emoji' => false,
-        ]
-    );
-    savedata('save', 'price_product', $renewalInvoice['unit_price']);
-    customServiceReply($from_id, $message_id, $renewalInvoice['text'], $renewalInvoice['keyboard']);
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
 } elseif ($user['step'] == "gettimecustomvolomforextend") {
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
@@ -2917,19 +1920,11 @@ $textconnect
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     step("home", $from_id);
 } elseif ($datain == "confirmserivce" || $datain == "confirmserdiscount") {
-    telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'reply_markup' => json_encode(['inline_keyboard' => []]),
-    ]);
-    $partsdic = explode("_", (string) $user['Processing_value_four']);
+    Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
+    $partsdic = explode("_", $user['Processing_value_four']);
     $userdata = json_decode($user['Processing_value'], true);
-    $isPasarguardCustomExtension = is_array($userdata)
-        && ($userdata['extension_flow'] ?? '') === 'pasarguard_custom';
     $id_invoice = $userdata['id_invoice'];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :invoice AND id_user = :id_user LIMIT 1");
-    $stmt->execute([':invoice' => $id_invoice, ':id_user' => $from_id]);
-    $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
+    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
     if ($nameloc == false) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
@@ -2944,9 +1939,9 @@ $textconnect
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
     $customtimevalueprice = $eextraprice[$user['agent']];
     $randomString = bin2hex(random_bytes(2));
-    if ($isPasarguardCustomExtension || $nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
+    if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
         $prodcut['code_product'] = "custom_volume";
-        $prodcut['name_product'] = $isPasarguardCustomExtension ? 'تمدید سفارشی نمایندگی' : $nameloc['name_product'];
+        $prodcut['name_product'] = $nameloc['name_product'];
         $prodcut['price_product'] = ($userdata['data_limit'] * $custompricevalue) + ($userdata['time'] * $customtimevalueprice);
         $prodcut['Service_time'] = $userdata['time'];
         $prodcut['Volume_constraint'] = $userdata['data_limit'];
@@ -2961,11 +1956,7 @@ $textconnect
         $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     $pricelastextend = $prodcut['price_product'];
-    $extendableStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'];
-    if ($isPasarguardCustomExtension) {
-        $extendableStatuses = array_merge($extendableStatuses, ['disabled', 'disabledn']);
-    }
-    if ($prodcut == false || !in_array(strtolower((string) $nameloc['Status']), $extendableStatuses, true)) {
+    if ($prodcut == false || !in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
@@ -3071,13 +2062,6 @@ $textconnect
         }
         return;
     }
-    if ($isPasarguardCustomExtension) {
-        $refreshedReseller = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-        $refreshedLimit = is_array($refreshedReseller) && isset($refreshedReseller['data_limit'])
-            ? $refreshedReseller['data_limit']
-            : null;
-        pasarguardApplyInvoiceExtension($nameloc, $prodcut['Service_time'], $refreshedLimit);
-    }
     if ($user['agent'] == "f") {
         $valurcashbackextend = select("shopSetting", "*", "Namevalue", "chashbackextend", "select")['value'];
     } else {
@@ -3116,40 +2100,22 @@ $textconnect
     $keyboardextendfnished = json_encode([
         'inline_keyboard' => [
             [
-                [
-                    'text' => $isPasarguardCustomExtension ? 'بازگشت به پنل‌های نمایندگی' : $textbotlang['users']['stateus']['backlist'],
-                    'callback_data' => $isPasarguardCustomExtension ? 'my_pasarguard_panels' : 'backorder',
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5350295774863311434,
-                ],
+                ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => "backorder"],
             ],
             [
-                [
-                    'text' => $isPasarguardCustomExtension ? 'مشاهده پنل تمدیدشده' : $textbotlang['users']['stateus']['backservice'],
-                    'callback_data' => $isPasarguardCustomExtension ? 'my_pasarguard_panel_' . $nameloc['id_invoice'] : 'product_' . $nameloc['id_invoice'],
-                    'style' => 'success',
-                    'icon_custom_emoji_id' => 5350572310627632617,
-                ],
+                ['text' => $textbotlang['users']['stateus']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
             ]
         ]
     ]);
     $priceproductformat = number_format($pricelastextend);
     $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
     $balanceformatsellbefore = number_format($user['Balance'], 0);
-    if ($isPasarguardCustomExtension) {
-        $textextend = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی شما با موفقیت تمدید شد</b>\n\n"
-            . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$nameloc['username']}</code>\n"
-            . "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم افزوده‌شده:</b> {$prodcut['Volume_constraint']} گیگابایت\n"
-            . "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان افزوده‌شده:</b> {$prodcut['Service_time']} روز\n"
-            . "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ پرداختی:</b> {$priceproductformat} تومان";
-    } else {
-        $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
+    $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
  
 ▫️نام سرویس : {$nameloc['username']}
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
-    }
     sendmessage($from_id, $textextend, $keyboardextendfnished, 'HTML');
     $timejalali = jdate('Y/m/d H:i:s');
     $Response = json_encode([
@@ -4327,17 +3293,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     }
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $location, "select");
-
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
-        savedata("clear", "tunnel_test_panel", $marzban_list_get['name_panel']);
-        deletemessage($from_id, $message_id);
-        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>دریافت پورت تست تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
-        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
-        step("tunnel_test_step_ip", $from_id);
-        return;
-    }
-
-    if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
         if ($user['step'] != "createusertest") {
             step('createusertest', $from_id);
             update("user", "Processing_value_one", $location, "id", $from_id);
@@ -4403,9 +3359,6 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $stmt->close();
     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], "usertest", $username_ac, $datac);
     if ($dataoutput['username'] == null) {
-        if ($marzban_list_get['type'] === 'pasarguard_reseller') {
-            update("user", "limit_usertest", $userlimit['limit_usertest'], "id", $from_id);
-        }
         $dataoutput['msg'] = json_encode($dataoutput['msg']);
         sendmessage($from_id, $textbotlang['users']['usertest']['errorcreat'], $keyboard, 'html');
         $texterros = "
@@ -4466,15 +3419,6 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     if ($marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
-    }
-    if ($marzban_list_get['type'] === 'pasarguard_reseller') {
-        update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
-        $textcreatuser = pasarguardBuildTestDeliveryText(
-            $marzban_list_get,
-            $dataoutput,
-            $marzban_list_get['time_usertest'],
-            $marzban_list_get['val_usertest']
-        );
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $usertestinfo, $textcreatuser, $randomString);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
@@ -4959,7 +3903,7 @@ $textinvite
                 $query = "SELECT * FROM product WHERE (Location = '$location' OR Location = '/all')AND agent= '{$user['agent']}'";
                 $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
                 $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-                if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+                if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
                     $datakeyboard = "prodcutservices_";
                 } else {
                     $datakeyboard = "prodcutservice_";
@@ -5055,7 +3999,7 @@ $textinvite
         } else {
             $query = "SELECT * FROM product WHERE (Location = '$location' OR Location = '/all')AND agent= '{$user['agent']}'";
             $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-            if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+            if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
                 $datakeyboard = "prodcutservices_";
             } else {
                 $datakeyboard = "prodcutservice_";
@@ -5096,7 +4040,7 @@ $textinvite
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-    if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
         $datakeyboard = "prodcutservices_";
     } else {
         $datakeyboard = "prodcutservice_";
@@ -5127,7 +4071,7 @@ $textinvite
         $query = "SELECT * FROM product WHERE (Location = '{$userdate['name_panel']}' OR Location = '/all') AND agent= '{$user['agent']}' AND Service_time = '$monthenumber'";
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
         $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-        if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+        if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
             $datakeyboard = "prodcutservices_";
         } else {
             $datakeyboard = "prodcutservice_";
@@ -5139,149 +4083,21 @@ $textinvite
         }
         Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['Service-select-first'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom));
     }
-} elseif ($datain == "csi_none") {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-} elseif (preg_match('/^csi_(v|d|c)_(inc|dec)$/', $datain, $customInvoiceAction)) {
-    if ($user['step'] != "payments" || !preg_match('/^customvolume_\d+_\d+$/', (string)$user['Processing_value_one'])) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ این فاکتور منقضی شده است؛ خرید را دوباره آغاز کنید.",
-            'show_alert' => true,
-        ]);
-        return;
-    }
-
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ این پنل در دسترس نیست.",
-            'show_alert' => true,
-        ]);
-        return;
-    }
-
-    $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
-    $days = $selection['days'];
-    $volume = $selection['volume'];
-    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
-    $limits = $selection['limits'];
-    $direction = $customInvoiceAction[2] == 'inc' ? 1 : -1;
-    $notice = null;
-
-    if ($customInvoiceAction[1] == 'v') {
-        $newVolume = customServiceNextVolume($volume, $direction, $limits['min_volume'], $limits['max_volume']);
-        if ($newVolume == $volume) {
-            $notice = "حجم مجاز بین {$limits['min_volume']} تا {$limits['max_volume']} گیگابایت است.";
-        }
-        $volume = $newVolume;
-    } elseif ($customInvoiceAction[1] == 'd') {
-        $newDays = max($limits['min_days'], min($limits['max_days'], $days + ($direction * $limits['days_step'])));
-        if ($newDays == $days) {
-            $notice = "زمان مجاز بین {$limits['min_days']} تا {$limits['max_days']} روز است.";
-        }
-        $days = $newDays;
-    } elseif (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
-        update("user", "Processing_value_four", 1, "id", $from_id);
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "تعداد سرویس دلخواه پاسارگارد ثابت و برابر یک است.",
-            'show_alert' => true,
-        ]);
-        return;
-    } else {
-        $newCount = max(1, min(15, $count + $direction));
-        if ($newCount == $count) {
-            $notice = "تعداد سفارش باید بین ۱ تا ۱۵ عدد باشد.";
-        }
-        $count = $newCount;
-    }
-
-    if ($notice !== null) {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => $notice,
-            'show_alert' => true,
-        ]);
-        return;
-    }
-
-    $customCode = "customvolume_{$days}_{$volume}";
-    update("user", "Processing_value_one", $customCode, "id", $from_id);
-    update("user", "Processing_value_four", $count, "id", $from_id);
-    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $days, $volume, $count, $user['pricediscount']);
-    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
-    telegram('answerCallbackQuery', array_filter([
-        'callback_query_id' => $callback_query_id,
-        'text' => $notice,
-        'show_alert' => $notice !== null ? true : null,
-    ], static function ($value) {
-        return $value !== null;
-    }));
-} elseif ($user['step'] == "custom_service_username") {
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
-        sendmessage($from_id, "❌ این پنل در دسترس نیست؛ خرید را دوباره آغاز کنید.", $keyboard, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    $isPasarguardRandomUsername = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' && $datain === 'pasarguard_random_username';
-    if (!$isPasarguardRandomUsername && !preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', (string) $text)) {
-        sendmessage($from_id, $textbotlang['users']['invalidusername'], $backuser, 'HTML');
-        return;
-    }
-    $selection = customServiceSelection($user['Processing_value_one'], $marzban_list_get, $user['agent']);
-    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
-    update("user", "Processing_value_four", $count, "id", $from_id);
-    $requestedUsername = $isPasarguardRandomUsername ? '' : $text;
-    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, $requestedUsername, $ManagePanel, $usernameinvoice ?? []);
-    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
-    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], $count, $user['pricediscount']);
-    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard'], false);
-    step('payments', $from_id);
 } elseif ($datain == "customsellvolume") {
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-
-    if (!$marzban_list_get) {
-        Editmessagetext($from_id, $message_id, "❌ اطلاعات پنل معتبر نیست؛ خرید را دوباره آغاز کنید.", $backuser, 'HTML');
-        return;
-    }
-
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
-        deletemessage($from_id, $message_id);
-        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>خرید پورت دلخواه تانل:</b>\n\nلطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال فرمایید:\n<i>مثال: 185.120.45.10</i>";
-        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
-        step("tun_custom_step_ip", $from_id);
-        return;
-    }
-
-    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
-        Editmessagetext($from_id, $message_id, "❌ این پنل در دسترس نیست؛ پنل دیگری را انتخاب کنید.", $backuser, 'HTML');
-        return;
-    }
-    $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
-    update("user", "Processing_value", $marzban_list_get['name_panel'], "id", $from_id);
-    update("user", "Processing_value_one", $selection['code'], "id", $from_id);
-    update("user", "Processing_value_four", 1, "id", $from_id);
-
-    if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller' || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
-        $usernameKeyboard = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller'
-            ? pasarguardUsernameSelectionKeyboard('backuser')
-            : $backuser;
-        $usernameText = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller'
-            ? "👤 <b>نام کاربری پنل نمایندگی</b>\n\nنام کاربری دلخواه را با حروف انگلیسی ارسال کنید، یا دکمه «نام کاربری تصادفی» را بزنید."
-            : $textbotlang['users']['selectusername'];
-        Editmessagetext($from_id, $message_id, $usernameText, $usernameKeyboard, 'HTML');
-        step('custom_service_username', $from_id);
-        return;
-    }
-
-    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, '', $ManagePanel, $usernameinvoice ?? []);
-    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
-    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], 1, $user['pricediscount']);
-    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
-    step('payments', $from_id);
+    $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
+    $custompricevalue = $eextraprice[$user['agent']];
+    $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
+    $mainvolume = $mainvolume[$user['agent']];
+    $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
+    $maxvolume = $maxvolume[$user['agent']];
+    $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
+🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+    sendmessage($from_id, $textcustom, $backuser, 'html');
+    deletemessage($from_id, $message_id);
+    step('gettimecustomvol', $from_id);
 } elseif ($user['step'] == "gettimecustomvol") {
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
@@ -5316,7 +4132,7 @@ $textinvite
         step('getvolumecustomuser', $from_id);
     }
 } elseif ($user['step'] == "getvolumecustomusername" || preg_match('/^prodcutservices_(.*)/', $datain, $dataget)) {
-    $prodcut = $dataget[1] ?? '';
+    $prodcut = $dataget[1];
     $userdate = json_decode($user['Processing_value'], true);
     if ($user['step'] == "getvolumecustomusername") {
         if (!ctype_digit($text)) {
@@ -5341,15 +4157,7 @@ $textinvite
         step('endstepuser', $from_id);
         deletemessage($from_id, $message_id);
     }
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-    $usernameKeyboard = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller'
-        ? pasarguardUsernameSelectionKeyboard('backproduct')
-        : $backuser;
-    $usernameText = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller'
-        ? "👤 <b>نام کاربری پنل نمایندگی</b>\n\nنام کاربری دلخواه را با حروف انگلیسی ارسال کنید، یا دکمه «نام کاربری تصادفی» را بزنید."
-        : $textbotlang['users']['selectusername'];
-    sendmessage($from_id, $usernameText, $usernameKeyboard, 'html');
-
+    sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
 } elseif ($user['step'] == "endstepuser" || $user['step'] == "endstepusers" || preg_match('/prodcutservice_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuser") {
     $userdate = json_decode($user['Processing_value'], true);
     if ($user['step'] == "getvolumecustomuser") {
@@ -5374,25 +4182,13 @@ $textinvite
         $prodcut = $dataget[1];
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
-
-    if ($marzban_list_get['type'] == "x-ui_tunnel") {
-        savedata("save", "tunnel_product_code", $prodcut);
-        savedata("save", "tunnel_panel", $marzban_list_get['name_panel']);
-        deletemessage($from_id, $message_id);
-        $msg_get_ip = "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> لطفاً <b>آی‌پی سرور خارج (IPv4)</b> خود را ارسال کنید:\n\n <i>مثال: 185.120.45.10</i>";
-        sendmessage($from_id, $msg_get_ip, $backuser, 'HTML');
-        step("tunnel_step_ip", $from_id);
-        return;
-    }
     if ($marzban_list_get['status'] == "disable") {
-        sendmessage($from_id, "این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
+        sendmessage($from_id, "❌ این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
         step("home", $from_id);
         return;
     }
-    $isPasarguardPurchase = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller';
-    $isPasarguardRandomUsername = $isPasarguardPurchase && $datain === 'pasarguard_random_username';
-    if ($isPasarguardPurchase || $marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
-        if (!$isPasarguardRandomUsername && !preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', (string) $text)) {
+    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
+        if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
             sendmessage($from_id, $textbotlang['users']['invalidusername'], $backuser, 'HTML');
             return;
         }
@@ -5413,12 +4209,7 @@ $textinvite
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
-        $productStmt->execute([
-            ':code_product' => $loc,
-            ':location' => $userdate['name_panel'],
-        ]);
-        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
+        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '$loc' AND (Location = '{$userdate['name_panel']}'or Location = '/all') LIMIT 1"));
     }
     if (!isset($info_product['price_product'])) {
         sendmessage($from_id, "❌ خطایی در تایید  انجام شده است لطفا مراحل پرداخت را مجددا انجام دهید", $keyboard, 'HTML');
@@ -5428,19 +4219,14 @@ $textinvite
         $resultper = ($info_product['price_product'] * $user['pricediscount']) / 100;
         $info_product['price_product'] = $info_product['price_product'] - $resultper;
     }
-    if ($isPasarguardPurchase) {
-        $requestedUsername = $isPasarguardRandomUsername ? '' : $text;
-        $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, $requestedUsername, $ManagePanel, $usernameinvoice ?? []);
-    } else {
-        $randomString = bin2hex(random_bytes(2));
-        $text = strtolower($text);
-        $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
-        $username_ac = strtolower($username_ac);
-        $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
-        $random_number = rand(1000000, 9999999);
-        if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
-            $username_ac = $random_number . "_" . $username_ac;
-        }
+    $randomString = bin2hex(random_bytes(2));
+    $text = strtolower($text);
+    $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
+    $username_ac = strtolower($username_ac);
+    $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
+    $random_number = rand(1000000, 9999999);
+    if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
+        $username_ac = $random_number . "_" . $username_ac;
     }
     if (isset($username_ac))
         update("user", "Processing_value_tow", $username_ac, "id", $from_id);
@@ -5463,348 +4249,21 @@ $textinvite
     if (intval($info_product['Volume_constraint']) == 0) {
         $textin = str_replace('گیگ', "", $textin);
     }
-    if (!$isPasarguardPurchase && $user['step'] != "getvolumecustomuser" && !in_array($marzban_list_get['MethodUsername'], ["نام کاربری دلخواه", "نام کاربری دلخواه + عدد رندوم"])) {
+    if ($user['step'] != "getvolumecustomuser" && !in_array($marzban_list_get['MethodUsername'], ["نام کاربری دلخواه", "نام کاربری دلخواه + عدد رندوم"])) {
         Editmessagetext($from_id, $message_id, $textin, $payment);
     } else {
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
     step('payment', $from_id);
-} elseif ($datain == "offline_crypto_pay") {
-    $currencies = get_all_crypto_currencies();
-
-    $buttons = [];
-    foreach ($currencies as $sym => $info) {
-        if (($info['status'] ?? 'off') === 'on') {
-            $network_text = !empty($info['network']) ? " - " . strtoupper($info['network']) : "";
-            $btn_title = $info['name'] . $network_text;
-
-            $btn = [
-                'text' => $btn_title,
-                'callback_data' => "user_select_crypto_{$sym}",
-                'style' => $info['style'] ?? 'primary'
-            ];
-
-            // افزودن آیکون ایموجی پریمیوم
-            if (!empty($info['emoji_id'])) {
-                $btn['icon_custom_emoji_id'] = (int) $info['emoji_id'];
-            }
-
-            $buttons[] = [$btn];
-        }
-    }
-
-    $buttons[] = [['text' => "🔙 بازگشت", 'callback_data' => 'pay_menu_back', 'style' => 'danger']];
-
-    telegram('editMessageText', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'text' => "💎 <b>انتخاب نوع ارز جهت واریز:</b>\n\nلطفاً یکی از ارزهای فعال زیر را انتخاب نمایید:",
-        'parse_mode' => 'HTML',
-        'reply_markup' => json_encode(['inline_keyboard' => $buttons])
-    ]);
-} elseif (strpos($datain, "user_select_crypto_") === 0) {
-    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-
-    $sym = strtolower(trim(str_replace("user_select_crypto_", "", $datain)));
-    $sym_upper = strtoupper($sym);
-
-    $info = get_crypto_currency($sym);
-    if (!$info) {
-        $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE LOWER(symbol) = ? LIMIT 1");
-        $stmt->bind_param("s", $sym);
-        $stmt->execute();
-        $info = $stmt->get_result()->fetch_assoc();
-    }
-
-    if (!$info || ($info['status'] ?? 'off') !== 'on') {
-        telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'text' => "❌ این ارز در حال حاضر غیرفعال است.",
-            'show_alert' => true
-        ]);
-        return;
-    }
-
-    $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
-    $maxbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "maxbalancedigitaltron", "select")['ValuePay'];
-
-    if ($user['Processing_value'] < $mainbalancedigitaltron || $user['Processing_value'] > $maxbalancedigitaltron) {
-        $mainbalanceplisio = number_format($mainbalancedigitaltron);
-        $maxbalanceplisio = number_format($maxbalancedigitaltron);
-        sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalanceplisio و حداکثر $maxbalanceplisio تومان باشد", null, 'HTML');
-        return;
-    }
-
-    deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
-
-    $rates = arz_nobitex();
-    $unit_rate = $rates[$sym_upper] ?? ($rates[$sym] ?? ($rates['USDT'] ?? 60000));
-    $usd_rate = $rates['USD'] ?? 60000;
-
-    $decimals = match ($sym_upper) {
-        'USDT' => 2,
-        'TRX', 'TON' => 4,
-        'BNB' => 5,
-        'BTC', 'ETH' => 8,
-        default => 4
-    };
-
-    $crypto_calc_amount = number_format($user['Processing_value'] / $unit_rate, $decimals, '.', '');
-    $usdprice = round($user['Processing_value'] / $usd_rate, 2);
-
-    $dateacc = date('Y/m/d H:i:s');
-    $randomString = bin2hex(random_bytes(5));
-    $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-    $payment_Status = "Unpaid";
-    $Payment_Method = "offline_" . $sym;
-
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
-    $stmt->execute();
-
-    $wallet_address = trim($info['wallet'] ?? '');
-    $keyboard_rows = [];
-
-    if (!empty($wallet_address)) {
-        $keyboard_rows[] = [
-            ['text' => "کپی آدرس ولت", 'copy_text' => ["text" => $wallet_address]]
-        ];
-    }
-
-    $keyboard_rows[] = [
-        ['text' => "✅ ارسال لینک واریز یا تصویر واریزی", 'callback_data' => "sendresidarze-{$randomString}"]
-    ];
-
-    $paymentkeyboard = json_encode(['inline_keyboard' => $keyboard_rows]);
-
-    $rendered_crypto_msg = render_crypto_message($info, $user['Processing_value'], $crypto_calc_amount, $unit_rate);
-
-    $textnowpayments = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>تراکنش شما ایجاد شد</b>\n\n" .
-        "<tg-emoji emoji-id=\"5348498060466996739\">🛒</tg-emoji> کد پیگیری: <code>$randomString</code>\n\n" .
-        $rendered_crypto_msg . "\n\n" .
-        "<tg-emoji emoji-id=\"5348418461838098123\">💲</tg-emoji> مبلغ معادل به دلار: <b>$usdprice USD</b>";
-
-    $gethelp = getPaySettingValue('helpofflinearze');
-    if ($gethelp !== null && $gethelp != 2) {
-        $data_help = json_decode($gethelp, true);
-        if ($data_help['type'] == "text") {
-            sendmessage($from_id, $data_help['text'], null, 'HTML');
-        } elseif ($data_help['type'] == "photo") {
-            sendphoto($from_id, $data_help['photoid'], null);
-        } elseif ($data_help['type'] == "video") {
-            sendvideo($from_id, $data_help['videoid'], null);
-        }
-    }
-
-    $sent_msg = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
-    updatePaymentMessageId($sent_msg, $randomString);
-} elseif ($user['step'] == "tunnel_step_ip") {
-    $ip = trim($text);
-    if (!isValidPublicIpv4($ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً یک آی‌پی IPv4 معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tunnel_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (این پورت برای هر دو سرور ایران و خارج ست می‌شود):\n\n <i>مثال: 32485 یا 8080</i>";
-
-    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
-    step("tunnel_step_port", $from_id);
-}
-
-// مرحله ۲: دریافت پورت واحد، بررسی آزاد بودن پورت و صدور پیش‌فاکتور
-elseif ($user['step'] == "tunnel_step_port") {
-    $port = intval($text);
-    if ($port < 1024 || $port > 65535) {
-        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['tunnel_panel'];
-
-    // ۱. بررسی آزاد بودن پورت در دیتابیس ربات
-    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
-    $stmt->execute([$panel_name, $port]);
-    if ($stmt->rowCount() > 0) {
-        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً توسط کاربر دیگری رزرو شده است.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-        return;
-    }
-
-    // ۲. بررسی آزاد بودن پورت روی سرور و پنل سنایی (در صورت وجود تابع چک مستقیم)
-    if (function_exists('isTunnelPortAvailable')) {
-        $isAvailable = isTunnelPortAvailable($panel_name, $port);
-        if (!$isAvailable) {
-            sendmessage($from_id, "❌ <b>پورت {$port} روی سرور اشغال است یا توسط سیستم استفاده می‌شود.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-            return;
-        }
-    }
-
-    // ذخیره پورت یکسان برای هر دو بخش سرور ایران و خارج
-    savedata("save", "tunnel_target_port", $port);
-    savedata("save", "tunnel_listen_port", $port);
-
-    $product_code = $userdata['tunnel_product_code'];
-    $target_ip = $userdata['tunnel_target_ip'];
-
-    $product = select("product", "*", "code_product", $product_code, "select");
-    $price = number_format($product['price_product']);
-    $volume = $product['Volume_constraint'] > 0 ? "{$product['Volume_constraint']} گیگابایت" : "نامحدود";
-
-    $invoice_text = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل</b>\n\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>پلن انتخابی:</b> {$product['name_product']}\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>لوکیشن سرور :</b> {$panel_name}\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>سرور (مقصد):</b> <code>{$target_ip}:{$port}</code>\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$port}</code>\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> {$volume}\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت زمان اعتبار:</b> {$product['Service_time']} روز\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> {$price} تومان\n\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی کیف پول شما:</b> " . number_format($user['Balance']) . " تومان\n\n";
-    $invoice_text .= "<tg-emoji emoji-id=\"5350572310627632617\">📌</tg-emoji> آیا اطلاعات فوق مورد تایید است؟";
-
-    $invoice_keyboard = json_encode([
-        'inline_keyboard' => [
-            [
-                [
-                    'text' => "تایید و پرداخت",
-                    'callback_data' => "confirm_pay_tunnel",
-                    'style' => 'primary',
-                    'icon_custom_emoji_id' => 5350572310627632617
-                ]
-            ],
-            [
-                [
-                    'text' => "انصراف و بازگشت",
-                    'callback_data' => "backuser",
-                    'style' => 'danger',
-                    'icon_custom_emoji_id' => 5258236805890710909
-                ]
-            ]
-        ]
-    ]);
-
-    sendmessage($from_id, $invoice_text, $invoice_keyboard, 'HTML');
-    step("home", $from_id);
-
-}
-
-// مرحله ۱ تست تانل: دریافت آی‌پی
-elseif ($user['step'] == "tunnel_test_step_ip") {
-    $ip = trim($text);
-    if (!isValidPublicIpv4($ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        sendmessage($from_id, "❌ آی‌پی واردشده نامعتبر است. لطفاً یک آی‌پی IPv4 معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tunnel_test_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (عددی بین ۱۰۲۴ تا ۶۵۵۳۵):";
-    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
-    step("tunnel_test_step_port", $from_id);
-} elseif ($user['step'] == "tunnel_test_step_port") {
-    $port = intval($text);
-    if ($port < 1024 || $port > 65535) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. لطفاً مجدداً پورت مورد نظر را وارد کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['tunnel_test_panel'];
-    $target_ip = $userdata['tunnel_test_target_ip'];
-
-    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
-    $stmt->execute([$panel_name, $port]);
-    if ($stmt->rowCount() > 0) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} قبلاً توسط کاربر دیگری رزرو شده است.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-        return;
-    }
-
-    if (function_exists('isTunnelPortAvailable')) {
-        $isAvailable = isTunnelPortAvailable($panel_name, $port);
-        if (!$isAvailable) {
-            sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>پورت {$port} روی سرور اشغال است یا توسط سیستم استفاده می‌شود.</b>\nلطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-            return;
-        }
-    }
-
-
-
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-    $test_hours = intval($panel['time_usertest'] ?? 1);
-    $test_volume_mb = intval($panel['val_usertest'] ?? 100);
-    $test_volume_gb = round($test_volume_mb / 1024, 2);
-
-    $expire_timestamp = time() + ($test_hours * 3600);
-
-    $res = addTunnelForward(
-        $panel_name,
-        $port,
-        $target_ip,
-        $port,
-        "Test_User_{$from_id}",
-        $expire_timestamp,
-        $test_volume_mb,
-        true
-    );
-
-    $resData = json_decode($res['body'] ?? '', true);
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $inbound_id = $resData['obj']['id'];
-
-        $limit_usertest = intval($user['limit_usertest']) - 1;
-        update("user", "limit_usertest", $limit_usertest, "id", $from_id);
-
-        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
-        $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $test_volume_gb, $expire_timestamp]);
-
-        $randomString = bin2hex(random_bytes(4));
-        $date = time();
-        $stmt_inv = $pdo->prepare("INSERT IGNORE INTO invoice (id_user, id_invoice, username, time_sell, Service_location, name_product, price_product, Volume, Service_time, Status) VALUES (?, ?, ?, ?, ?, 'سرویس تست تانل', '0', ?, ?, 'active')");
-        $stmt_inv->execute([$from_id, $randomString, "tun_{$port}", $date, $panel_name, $test_volume_mb, $test_hours]);
-
-        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null"
-            ? trim($panel_details['linksubx'])
-            : parse_url($panel_details['url_panel'], PHP_URL_HOST);
-
-        if ($test_volume_mb >= 1000) {
-            $gb_value = round($test_volume_mb / 1024, 1);
-            $formatted_volume = ($gb_value == intval($gb_value) ? intval($gb_value) : $gb_value) . " گیگابایت";
-        } else {
-            $formatted_volume = intval($test_volume_mb) . " مگابایت";
-        }
-
-        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تست تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم تست:</b> {$formatted_volume}\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار تست:</b> {$test_hours} ساعت\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <i>در کلاینت، آدرس را برابر <code>{$server_host}</code> و پورت را <code>{$port}</code> قرار دهید.</i>";
-
-        sendmessage($from_id, $success_msg, $keyboard, 'HTML');
-        step("home", $from_id);
-    } else {
-        $err = $resData['msg'] ?? 'خطا در ارتباط با سرور';
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>خطا در ساخت پورت تانل:</b>\nاحتمالاً پورت <code>{$port}</code> روی سرور اشغال است. لطفاً یک پورت دیگر ارسال فرمایید:", $backuser, 'HTML');
-    }
-
-} elseif ($user['step'] == "payment" && ($datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount")) {
+} elseif ($user['step'] == "payment" && $datain == "confirmandgetservice" || $datain == "confirmandgetserviceDiscount") {
     $userdate = json_decode($user['Processing_value'], true);
     telegram('editMessageReplyMarkup', [
         'chat_id' => $from_id,
         'message_id' => $message_id,
         'reply_markup' => json_encode(['inline_keyboard' => []])
-    ]);
+    ]);    // $pats for customm service
     $parts = explode("_", $user['Processing_value_one']);
+    // $partsdic for discount value
     $partsdic = explode("_", $user['Processing_value_four']);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if ($marzban_list_get['status'] == "disable") {
@@ -5994,7 +4453,7 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
     $Shoppinginfo = json_encode($Shoppinginfo);
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-    $datatextbot['textafterpay'] = in_array($marzban_list_get['type'], ["ibsng", "mikrotik", "pasarguard_reseller"], true) ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
+    $datatextbot['textafterpay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Volume_constraint']) == 0)
@@ -6010,12 +4469,9 @@ elseif ($user['step'] == "tunnel_test_step_ip") {
     if (intval($info_product['Volume_constraint']) == 0) {
         $textcreatuser = str_replace('گیگابایت', "", $textcreatuser);
     }
-    if (in_array($marzban_list_get['type'], ["Manualsale", "ibsng", "mikrotik", "pasarguard_reseller"], true)) {
+    if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
-    }
-    if ($marzban_list_get['type'] == "pasarguard_reseller") {
-        $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
@@ -6147,229 +4603,6 @@ $textonebuy
     }
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
-} elseif ($datain == "confirm_pay_tunnel") {
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['tunnel_panel'];
-    $target_ip = $userdata['tunnel_target_ip'];
-    $target_port = intval($userdata['tunnel_target_port']);
-    $listen_port = intval($userdata['tunnel_listen_port']);
-    $product_code = $userdata['tunnel_product_code'];
-
-    $product = select("product", "*", "code_product", $product_code, "select");
-    $price = intval($product['price_product']);
-    $total_gb = intval($product['Volume_constraint']);
-    $days = intval($product['Service_time']);
-
-    if ($user['Balance'] < $price && $user['agent'] != "n2") {
-        sendmessage($from_id, "❌ <b>موجودی کیف پول شما کافی نیست.</b>\nلطفاً ابتدا از بخش کیف پول، موجودی خود را افزایش دهید.", $keyboard, 'HTML');
-        return;
-    }
-
-    Editmessagetext($from_id, $message_id, "♻️ در حال ساخت و راه‌اندازی پورت اختصاصی شما...", null);
-
-    $expire_timestamp = ($days > 0) ? (time() + ($days * 86400)) : 0;
-
-    $response = addTunnelForward($panel_name, $listen_port, $target_ip, $target_port, "User_{$from_id}", $expire_timestamp, $total_gb);
-    $resData = json_decode($response['body'], true);
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $inbound_id = $resData['obj']['id'];
-
-        $new_balance = $user['Balance'] - $price;
-        update("user", "Balance", $new_balance, "id", $from_id);
-
-        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$from_id, $panel_name, $inbound_id, $listen_port, $target_ip, $target_port, $total_gb, $expire_timestamp]);
-        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-        $server_host = !empty($panel_details['linksubx']) ? $panel_details['linksubx'] : parse_url($panel_details['url_panel'], PHP_URL_HOST);
-
-        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$listen_port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$target_port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($total_gb > 0 ? "{$total_gb} گیگابایت" : "نامحدود") . "\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
-        sendmessage($from_id, $success_msg, $keyboard, 'HTML');
-    } else {
-        $err = $resData['msg'] ?? 'خطا در برقراری ارتباط با سرور';
-        sendmessage($from_id, "❌ <b>خطا در ساخت تانل:</b>\n<code>{$err}</code>\n\nاحتمالاً پورت <code>{$listen_port}</code> روی سرور اشغال است. لطفاً مجدداً مراحل را طی کرده و پورت دیگری انتخاب فرمایید.", $keyboard, 'HTML');
-    }
-
-    step("home", $from_id);
-
-
-} // مرحله ۱ خرید دلخواه تانل: دریافت آی‌پی
-elseif ($user['step'] == "tun_custom_step_ip") {
-    $ip = trim($text);
-    if (!isValidPublicIpv4($ip)) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> <b>آی‌پی واردشده نامعتبر یا محلی (Local/Private) است.</b>\nلطفاً یک آی‌پی عمومی (Public IPv4) معتبر ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tun_custom_target_ip", $ip);
-    $msg_get_port = "<tg-emoji emoji-id=\"5350374591808158927\">🔌</tg-emoji> لطفاً <b>پورت مورد نظر</b> را ارسال کنید (عددی بین ۱۰۲۴ تا ۶۵۵۳۵):";
-    sendmessage($from_id, $msg_get_port, $backuser, 'HTML');
-    step("tun_custom_step_port", $from_id);
-}
-
-// مرحله ۲ خرید دلخواه تانل: دریافت و بررسی پورت
-elseif ($user['step'] == "tun_custom_step_port") {
-    $port = intval($text);
-    if ($port < 1024 || $port > 65535) {
-        sendmessage($from_id, "❌ پورت باید عددی بین ۱۰۲۴ تا ۶۵۵۳۵ باشد. مجدداً ارسال کنید:", $backuser, 'HTML');
-        return;
-    }
-
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['name_panel'];
-
-    $stmt = $pdo->prepare("SELECT id FROM tunnel_orders WHERE name_panel = ? AND listen_port = ? AND status != 'removed'");
-    $stmt->execute([$panel_name, $port]);
-    if ($stmt->rowCount() > 0) {
-        sendmessage($from_id, "❌ <b>پورت {$port} قبلاً رزرو شده است.</b> لطفاً پورت دیگری بفرستید:", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tun_custom_port", $port);
-
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-    $price_vol_map = json_decode($panel['pricecustomvolume'] ?? '[]', true);
-    $price_per_gb = $price_vol_map[$user['agent']] ?? 5000;
-    $min_vol = intval(json_decode($panel['mainvolume'] ?? '[]', true)[$user['agent']] ?? 1);
-    $max_vol = intval(json_decode($panel['maxvolume'] ?? '[]', true)[$user['agent']] ?? 500);
-
-    $txt = "<tg-emoji emoji-id=\"5350481089817232086\">🔋</tg-emoji> <b>مقدار حجم درخواستی خود را به گیگابایت وارد کنید:</b>\n\n";
-    $txt .= "تعرفه هر گیگابایت: <code>" . number_format($price_per_gb) . "</code> تومان\n";
-    $txt .= "حداقل حجم: <code>{$min_vol}</code> و حداکثر: <code>{$max_vol}</code> گیگابایت";
-
-    sendmessage($from_id, $txt, $backuser, 'HTML');
-    step("tun_custom_step_vol", $from_id);
-}
-
-// مرحله ۳ خرید دلخواه تانل: دریافت حجم و درخواست روز
-elseif ($user['step'] == "tun_custom_step_vol") {
-    $vol = intval($text);
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['name_panel'];
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-
-    $min_vol = intval(json_decode($panel['mainvolume'] ?? '[]', true)[$user['agent']] ?? 1);
-    $max_vol = intval(json_decode($panel['maxvolume'] ?? '[]', true)[$user['agent']] ?? 500);
-
-    if (!ctype_digit($text) || $vol < $min_vol || $vol > $max_vol) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> حجم نامعتبر است (بین {$min_vol} تا {$max_vol} گیگابایت):", $backuser, 'HTML');
-        return;
-    }
-
-    savedata("save", "tun_custom_vol", $vol);
-
-    $price_day_map = json_decode($panel['pricecustomtime'] ?? '[]', true);
-    $price_per_day = $price_day_map[$user['agent']] ?? 2000;
-    $min_days = intval(json_decode($panel['maintime'] ?? '[]', true)[$user['agent']] ?? 1);
-    $max_days = intval(json_decode($panel['maxtime'] ?? '[]', true)[$user['agent']] ?? 365);
-
-    $txt_day = "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار سرویس را به روز وارد کنید:</b>\n\n";
-    $txt_day .= "تعرفه هر روز: <code>" . number_format($price_per_day) . "</code> تومان\n";
-    $txt_day .= "حداقل زمان: <code>{$min_days}</code> و حداکثر: <code>{$max_days}</code> روز";
-
-    sendmessage($from_id, $txt_day, $backuser, 'HTML');
-    step("tun_custom_step_days", $from_id);
-}
-
-// مرحله ۴ خرید دلخواه تانل: صدور پیش‌فاکتور
-elseif ($user['step'] == "tun_custom_step_days") {
-    $days = intval($text);
-    $userdata = json_decode($user['Processing_value'], true);
-    $panel_name = $userdata['name_panel'];
-    $panel = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-
-    $min_days = intval(json_decode($panel['maintime'] ?? '[]', true)[$user['agent']] ?? 1);
-    $max_days = intval(json_decode($panel['maxtime'] ?? '[]', true)[$user['agent']] ?? 365);
-
-    if (!ctype_digit($text) || $days < $min_days || $days > $max_days) {
-        sendmessage($from_id, "<tg-emoji emoji-id=\"5258236805890710909\">❌</tg-emoji> مدت زمان نامعتبر است (بین {$min_days} تا {$max_days} روز):", $backuser, 'HTML');
-        return;
-    }
-
-    $vol = intval($userdata['tun_custom_vol']);
-    $price_per_gb = json_decode($panel['pricecustomvolume'] ?? '[]', true)[$user['agent']] ?? 5000;
-    $price_per_day = json_decode($panel['pricecustomtime'] ?? '[]', true)[$user['agent']] ?? 2000;
-    $total_price = ($vol * $price_per_gb) + ($days * $price_per_day);
-
-    savedata("save", "tun_custom_days", $days);
-    savedata("save", "tun_custom_price", $total_price);
-
-    $inv = "<tg-emoji emoji-id=\"5258024802010026053\">🧾</tg-emoji> <b>پیش‌فاکتور خرید پورت تانل سفارشی</b>\n\n";
-    $inv .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>سرور:</b> {$panel_name}\n";
-    $inv .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت تانل:</b> <code>{$userdata['tun_custom_port']}</code>\n";
-    $inv .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>مقصد خارج:</b> <code>{$userdata['tun_custom_target_ip']}:{$userdata['tun_custom_port']}</code>\n";
-    $inv .= "<tg-emoji emoji-id=\"5350295774863311434\">📦</tg-emoji> <b>حجم درخواستی:</b> {$vol} گیگابایت\n";
-    $inv .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n";
-    $inv .= "<tg-emoji emoji-id=\"5348418461838098123\">💰</tg-emoji> <b>مبلغ قابل پرداخت:</b> " . number_format($total_price) . " تومان\n";
-    $inv .= "<tg-emoji emoji-id=\"5258204546391351475\">💵</tg-emoji> <b>موجودی شما:</b> " . number_format($user['Balance']) . " تومان";
-    $keys = json_encode([
-        'inline_keyboard' => [
-            [['text' => "پرداخت و ساخت پورت", 'callback_data' => "confirm_pay_tun_custom", 'style' => 'primary', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => "برگشت", 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]]
-        ]
-    ]);
-
-    sendmessage($from_id, $inv, $keys, 'HTML');
-    step("home", $from_id);
-}
-
-// مرحله ۵ خرید دلخواه تانل: تایید پرداخت و ایجاد اینباند سنایی
-elseif ($datain == "confirm_pay_tun_custom") {
-    $userdata = json_decode($user['Processing_value'], true);
-
-    $vol = intval($userdata['tun_custom_vol'] ?? 0);
-    $days = intval($userdata['tun_custom_days'] ?? 0);
-    $price = intval($userdata['tun_custom_price'] ?? 0);
-    $panel_name = $userdata['name_panel'];
-    $port = intval($userdata['tun_custom_port'] ?? 0);
-    $target_ip = $userdata['tun_custom_target_ip'] ?? '';
-
-    if ($vol <= 0 || $days <= 0 || empty($target_ip) || $port <= 0) {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ اطلاعات ناقص یا منقضی شده است.", 'show_alert' => true]);
-        return;
-    }
-
-    if ($user['Balance'] < $price && $user['agent'] != "n2") {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ موجودی کیف پول کافی نیست.", 'show_alert' => true]);
-        return;
-    }
-
-    $expire_timestamp = time() + ($days * 86400);
-
-    $res = addTunnelForward($panel_name, $port, $target_ip, $port, "User_{$from_id}", $expire_timestamp, $vol);
-    $resData = json_decode($res['body'] ?? '', true);
-
-    if (isset($resData['success']) && $resData['success'] === true) {
-        $inbound_id = $resData['obj']['id'];
-        update("user", "Balance", ($user['Balance'] - $price), "id", $from_id);
-
-        $stmt = $pdo->prepare("INSERT INTO tunnel_orders (user_id, name_panel, inbound_id, listen_port, target_ip, target_port, total_gb, expire_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')");
-        $stmt->execute([$from_id, $panel_name, $inbound_id, $port, $target_ip, $port, $vol, $expire_timestamp]);
-
-        $panel_details = select("marzban_panel", "*", "name_panel", $panel_name, "select");
-        $server_host = !empty($panel_details['linksubx']) && $panel_details['linksubx'] != "null"
-            ? trim($panel_details['linksubx'])
-            : parse_url($panel_details['url_panel'], PHP_URL_HOST);
-
-        $success_msg = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>پورت تانل شما با موفقیت فعال شد!</b>\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5397730656400714154\">📍</tg-emoji> <b>ایپی سرور :</b> <code>{$server_host}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350374591808158927\">🚪</tg-emoji> <b>پورت سرور :</b> <code>{$listen_port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5348540950010412359\">🌐</tg-emoji> <b>آیپی سرور مقصد:</b> <code>{$target_ip}:{$target_port}</code>\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258330865674494479\">📊</tg-emoji> <b>حجم مجاز:</b> " . ($vol > 0 ? "{$vol} گیگابایت" : "نامحدود") . "\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5258113901106580375\">⏳</tg-emoji> <b>مدت اعتبار:</b> {$days} روز\n\n";
-        $success_msg .= "<tg-emoji emoji-id=\"5350572310627632617\">💡</tg-emoji> <b>راهنمای اتصال:</b> در کلاینت یا کانفیگ سرور خارج، آدرس سرور را برابر با <code>{$server_host}</code> و پورت را برابر با <code>{$listen_port}</code> تنظیم کنید.";
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
-        Editmessagetext($from_id, $message_id, $success_msg, null, 'HTML');
-    } else {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ خطا در ساخت اینباند در سنایی: " . ($resData['msg'] ?? ''), 'show_alert' => true]);
-    }
-    step("home", $from_id);
 } elseif ($datain == "aptdc") {
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id);
@@ -6441,12 +4674,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
-        $productStmt->execute([
-            ':code_product' => $user['Processing_value_one'],
-            ':location' => $userdate['name_panel'],
-        ]);
-        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
+        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '{$user['Processing_value_one']}' AND (Location = '{$userdate['name_panel']}'or Location = '/all') LIMIT 1"));
     }
     $result = ($SellDiscountlimit['price'] / 100) * $info_product['price_product'];
 
@@ -6480,8 +4708,8 @@ elseif ($datain == "confirm_pay_tun_custom") {
 ";
     $paymentDiscount = json_encode([
         'inline_keyboard' => [
-            [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount", 'style' => 'success', 'icon_custom_emoji_id' => 5350572310627632617]],
-            [['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", 'style' => 'danger', 'icon_custom_emoji_id' => 5258236805890710909]],
+            [['text' => "پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount" , 'style'=>'success' , 'icon_custom_emoji_id'=> 5350572310627632617]],
+            [['text' => $textbotlang['users']['backbtn'] ,  'callback_data' => "backuser", 'style'=>'danger' , 'icon_custom_emoji_id'=> 5258236805890710909]],
         ]
     ]);
     $parametrsendvalue = $text . "_" . $info_product['price_product'];
@@ -6547,27 +4775,14 @@ elseif ($datain == "confirm_pay_tun_custom") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['Service-select'], KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolumeom"));
 } elseif ($datain == "customsellvolumeom") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    if (!$marzban_list_get || $marzban_list_get['status'] == "disable") {
-        Editmessagetext($from_id, $message_id, "❌ این پنل در دسترس نیست؛ پنل دیگری را انتخاب کنید.", $backuser, 'HTML');
-        return;
-    }
-
-    $selection = customServiceSelection('', $marzban_list_get, $user['agent']);
-    $count = customServiceOrderCount($marzban_list_get, $user['Processing_value_four']);
-    update("user", "Processing_value_one", $selection['code'], "id", $from_id);
-    update("user", "Processing_value_four", $count, "id", $from_id);
-
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
-        Editmessagetext($from_id, $message_id, $textbotlang['users']['selectusername'], $backuser, 'HTML');
-        step('custom_service_username', $from_id);
-        return;
-    }
-
-    $username_ac = customServiceUsername($from_id, $marzban_list_get, $user, $username, '', $ManagePanel, $usernameinvoice ?? []);
-    update("user", "Processing_value_tow", $username_ac, "id", $from_id);
-    $invoice = customServiceInvoice($marzban_list_get, $user['agent'], $selection['days'], $selection['volume'], $count, $user['pricediscount']);
-    customServiceReply($from_id, $message_id, $invoice['text'], $invoice['keyboard']);
-    step('payments', $from_id);
+    $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
+    $custompricevalue = $eextraprice[$user['agent']];
+    $textcustom = "🔋 لطفا مقدار حجم سرویس مورد نظر را وارد کنید ( برحسب گیگابایت ) :
+📌 تعرفه هر گیگ :  $custompricevalue 
+🔔 حداقل حجم 1 گیگابایت و حداکثر 1000 گیگابایت می باشد.";
+    sendmessage($from_id, $textcustom, $backuser, 'html');
+    deletemessage($from_id, $message_id);
+    step('gettimecustomvolom', $from_id);
 } elseif ($user['step'] == "gettimecustomvolom") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
@@ -6670,12 +4885,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['Service_time'] = $parts[1];
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
     } else {
-        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
-        $productStmt->execute([
-            ':code_product' => $loc,
-            ':location' => $user['Processing_value'],
-        ]);
-        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
+        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '$loc' AND (Location = '{$user['Processing_value']}'or Location = '/all') LIMIT 1"));
     }
     $randomString = bin2hex(random_bytes(2));
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
@@ -6724,21 +4934,12 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
         $info_product['data_limit_reset'] = "no_reset";
     } else {
-        $productStmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (Location = :location OR Location = '/all') LIMIT 1");
-        $productStmt->execute([
-            ':code_product' => $user['Processing_value_one'],
-            ':location' => $user['Processing_value'],
-        ]);
-        $info_product = $productStmt->fetch(PDO::FETCH_ASSOC);
+        $info_product = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE code_product = '{$user['Processing_value_one']}' AND (Location = '{$user['Processing_value']}'  or Location = '/all') LIMIT 1"));
     }
     if (empty($info_product['price_product']) || empty($info_product['price_product']))
         return;
     $priceproduct = $info_product['price_product'] * $user['Processing_value_four'];
-    telegram('editMessageReplyMarkup', [
-        'chat_id' => $from_id,
-        'message_id' => $message_id,
-        'reply_markup' => json_encode(['inline_keyboard' => []]),
-    ]);
+    Editmessagetext($from_id, $message_id, $text_inline, null);
     $username_ac = $user['Processing_value_tow'];
     $date = time();
     if (intval($user['pricediscount']) != 0) {
@@ -6799,7 +5000,7 @@ elseif ($datain == "confirm_pay_tun_custom") {
         'username' => $username,
         'type' => 'buyomdh'
     );
-    if (!empty($info_product['inbounds'])) {
+    if ($info_product['inbounds'] != null) {
         $marzban_list_get['inboundid'] = $info_product['inbounds'];
     }
     $notifctions = json_encode(array(
@@ -6880,10 +5081,6 @@ elseif ($datain == "confirm_pay_tun_custom") {
         $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links}', "<code>{$config}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
-        if ($marzban_list_get['type'] == "pasarguard_reseller") {
-            $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
-            update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
-        }
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
@@ -7592,142 +5789,6 @@ elseif ($datain == "confirm_pay_tun_custom") {
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
-    } elseif ($datain == "pay_abangateway") {
-        $mainbalance = getPaySettingValue('minbalanceabangateway', '0');
-        $maxbalance = getPaySettingValue('maxbalanceabangateway', '0');
-        if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
-            $mainbalance = number_format($mainbalance);
-            $maxbalance = number_format($maxbalance);
-            sendmessage($from_id, strtr($textbotlang['users']['Balance']['depositRangePlisio'], ['{mainbalance}' => $mainbalance, '{maxbalance}' => $maxbalance]), null, 'HTML');
-            return;
-        }
-
-        $dateacc = date('Y/m/d');
-        $stmt = $pdo->prepare("SELECT SUM(price) as price FROM Payment_report WHERE Payment_Method = 'AbanGateway' AND time LIKE :today");
-        $stmt->execute([':today' => '%' . $dateacc . '%']);
-        $sumpayment = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (intval($sumpayment['price']) > 50000000) {
-            sendmessage($from_id, $textbotlang['users']['Balance']['queueBusy'], null, 'HTML');
-            return;
-        }
-
-        deletemessage($from_id, $message_id);
-        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
-
-        $dateacc = date('Y/m/d H:i:s');
-        $randomString = bin2hex(random_bytes(5));
-        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-
-        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?,?,?,?,?,?,?)");
-        $Payment_Method = "AbanGateway";
-        $stmt->execute([$from_id, $randomString, $dateacc, $user['Processing_value'], "Unpaid", $Payment_Method, $invoice]);
-
-        $pay = abangateway($randomString, $user['Processing_value']);
-
-        $payment_url = $pay['payment_link'] ?? $pay['payment_url'] ?? $pay['url'] ?? $pay['data']['payment_url'] ?? null;
-        $is_success = isset($pay['success']) ? $pay['success'] : (!empty($payment_url) ? true : false);
-
-        if (!$is_success || empty($payment_url)) {
-            $text_error = json_encode($pay, JSON_UNESCAPED_UNICODE);
-            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
-            step('home', $from_id);
-
-            $ErrorsLinkPayment = sprintf($textbotlang['Admin']['reportgroup']['errorPaymentLink3'] ?? "⭕️ خطا در ساخت لینک پرداخت آبان‌پی:\n%s\n\nکاربر: %s\nروش: %s\nیوزرنیم: @%s", $text_error, $from_id, $Payment_Method, $username);
-
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $ErrorsLinkPayment,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-
-        $pricetoman = number_format($user['Processing_value'], 0);
-        $paymentkeyboard = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['users']['Balance']['payments'] ?? "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]
-                ],
-                [
-                    ['text' => "❌ انصراف", 'callback_data' => "colselist"]
-                ]
-            ]
-        ]);
-
-        $text_aban = isset($textbotlang['users']['Balance']['transactionCreated3'])
-            ? sprintf($textbotlang['users']['Balance']['transactionCreated3'], $randomString, $pricetoman)
-            : "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان‌پی)</b>\n\n💵 <b>مبلغ قابل پرداخت:</b> {$pricetoman} تومان\n🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>";
-
-        $message_id = sendmessage($from_id, $text_aban, $paymentkeyboard, 'HTML');
-        updatePaymentMessageId($message_id, $randomString);
-        step('home', $from_id);
-    } elseif ($datain == "pay_cubepay") {
-        $mainbalance = intval(select("PaySetting", "ValuePay", "NamePay", "minbalancecubepay", "select")['ValuePay'] ?? 5000);
-        $maxbalance = intval(select("PaySetting", "ValuePay", "NamePay", "maxbalancecubepay", "select")['ValuePay'] ?? 50000000);
-
-        if ($user['Processing_value'] < $mainbalance || $user['Processing_value'] > $maxbalance) {
-            $min_f = number_format($mainbalance);
-            $max_f = number_format($maxbalance);
-            sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید {$min_f} و حداکثر {$max_f} تومان باشد", null, 'HTML');
-            return;
-        }
-
-        deletemessage($from_id, $message_id);
-        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
-
-        $dateacc = date('Y/m/d H:i:s');
-        $randomString = bin2hex(random_bytes(5));
-        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-        $payable_amount = cubepayPayableAmount($user['Processing_value']);
-
-        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $payment_Status = "Unpaid";
-        $Payment_Method = "cubepay";
-        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $payable_amount, $payment_Status, $Payment_Method, $invoice);
-        $stmt->execute();
-
-        $pay = cubepay($randomString, $user['Processing_value']);
-        $payment_url = $pay['payment_link'] ?? null;
-
-        if (empty($payment_url)) {
-            $text_error = json_encode($pay, JSON_UNESCAPED_UNICODE);
-            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
-            step('home', $from_id);
-
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => "⭕️ خطا در ایجاد درگاه کیوب‌پی:\n{$text_error}\nکاربر: {$from_id}",
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-
-        $paymentkeyboard = json_encode([
-            'inline_keyboard' => [
-                [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
-                [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
-            ]
-        ]);
-
-        $cubepay_row = select("textbot", "text", "id_text", "cubepay", "select");
-        $cubepay_title = !empty($cubepay_row['text']) ? $cubepay_row['text'] : 'کیوب‌پی (CubePay)';
-
-        $pricetoman = number_format($payable_amount);
-        $msg_text = "🧾 <b>پیش‌فاکتور پرداخت آنلاین ({$cubepay_title})</b>\n\n" .
-            "🛒 شناسه فاکتور: <code>{$randomString}</code>\n" .
-            "💰 مبلغ قابل پرداخت: <b>{$pricetoman} تومان</b>\n\n" .
-            "جهت تکمیل پرداخت روی دکمه زیر کلیک نمایید 👇";
-
-        $message_id = sendmessage($from_id, $msg_text, $paymentkeyboard, 'HTML');
-        updatePaymentMessageId($message_id, $randomString);
-        step('home', $from_id);
-
     } elseif ($datain == "iranpay3") {
         $dateacc = date('Y/m/d');
         $query = "SELECT SUM(price) as price FROM Payment_report WHERE  Payment_Method = 'Currency Rial 1' AND  time LIKE '%$dateacc%'";
@@ -7987,102 +6048,6 @@ elseif ($datain == "confirm_pay_tun_custom") {
         }
         $message_id = sendmessage($from_id, $textstar, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
-    } elseif ($datain == "pay_abangateway") {
-        $price = intval($user['Processing_value']);
-        $mainbalance = select("PaySetting", "ValuePay", "NamePay", "minbalanceabangateway", "select")['ValuePay'];
-        $maxbalance = select("PaySetting", "ValuePay", "NamePay", "maxbalanceabangateway", "select")['ValuePay'];
-
-        if ($price < $mainbalance || $price > $maxbalance) {
-            $mainbalance = number_format($mainbalance);
-            $maxbalance = number_format($maxbalance);
-            sendmessage($from_id, "❌ حداقل مبلغ واریزی این روش پرداخت باید $mainbalance و حداکثر $maxbalance تومان باشد", null, 'HTML');
-            return;
-        }
-
-        $randomString = bin2hex(random_bytes(5));
-        $dateacc = date('Y/m/d H:i:s');
-        $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
-        $payment_Status = "Unpaid";
-        $Payment_Method = "abangateway";
-
-        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user, id_order, time, price, payment_Status, Payment_Method, id_invoice) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $price, $payment_Status, $Payment_Method, $invoice);
-        $stmt->execute();
-        $stmt->close();
-
-        $res = abangateway($randomString, $price);
-
-        $is_success = isset($res['success']) ? $res['success'] : ($res['IsSuccessful'] ?? false);
-
-        if ($is_success != "true" && $is_success !== true) {
-            $text_error = json_encode($res, JSON_UNESCAPED_UNICODE);
-            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
-            step('home', $from_id);
-
-            $ErrorsLinkPayment = "
-⭕️ یک کاربر قصد پرداخت داشت که ساخت لینک پرداخت آبان‌پی با خطا مواجه شده و به کاربر لینک داده نشد
-✍️ دلیل خطا : $text_error
-            
-آیدی کاربر : $from_id
-روش پرداخت : آبان‌پی (AbanPay)
-نام کاربری کاربر : @$username";
-
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $errorreport,
-                    'text' => $ErrorsLinkPayment,
-                    'parse_mode' => "HTML"
-                ]);
-            }
-            return;
-        }
-
-        $payment_url = $res['payment_url'] ?? $res['data']['payment_url'] ?? $res['url'] ?? '';
-
-        if (!empty($payment_url)) {
-            deletemessage($from_id, $message_id);
-
-            $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpabangateway", "select")['ValuePay'];
-            if ($gethelp != 2 && !empty($gethelp)) {
-                $data = json_decode($gethelp, true);
-                if (is_array($data)) {
-                    if ($data['type'] == "text") {
-                        sendmessage($from_id, $data['text'], null, 'HTML');
-                    } elseif ($data['type'] == "photo") {
-                        sendphoto($from_id, $data['photoid'], $data['text']);
-                    } elseif ($data['type'] == "video") {
-                        sendvideo($from_id, $data['videoid'], $data['text']);
-                    }
-                } else {
-                    sendmessage($from_id, $gethelp, null, 'HTML');
-                }
-            }
-
-            $btn_pay = json_encode([
-                'inline_keyboard' => [
-                    [['text' => "💳 ورود به درگاه و پرداخت", 'url' => $payment_url]],
-                    [['text' => "❌ انصراف", 'callback_data' => "colselist"]]
-                ]
-            ]);
-
-            $text_pay = "🧾 <b>پیش‌فاکتور پرداخت آنلاین (آبان پی)</b>\n\n"
-                . "💵 <b>مبلغ قابل پرداخت:</b> " . number_format($price) . " تومان\n"
-                . "🔗 <b>شناسه سفارش:</b> <code>{$randomString}</code>\n\n"
-                . "👇 جهت پرداخت روی دکمه زیر کلیک کنید:";
-
-            $sent = telegram('sendmessage', [
-                'chat_id' => $from_id,
-                'text' => $text_pay,
-                'reply_markup' => $btn_pay,
-                'parse_mode' => "html",
-            ]);
-
-            if (isset($sent['result']['message_id'])) {
-                updatePaymentMessageId($sent['result']['message_id'], $randomString);
-            }
-            step('home', $from_id);
-        }
     }
 }
 if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
@@ -8208,7 +6173,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         return;
     }
     deletemessage($from_id, $message_id);
-    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش را ارسال نمایید.", $backuser, 'HTML');
+    sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش ترون را ارسال نمایید.", $backuser, 'HTML');
     step('getresidcurrency', $from_id);
     update("user", "Processing_value", $dataget[1], "id", $from_id);
 } elseif ($user['step'] == "getresidcurrency") {
@@ -8291,13 +6256,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
             $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
-            $productStmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent AND code_product = :code_product LIMIT 1");
-            $productStmt->execute([
-                ':location' => $nameloc['Service_location'],
-                ':agent' => $user['agent'],
-                ':code_product' => $codeproduct,
-            ]);
-            $prodcut = $productStmt->fetch(PDO::FETCH_ASSOC);
+            $prodcut = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND agent= '{$user['agent']}' AND code_product = '$codeproduct'"));
         }
         $Confirm_pay = json_encode([
             'inline_keyboard' => [
@@ -8493,13 +6452,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
             $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
-            $productStmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent AND code_product = :code_product LIMIT 1");
-            $productStmt->execute([
-                ':location' => $nameloc['Service_location'],
-                ':agent' => $user['agent'],
-                ':code_product' => $codeproduct,
-            ]);
-            $prodcut = $productStmt->fetch(PDO::FETCH_ASSOC);
+            $prodcut = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND agent= '{$user['agent']}' AND code_product = '$codeproduct'"));
         }
         $Confirm_pay = json_encode([
             'inline_keyboard' => [
@@ -9214,7 +7167,7 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5258011929993026890
@@ -9225,7 +7178,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'],
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9279,7 +7232,7 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9290,7 +7243,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9298,28 +7251,28 @@ $text_porsant
             ];
         }
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page_extends',
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+ $pagination_buttons = [
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page_extends',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page_extends',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $backuser = [
-        [
-            'text' => $textbotlang['users']['backbtn'],
-            'callback_data' => 'backuser',
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+    [
+        'text' => $textbotlang['users']['backbtn'],
+        'callback_data' => 'backuser',
+        'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
@@ -9347,10 +7300,10 @@ $text_porsant
                 $data = " | {$row['note']}";
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row, false, true),
+                    'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
-                    'icon_custom_emoji_id' => 5258011929993026890
+                     'icon_custom_emoji_id' => 5258011929993026890
                 ],
             ];
         }
@@ -9358,7 +7311,7 @@ $text_porsant
         while ($row = mysqli_fetch_assoc($result)) {
             $keyboardlists['inline_keyboard'][] = [
                 [
-                    'text' => purchasedServiceDisplayName($row),
+                    'text' => $row['username'] . $data,
                     'callback_data' => "extend_" . $row['id_invoice'],
                     'style' => 'primary',
                     'icon_custom_emoji_id' => 5359719332542718652
@@ -9367,28 +7320,28 @@ $text_porsant
         }
     }
     $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends',
-            'style' => 'success',
-            'icon_custom_emoji_id' => 5260450573768990626
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page_extends',
-            'style' => 'primary',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+    [
+        'text' => $textbotlang['users']['page']['next'],
+        'callback_data' => 'next_page_extends',
+        'style' => 'success',
+        'icon_custom_emoji_id' => 5260450573768990626
+    ],
+    [
+        'text' => $textbotlang['users']['page']['previous'],
+        'callback_data' => 'previous_page_extends',
+        'style' => 'primary',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
 
-    $backuser = [
-        [
-            'text' => $textbotlang['users']['backbtn'],
-            'callback_data' => 'backuser',
-            'style' => 'danger',
-            'icon_custom_emoji_id' => 5258236805890710909
-        ]
-    ];
+$backuser = [
+    [
+        'text' => $textbotlang['users']['backbtn'],
+        'callback_data' => 'backuser',
+        'style' => 'danger',
+        'icon_custom_emoji_id' => 5258236805890710909
+    ]
+];
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
@@ -9663,4 +7616,5 @@ if (isset($update['message']['successful_payment'])) {
 if (in_array($from_id, $admin_ids))
     require_once 'admin.php';
 
-mirzaCloseDatabaseConnections();
+$pdo = null;
+$connect->close();

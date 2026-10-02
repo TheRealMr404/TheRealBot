@@ -4,7 +4,6 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../function.php';
-require_once __DIR__ . '/../vpnbot/reseller_features.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../keyboard.php';
 require_once __DIR__ . '/../jdf.php';
@@ -19,20 +18,10 @@ use Endroid\QrCode\Writer\PngWriter;
 
 $ManagePanel = new ManagePanel();
 
-$invoice_id = htmlspecialchars($_POST['invoice_id'] ?? '', ENT_QUOTES, 'UTF-8');
+$invoice_id = htmlspecialchars($_POST['invoice_id'], ENT_QUOTES, 'UTF-8');
 $setting = select("setting", "*");
 $PaySetting = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht","select")['ValuePay'];
-$Payment_report_row = select("Payment_report", "*", "id_order", $invoice_id,"select");
-if (!$Payment_report_row) {
-    http_response_code(404);
-    exit('Payment not found');
-}
-if (!empty($Payment_report_row['bottype'])
-    && !hash_equals((string) ($Payment_report_row['dec_not_confirmed'] ?? ''), (string) ($_POST['transid'] ?? ''))) {
-    http_response_code(400);
-    exit('Invalid transaction');
-}
-$Payment_report = $Payment_report_row['price'];
+$Payment_report = select("Payment_report", "price", "id_order", $invoice_id,"select")['price'];
 $price = $Payment_report;
     $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
     $datatxtbot = array();
@@ -74,24 +63,14 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
 );
 $result = curl_exec($ch);
 curl_close($ch);
-$result = json_decode((string) $result);
-$resultCode = is_object($result) ? (string) ($result->code ?? '') : '';
-if ($resultCode == "1" || ($resultCode == "2" && !empty($Payment_report_row['bottype']))) {
+$result = json_decode($result);
+if ($result->code == "1") {
     $payment_status = "پرداخت موفق";
     $price = $Payment_report;
     $dec_payment_status = "از انجام تراکنش متشکریم!";
     $Payment_report = select("Payment_report", "*", "id_order", $invoice_id,"select");
     if($Payment_report['payment_Status'] != "paid"){
     $textbotlang = languagechange('../text.json');
-    if (!empty($Payment_report['bottype'])) {
-        $resellerResult = resellerCompleteOnlinePayment($invoice_id, 'آقای پرداخت', [
-            'شماره تراکنش' => $_POST['transid'] ?? '',
-        ]);
-        if (!$resellerResult['ok']) {
-            $payment_status = 'خطا در ثبت پرداخت';
-            $dec_payment_status = 'پرداخت انجام شد اما ثبت موجودی ناموفق بود؛ لطفاً با پشتیبانی تماس بگیرید.';
-        }
-    } else {
     DirectPayment($invoice_id,"../images.jpg");
     $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackaqaypardokht","select")['ValuePay'];
     $Balance_id = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM user WHERE id = '{$Payment_report['id_user']}' LIMIT 1"));
@@ -120,14 +99,13 @@ $text_report = "💵 پرداخت جدید
         'parse_mode' => "HTML"
         ]);
     }
-    }
 }
 }else {
         $payment_status = [
         '0' => "پرداخت انجام نشد",
         '2' => "تراکنش قبلا وریفای و پرداخت شده است",
 
-    ][$resultCode] ?? 'خطا در ارتباط با درگاه پرداخت';
+    ][$result->code];
      $dec_payment_status = "";
 }
 ?>

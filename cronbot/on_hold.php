@@ -9,15 +9,10 @@ $ManagePanel = new ManagePanel();
 
 $setting = select("setting", "*");
 // buy service 
-$stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE type IN ('marzban', 'rebecca') ORDER BY RAND() LIMIT 25");
+$stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE type = 'marzban'  ORDER BY RAND() LIMIT 25");
 $stmt->execute();
         while ($panel = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if ($panel['type'] === 'rebecca') {
-            $usersResponse = rebeccaListUsers($panel, 'on_hold');
-            $users = $usersResponse['ok'] ? $usersResponse['items'] : [];
-        } else {
-            $users = getusers($panel['name_panel'],"on_hold")['users'] ?? [];
-        }
+        $users = getusers($panel['name_panel'],"on_hold")['users'];
         foreach($users as $user){
         $invoice = select("invoice","*","username",$user['username'],"select");
         if($invoice == false )continue;

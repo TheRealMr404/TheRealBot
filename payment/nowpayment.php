@@ -1,179 +1,66 @@
 <?php
-
 ini_set('error_log', 'error_log');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../function.php';
-require_once __DIR__ . '/../vpnbot/reseller_features.php';
 require_once __DIR__ . '/../keyboard.php';
 require_once __DIR__ . '/../jdf.php';
 require __DIR__ . '/../vendor/autoload.php';
-
 $ManagePanel = new ManagePanel();
-
-function nowPaymentsSortPayload(&$value)
-{
-    if (!is_array($value)) {
-        return;
-    }
-    foreach ($value as &$item) {
-        nowPaymentsSortPayload($item);
-    }
-    unset($item);
-    if (array_keys($value) !== range(0, count($value) - 1)) {
-        ksort($value, SORT_STRING);
-    }
-}
-
-function nowPaymentsCallbackResponse($statusCode, $message)
-{
-    http_response_code((int) $statusCode);
-    header('Content-Type: text/plain; charset=utf-8');
-    exit((string) $message);
-}
-
-$rawPayload = file_get_contents('php://input');
-$payload = json_decode((string) $rawPayload, true);
-if (!is_array($payload) || empty($payload['payment_id'])) {
-    nowPaymentsCallbackResponse(400, 'Invalid payload');
-}
-
-$ipnSecret = (string) (select('PaySetting', 'ValuePay', 'NamePay', 'nowpayment_ipn_secret', 'select')['ValuePay'] ?? '');
-if ($ipnSecret !== '' && $ipnSecret !== '0') {
-    $receivedSignature = strtolower(trim((string) ($_SERVER['HTTP_X_NOWPAYMENTS_SIG'] ?? '')));
-    if ($receivedSignature === '') {
-        nowPaymentsCallbackResponse(401, 'Missing signature');
-    }
-    $sortedPayload = $payload;
-    nowPaymentsSortPayload($sortedPayload);
-    $signedPayload = json_encode($sortedPayload, JSON_UNESCAPED_SLASHES);
-    $expectedSignature = hash_hmac('sha512', $signedPayload, trim($ipnSecret));
-    if (!hash_equals($expectedSignature, $receivedSignature)) {
-        nowPaymentsCallbackResponse(401, 'Invalid signature');
-    }
-}
-
-if (($payload['payment_status'] ?? '') !== 'finished') {
-    nowPaymentsCallbackResponse(202, 'Payment is not finished');
-}
-
-$paymentId = (string) $payload['payment_id'];
-if (!preg_match('/^\d{1,30}$/', $paymentId)) {
-    nowPaymentsCallbackResponse(400, 'Invalid payment id');
-}
-
-$providerPayment = StatusPayment($paymentId);
-if (!is_array($providerPayment) || empty($providerPayment['payment_id'])) {
-    error_log('NOWPayments status lookup failed for payment ' . $paymentId);
-    nowPaymentsCallbackResponse(502, 'Unable to verify payment');
-}
-if ((string) ($providerPayment['payment_id'] ?? '') !== $paymentId) {
-    nowPaymentsCallbackResponse(400, 'Payment id mismatch');
-}
-if (($providerPayment['payment_status'] ?? '') !== 'finished') {
-    nowPaymentsCallbackResponse(202, 'Payment is not finished');
-}
-
-$invoiceId = trim((string) ($providerPayment['invoice_id'] ?? $payload['invoice_id'] ?? ''));
-$orderId = trim((string) ($providerPayment['order_id'] ?? $payload['order_id'] ?? ''));
-if ($invoiceId === '' && $orderId === '') {
-    nowPaymentsCallbackResponse(400, 'Missing invoice reference');
-}
-
-if ($invoiceId !== '' && $orderId !== '') {
-    $stmt = $pdo->prepare(
-        "SELECT * FROM Payment_report
-         WHERE Payment_Method = 'nowpayment'
-           AND (dec_not_confirmed = :invoice_id OR id_order = :order_id)
-         ORDER BY id DESC LIMIT 1"
+$setting = select("setting", "*");
+$paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
+$datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
+    $datatxtbot = array();
+foreach ($datatextbotget as $row) {
+    $datatxtbot[] = array(
+        'id_text' => $row['id_text'],
+        'text' => $row['text']
     );
-    $stmt->execute([':invoice_id' => $invoiceId, ':order_id' => $orderId]);
-} elseif ($invoiceId !== '') {
-    $stmt = $pdo->prepare(
-        "SELECT * FROM Payment_report
-         WHERE Payment_Method = 'nowpayment' AND dec_not_confirmed = :invoice_id
-         ORDER BY id DESC LIMIT 1"
-    );
-    $stmt->execute([':invoice_id' => $invoiceId]);
-} else {
-    $stmt = $pdo->prepare(
-        "SELECT * FROM Payment_report
-         WHERE Payment_Method = 'nowpayment' AND id_order = :order_id
-         ORDER BY id DESC LIMIT 1"
-    );
-    $stmt->execute([':order_id' => $orderId]);
 }
-$paymentReport = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$paymentReport) {
-    nowPaymentsCallbackResponse(404, 'Payment report not found');
-}
-if ($orderId !== '' && !hash_equals((string) $paymentReport['id_order'], $orderId)) {
-    nowPaymentsCallbackResponse(400, 'Order mismatch');
-}
-if ($invoiceId !== '' && !hash_equals((string) $paymentReport['dec_not_confirmed'], $invoiceId)) {
-    nowPaymentsCallbackResponse(400, 'Invoice mismatch');
-}
-if (($paymentReport['payment_Status'] ?? '') === 'paid') {
-    nowPaymentsCallbackResponse(200, 'OK');
-}
-
-$details = [
-    'شناسه پرداخت' => $paymentId,
-    'ارز پرداختی' => strtoupper((string) ($providerPayment['pay_currency'] ?? '')),
-    'مبلغ دریافتی' => $providerPayment['actually_paid'] ?? '',
-];
-if (!empty($paymentReport['bottype'])) {
-    $resellerResult = resellerCompleteOnlinePayment($paymentReport['id_order'], 'NOWPayments', $details);
-    if (empty($resellerResult['ok'])) {
-        nowPaymentsCallbackResponse(500, 'Unable to complete reseller payment');
+$datatextbot = array(
+    'textafterpay' => '',
+    'textaftertext' => '',
+    'textmanual' => '',
+    'textselectlocation' => ''
+);
+foreach ($datatxtbot as $item) {
+    if (isset($datatextbot[$item['id_text']])) {
+        $datatextbot[$item['id_text']] = $item['text'];
     }
-    nowPaymentsCallbackResponse(200, 'OK');
 }
-
-$setting = select('setting', '*');
 $textbotlang = languagechange('../text.json');
-$datatextbot = [];
-foreach (select('textbot', '*', null, null, 'fetchAll') as $row) {
-    $datatextbot[$row['id_text']] = $row['text'];
-}
-
-DirectPayment($paymentReport['id_order'], '../images.jpg');
-update('Payment_report', 'payment_Status', 'paid', 'id_order', $paymentReport['id_order']);
-$paymentReport = select('Payment_report', '*', 'id_order', $paymentReport['id_order'], 'select');
-if (($paymentReport['payment_Status'] ?? '') !== 'paid') {
-    nowPaymentsCallbackResponse(500, 'Unable to complete payment');
-}
-
-$balanceUser = select('user', '*', 'id', $paymentReport['id_user'], 'select');
-$cashbackPercent = (float) (select('PaySetting', 'ValuePay', 'NamePay', 'cashbacknowpayment', 'select')['ValuePay'] ?? 0);
-if ($cashbackPercent > 0 && $balanceUser) {
-    $cashback = ((int) $paymentReport['price'] * $cashbackPercent) / 100;
-    $newBalance = (int) $balanceUser['Balance'] + $cashback;
-    update('user', 'Balance', $newBalance, 'id', $balanceUser['id']);
-    sendmessage($balanceUser['id'], "🎁 مبلغ " . number_format($cashback) . ' تومان به‌عنوان هدیه به کیف پول شما اضافه شد.', null, 'HTML');
-}
-
-$paymentReportTopic = select('topicid', 'idreport', 'report', 'paymentreport', 'select')['idreport'] ?? null;
-$safeUsername = htmlspecialchars((string) ($balanceUser['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$safeCurrency = htmlspecialchars(strtoupper((string) ($providerPayment['pay_currency'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$safePaidAmount = htmlspecialchars((string) ($providerPayment['actually_paid'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$reportText = "💵 <b>پرداخت جدید NOWPayments</b>\n\n"
-    . "نام کاربری: @{$safeUsername}\n"
-    . "آیدی عددی: <code>{$paymentReport['id_user']}</code>\n"
-    . 'مبلغ: ' . number_format((int) $paymentReport['price']) . " تومان\n"
-    . "مبلغ دریافتی: {$safePaidAmount} {$safeCurrency}\n"
-    . "شناسه پرداخت: <code>{$paymentId}</code>";
-if (!empty($setting['Channel_Report'])) {
-    $reportRequest = [
-        'chat_id' => $setting['Channel_Report'],
-        'text' => $reportText,
-        'parse_mode' => 'HTML',
-    ];
-    if (!empty($paymentReportTopic)) {
-        $reportRequest['message_thread_id'] = $paymentReportTopic;
+$data = json_decode(file_get_contents("php://input"),true);
+if(isset($data['payment_status']) && $data['payment_status'] == "finished"){
+$pay = StatusPayment($data['payment_id']);
+$Payment_report = select("Payment_report","*","dec_not_confirmed",$pay['invoice_id'],"select");
+if($Payment_report){
+if ($Payment_report['payment_Status'] == "paid")return;
+DirectPayment($Payment_report['id_order'],"../images.jpg");
+$pricecashback = select("PaySetting", "ValuePay", "NamePay", "cashbacknowpayment","select")['ValuePay'];
+$Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
+if($pricecashback != "0"){
+            $result = ($Payment_report['price'] * $pricecashback) / 100;
+            $Balance_confrim = intval($Balance_id['Balance']) +$result;
+            update("user","Balance",$Balance_confrim, "id",$Balance_id['id']); 
+            $pricecashback =  number_format($pricecashback);
+            $text_report = "🎁 کاربر عزیز مبلغ $result تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
-    telegram('sendmessage', $reportRequest);
+$text_reportpayment = "💵 پرداخت جدید
+- 👤 نام کاربری کاربر : @{$Balance_id['username']}
+- ‏🆔آیدی عددی کاربر : {$Balance_id['id']}
+- 💸 مبلغ تراکنش {$Payment_report['price']}
+- 📥 مبلغ واریز شده ترون. : {$pay['actually_paid']}
+- 💳 روش پرداخت :  nowpayment";
+         if (strlen($setting['Channel_Report']) > 0) {
+        telegram('sendmessage',[
+        'chat_id' => $setting['Channel_Report'],
+        'message_thread_id' => $paymentreports,
+        'text' => $text_reportpayment,
+        'parse_mode' => "HTML"
+        ]);
+    }
+        update("Payment_report","payment_Status","paid","id_order",$Payment_report['id_order']);
+    }
 }
-
-nowPaymentsCallbackResponse(200, 'OK');

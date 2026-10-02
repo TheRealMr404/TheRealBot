@@ -19,8 +19,7 @@ $datatextbot = array(
     'text_Tariff_list' => '',
     'text_affiliates' => '',
     'text_wheel_luck' => '',
-    'text_extend' => '',
-    'text_virtual_services' => 'خدمات مجازی'
+    'text_extend' => ''
 
 );
 $textdatabot =  select("textbot", "*", null, null,"fetchAll");
@@ -49,7 +48,6 @@ $list_keyboard = array(
     'text_Tariff_list',
     'text_support',
     'text_help',
-    'text_virtual_services',
     );
 foreach ($keyboardmain['keyboard'] as $keyboard){
     foreach ($keyboard as $arrkey){

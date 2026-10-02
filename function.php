@@ -1,27 +1,8 @@
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
-require_once __DIR__ . '/config.php';
+require_once 'vendor/autoload.php';
+require 'config.php';
+require 'vendor/autoload.php';
 ini_set('error_log', 'error_log');
-
-// Existing installations preserve config.php during updates. Keep the
-// connection cleanup here as a fallback so those installations also release
-// both database handles on every normal, early-return, or fatal shutdown.
-if (!function_exists('mirzaCloseDatabaseConnections')) {
-    function mirzaCloseDatabaseConnections()
-    {
-        global $pdo, $connect;
-        $pdo = null;
-        if ($connect instanceof mysqli) {
-            try {
-                $connect->close();
-            } catch (Throwable $e) {
-                // The connection may already have been closed explicitly.
-            }
-        }
-        $connect = null;
-    }
-    register_shutdown_function('mirzaCloseDatabaseConnections');
-}
 
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Encoding\Encoding;
@@ -543,66 +524,16 @@ function generateUUID()
 function rate_arze()
 {
     $arze_rate = [];
-
-$base_usdt_price = 180000; 
-$base_trx_price  = 60000; 
-
-$cache_file = __DIR__ . "/arze_rate_cache.json";
-
-$arze_rate['USD'] = $base_usdt_price;
-$arze_rate['TRX'] = $base_trx_price;
-
-if (file_exists($cache_file)) {
-    $cache_data = json_decode(file_get_contents($cache_file), true);
-
-    if (is_array($cache_data)) {
-        if (!empty($cache_data['USD']) && intval($cache_data['USD']) > 0) {
-            $arze_rate['USD'] = intval($cache_data['USD']);
-        }
-
-        if (!empty($cache_data['TRX']) && intval($cache_data['TRX']) > 0) {
-            $arze_rate['TRX'] = intval($cache_data['TRX']);
-        }
+    $requests_tron = json_decode(file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000'), true);
+    $html_read = file_get_contents("https://www.bon-bast.com/");
+    preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read, $matches);
+    if (!empty($matches[1])) {
+        $requestsusd = str_replace(',', '', $matches[1]);
     }
-}
+    $arze_rate['USD'] = intval($requestsusd);
+    $arze_rate['TRX'] = intval($requests_tron['Price'] * $arze_rate['USD']);
 
-$requests_tron_raw = @file_get_contents('https://api.diadata.org/v1/assetQuotation/Tron/0x0000000000000000000000000000000000000000');
-$requests_tron = $requests_tron_raw ? json_decode($requests_tron_raw, true) : null;
-
-if (
-    is_array($requests_tron) &&
-    isset($requests_tron['Price']) &&
-    floatval($requests_tron['Price']) > 0
-) {
-    $arze_rate['TRX'] = intval($requests_tron['Price']);
-}
-
-$html_read = @file_get_contents("https://www.bon-bast.com/");
-preg_match('/<span>\s*([\d,]+)\s*<\/span>/', $html_read ?: '', $matches);
-
-if (!empty($matches[1])) {
-    $requestsusd = str_replace(',', '', $matches[1]);
-
-    if (intval($requestsusd) > 0) {
-        $arze_rate['USD'] = intval($requestsusd);
-    }
-}
-
-if (intval($arze_rate['USD']) <= 0) {
-    $arze_rate['USD'] = $base_usdt_price;
-}
-
-if (intval($arze_rate['TRX']) <= 0) {
-    $arze_rate['TRX'] = $base_trx_price;
-}
-
-@file_put_contents($cache_file, json_encode([
-    'USD' => intval($arze_rate['USD']),
-    'TRX' => intval($arze_rate['TRX']),
-    'updated_at' => date('Y-m-d H:i:s')
-], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
-
-return $arze_rate;
+    return $arze_rate;
 }
 function updatePaymentMessageId($response, $orderId)
 {
@@ -627,9 +558,6 @@ function updatePaymentMessageId($response, $orderId)
 function nowPayments($payment, $price_amount, $order_id, $order_description)
 {
     global $domainhosts;
-    $callbackBaseUrl = preg_match('#^https?://#i', (string) $domainhosts)
-        ? rtrim((string) $domainhosts, '/')
-        : 'https://' . trim((string) $domainhosts, '/');
     $apinowpayments = select("PaySetting", "*", "NamePay", "marchent_tronseller", "select")['ValuePay'];
     $curl = curl_init();
     curl_setopt_array($curl, array(
@@ -650,7 +578,7 @@ function nowPayments($payment, $price_amount, $order_id, $order_description)
         'price_currency' => 'usd',
         'order_id' => $order_id,
         'order_description' => $order_description,
-        'ipn_callback_url' => $callbackBaseUrl . "/payment/nowpayment.php"
+        'ipn_callback_url' => "https://" . $domainhosts . "/payment/nowpayment.php"
     ]));
 
     $response = curl_exec($curl);
@@ -666,7 +594,7 @@ function StatusPayment($paymentid)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
@@ -709,42 +637,35 @@ function trnado($order_id, $price)
     global $domainhosts;
     $apitronseller = select("PaySetting", "*", "NamePay", "apiternado", "select")['ValuePay'];
     $walletaddress = select("PaySetting", "*", "NamePay", "walletaddress", "select")['ValuePay'];
-    
-    $urlpay = "https://bot.tronado.cloud/api/v5/GetOrderToken";
-    
+    $urlpay = select("PaySetting", "*", "NamePay", "urlpaymenttron", "select")['ValuePay'];
     $curl = curl_init();
     $data = array(
-        "PaymentID"     => (string)$order_id,
-        "WalletAddress" => trim($walletaddress),
-        "TronAmount"    => floatval($price),
-        "CallbackUrl"   => "https://" . $domainhosts . "/payment/tronado.php"
+        "PaymentID" => $order_id,
+        "WalletAddress" => $walletaddress,
+        "TronAmount" => $price,
+        "CallbackUrl" => "https://" . $domainhosts . "/payment/tronado.php"
     );
-    
+    $datasend = json_encode($data);
     curl_setopt_array($curl, array(
-        CURLOPT_URL            => $urlpay,
+        CURLOPT_URL => "$urlpay",
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_CUSTOMREQUEST  => 'POST',
-        CURLOPT_POSTFIELDS     => json_encode($data),
-        CURLOPT_HTTPHEADER     => array(
-            'x-api-key: ' . trim($apitronseller),
-            'Content-Type: application/json'
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_HTTPHEADER => array(
+            'x-api-key:' . $apitronseller,
+            'Content-Type: application/json',
+            'Cookie: ASP.NET_SessionId=spou2s5lo4nnxkjtavscrrlo'
         ),
     ));
+    curl_setopt($curl, CURLOPT_POSTFIELDS, $datasend);
 
     $response = curl_exec($curl);
-    $curl_error = curl_error($curl);
-    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
     curl_close($curl);
-
-    file_put_contents(__DIR__ . "/tronado_create_order.log", print_r([
-        "time"         => date("Y-m-d H:i:s"),
-        "send_data"    => $data,
-        "raw_response" => $response,
-        "http_code"    => $http_code,
-        "curl_error"   => $curl_error
-    ], true) . "\n--------------------------\n", FILE_APPEND);
-
     return json_decode($response, true);
 }
 function formatBytes($bytes, $precision = 2): string
@@ -932,7 +853,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? $dataoutput['subscription_url'] : "";
         $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
         $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-        $datatextbot['textafterpay'] = in_array($marzban_list_get['type'], ["ibsng", "mikrotik", "pasarguard_reseller"], true) ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
+        $datatextbot['textafterpay'] = $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik" ? $datatextbot['textafterpayibsng'] : $datatextbot['textafterpay'];
         if (intval($get_invoice['Service_time']) == 0)
             $get_invoice['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
         $textcreatuser = str_replace('{username}', $dataoutput['username'], $datatextbot['textafterpay']);
@@ -943,12 +864,9 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $textcreatuser = str_replace('{config}', "<code>{$output_config_link}</code>", $textcreatuser);
         $textcreatuser = str_replace('{links}', $config, $textcreatuser);
         $textcreatuser = str_replace('{links2}', "{$output_config_link}", $textcreatuser);
-        if (in_array($marzban_list_get['type'], ["Manualsale", "ibsng", "mikrotik", "pasarguard_reseller"], true)) {
+        if ($marzban_list_get['type'] == "Manualsale" || $marzban_list_get['type'] == "ibsng" || $marzban_list_get['type'] == "mikrotik") {
             $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
             update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
-        }
-        if ($marzban_list_get['type'] == "pasarguard_reseller") {
-            $textcreatuser = pasarguardBuildDeliveryText($marzban_list_get, $dataoutput, $info_product);
         }
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
         $partsdic = explode("_", $Balance_id['Processing_value_four'], $get_invoice['id_user']);
@@ -1138,12 +1056,8 @@ $textonebuy
             $prodcut['Service_time'] = $service_other['Service_time'];
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = :location OR Location = '/all') AND agent = :agent AND code_product = :code_product LIMIT 1");
-            $stmt->execute([
-                ':location' => $nameloc['Service_location'],
-                ':agent' => $Balance_id['agent'],
-                ':code_product' => $codeproduct,
-            ]);
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND agent= '{$Balance_id['agent']}' AND code_product = '$codeproduct'");
+            $stmt->execute();
             $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
         }
         if ($nameloc['name_product'] == "سرویس تست") {
@@ -1178,14 +1092,6 @@ $textonebuy
             return;
         }
 
-        if (($marzban_list_get['type'] ?? '') === 'pasarguard_reseller') {
-            $refreshedReseller = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-            $refreshedLimit = is_array($refreshedReseller) && isset($refreshedReseller['data_limit'])
-                ? $refreshedReseller['data_limit']
-                : null;
-            pasarguardApplyInvoiceExtension($nameloc, $prodcut['Service_time'], $refreshedLimit);
-        }
-
         update("service_other", "output", json_encode($extend), "id", $data_order['id']);
         update("service_other", "status", "paid", "id", $data_order['id']);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
@@ -1206,24 +1112,13 @@ $textonebuy
                 ]);
             }
         }
-        $isPasarguardExtension = ($marzban_list_get['type'] ?? '') === 'pasarguard_reseller';
         $keyboardextendfnished = json_encode([
             'inline_keyboard' => [
                 [
-                    [
-                        'text' => $isPasarguardExtension ? 'بازگشت به پنل‌های نمایندگی' : $textbotlang['users']['stateus']['backlist'],
-                        'callback_data' => $isPasarguardExtension ? 'my_pasarguard_panels' : 'backorder',
-                        'style' => 'primary',
-                        'icon_custom_emoji_id' => 5350295774863311434,
-                    ],
+                    ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => "backorder"],
                 ],
                 [
-                    [
-                        'text' => $isPasarguardExtension ? 'مشاهده پنل تمدیدشده' : $textbotlang['users']['stateus']['backservice'],
-                        'callback_data' => $isPasarguardExtension ? 'my_pasarguard_panel_' . $nameloc['id_invoice'] : 'product_' . $nameloc['id_invoice'],
-                        'style' => 'success',
-                        'icon_custom_emoji_id' => 5350572310627632617,
-                    ],
+                    ['text' => $textbotlang['users']['stateus']['backservice'], 'callback_data' => "product_" . $nameloc['id_invoice']],
                 ]
             ]
         ]);
@@ -1240,20 +1135,12 @@ $textonebuy
 📌 به عنوان هدیه تمدید مبلغ $result تومان حساب شما شارژ گردید", null, 'HTML');
         }
         $priceproductformat = number_format($prodcut['price_product']);
-        if ($isPasarguardExtension) {
-            $textextend = "<tg-emoji emoji-id=\"5350572310627632617\">✅</tg-emoji> <b>نمایندگی شما با موفقیت تمدید شد</b>\n\n"
-                . "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$usernamepanel}</code>\n"
-                . "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم افزوده‌شده:</b> {$prodcut['Volume_constraint']} گیگابایت\n"
-                . "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان افزوده‌شده:</b> {$prodcut['Service_time']} روز\n"
-                . "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ پرداختی:</b> {$priceproductformat} تومان";
-        } else {
-            $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
+        $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
  
 ▫️نام سرویس : $usernamepanel
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
-        }
         sendmessage($Balance_id['id'], $textextend, $keyboardextendfnished, 'HTML');
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
             sendmessage($Balance_id['id'], "📌شما 2 امتیاز جدید کسب کردید.", null, 'html');
@@ -1560,726 +1447,6 @@ function savedata($type, $namefiled, $valuefiled)
         update("user", "Processing_value", json_encode($dataperevieos), "id", $from_id);
     }
 }
-
-function customServiceAgentNumber($panel, $field, $agent, $fallback = 0)
-{
-    $values = json_decode($panel[$field] ?? '', true);
-    $value = is_array($values) ? ($values[$agent] ?? $values['all'] ?? $fallback) : $fallback;
-
-    return is_numeric($value) ? (int)$value : (int)$fallback;
-}
-
-function ensurePaymentGatewayAppearanceTable()
-{
-    global $pdo;
-    static $ready = false;
-
-    if ($ready) {
-        return true;
-    }
-    if (!($pdo instanceof PDO)) {
-        return false;
-    }
-
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS payment_gateway_appearance (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            gateway_key VARCHAR(191) NOT NULL UNIQUE,
-            display_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-            action_type VARCHAR(20) NOT NULL DEFAULT 'callback',
-            action_value VARCHAR(500) NOT NULL DEFAULT '',
-            button_style VARCHAR(20) NOT NULL DEFAULT 'primary',
-            emoji_id VARCHAR(50) NOT NULL DEFAULT '',
-            sort_order INT NOT NULL DEFAULT 0,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_payment_gateway_sort (sort_order, id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-        $ready = true;
-        return true;
-    } catch (Throwable $e) {
-        error_log('Unable to prepare payment gateway appearance table: ' . $e->getMessage());
-        return false;
-    }
-}
-
-function paymentGatewayButtonKey(array $button)
-{
-    $explicitKey = trim((string)($button['gateway_key'] ?? ''));
-    if ($explicitKey !== '') {
-        $key = 'gateway:' . $explicitKey;
-    } elseif (!empty($button['callback_data'])) {
-        $key = 'callback:' . trim((string)$button['callback_data']);
-    } elseif (!empty($button['url'])) {
-        $key = 'url:' . hash('sha256', trim((string)$button['url']));
-    } else {
-        return '';
-    }
-
-    return strlen($key) <= 191 ? $key : 'hash:' . hash('sha256', $key);
-}
-
-function flattenPaymentGatewayButtons(array $items)
-{
-    $buttons = [];
-    foreach ($items as $item) {
-        if (!is_array($item)) {
-            continue;
-        }
-        if (array_key_exists('text', $item)) {
-            $buttons[] = $item;
-            continue;
-        }
-        foreach (flattenPaymentGatewayButtons($item) as $button) {
-            $buttons[] = $button;
-        }
-    }
-    return $buttons;
-}
-
-function paymentGatewayKeysFromButtons(array $items)
-{
-    $keys = [];
-    foreach (flattenPaymentGatewayButtons($items) as $button) {
-        if (($button['callback_data'] ?? '') === 'colselist') {
-            continue;
-        }
-        $gatewayKey = paymentGatewayButtonKey($button);
-        if ($gatewayKey !== '') {
-            $keys[$gatewayKey] = true;
-        }
-    }
-    return $keys;
-}
-
-function setActivePaymentGatewayButtons(array $items)
-{
-    $GLOBALS['payment_gateway_active_keys'] = paymentGatewayKeysFromButtons($items);
-}
-
-function getActivePaymentGatewayKeys()
-{
-    return array_key_exists('payment_gateway_active_keys', $GLOBALS)
-        ? $GLOBALS['payment_gateway_active_keys']
-        : null;
-}
-
-function registerPaymentGatewayButtons(array $items)
-{
-    global $pdo;
-    if (!ensurePaymentGatewayAppearanceTable()) {
-        return false;
-    }
-
-    $buttons = flattenPaymentGatewayButtons($items);
-    if (!$buttons) {
-        return true;
-    }
-
-    try {
-        $existingRows = $pdo->query('SELECT gateway_key, display_name, action_type, action_value FROM payment_gateway_appearance')
-            ->fetchAll(PDO::FETCH_ASSOC);
-        $existing = [];
-        foreach ($existingRows as $row) {
-            $existing[$row['gateway_key']] = $row;
-        }
-        $nextOrder = (int)$pdo->query('SELECT COALESCE(MAX(sort_order), 0) FROM payment_gateway_appearance')->fetchColumn();
-        $insertStmt = $pdo->prepare("INSERT IGNORE INTO payment_gateway_appearance
-            (gateway_key, display_name, action_type, action_value, button_style, emoji_id, sort_order)
-            VALUES (:gateway_key, :display_name, :action_type, :action_value, :button_style, :emoji_id, :sort_order)
-        ");
-        $updateStmt = $pdo->prepare("UPDATE payment_gateway_appearance
-            SET display_name = :display_name, action_type = :action_type, action_value = :action_value
-            WHERE gateway_key = :gateway_key");
-
-        $seen = [];
-        foreach ($buttons as $button) {
-            if (($button['callback_data'] ?? '') === 'colselist') {
-                continue;
-            }
-            $gatewayKey = paymentGatewayButtonKey($button);
-            if ($gatewayKey === '' || isset($seen[$gatewayKey])) {
-                continue;
-            }
-            $seen[$gatewayKey] = true;
-            $displayName = trim((string)($button['text'] ?? ''));
-            if (function_exists('mb_substr')) {
-                $displayName = mb_substr($displayName, 0, 255, 'UTF-8');
-            } else {
-                $displayName = substr($displayName, 0, 255);
-            }
-            $actionType = !empty($button['callback_data']) ? 'callback' : 'url';
-            $actionValue = (string)($button['callback_data'] ?? $button['url'] ?? '');
-            $style = (string)($button['style'] ?? 'primary');
-            if (!in_array($style, ['primary', 'success', 'danger', 'secondary'], true)) {
-                $style = 'primary';
-            }
-            $emojiId = preg_match('/^\d{15,22}$/', (string)($button['icon_custom_emoji_id'] ?? ''))
-                ? (string)$button['icon_custom_emoji_id']
-                : '';
-            $displayName = $displayName !== '' ? $displayName : $gatewayKey;
-            if (!isset($existing[$gatewayKey])) {
-                $nextOrder += 10;
-                $insertStmt->execute([
-                    ':gateway_key' => $gatewayKey,
-                    ':display_name' => $displayName,
-                    ':action_type' => $actionType,
-                    ':action_value' => $actionValue,
-                    ':button_style' => $style,
-                    ':emoji_id' => $emojiId,
-                    ':sort_order' => $nextOrder,
-                ]);
-                $existing[$gatewayKey] = [
-                    'gateway_key' => $gatewayKey,
-                    'display_name' => $displayName,
-                    'action_type' => $actionType,
-                    'action_value' => $actionValue,
-                ];
-                continue;
-            }
-            $current = $existing[$gatewayKey];
-            if ((string)$current['display_name'] !== $displayName
-                || (string)$current['action_type'] !== $actionType
-                || (string)$current['action_value'] !== $actionValue) {
-                $updateStmt->execute([
-                    ':gateway_key' => $gatewayKey,
-                    ':display_name' => $displayName,
-                    ':action_type' => $actionType,
-                    ':action_value' => $actionValue,
-                ]);
-                $existing[$gatewayKey]['display_name'] = $displayName;
-                $existing[$gatewayKey]['action_type'] = $actionType;
-                $existing[$gatewayKey]['action_value'] = $actionValue;
-            }
-        }
-        return true;
-    } catch (Throwable $e) {
-        error_log('Unable to register payment gateway buttons: ' . $e->getMessage());
-        return false;
-    }
-}
-
-function getPaymentGatewayAppearances($activeOnly = false)
-{
-    global $pdo;
-    if (!ensurePaymentGatewayAppearanceTable()) {
-        return [];
-    }
-    try {
-        $rows = $pdo->query('SELECT * FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC')
-            ->fetchAll(PDO::FETCH_ASSOC);
-        if (!$activeOnly) {
-            return $rows;
-        }
-
-        $activeKeys = getActivePaymentGatewayKeys();
-        if ($activeKeys === null) {
-            return $rows;
-        }
-        return array_values(array_filter($rows, static function ($row) use ($activeKeys) {
-            return isset($activeKeys[$row['gateway_key']]);
-        }));
-    } catch (Throwable $e) {
-        error_log('Unable to load payment gateway appearances: ' . $e->getMessage());
-        return [];
-    }
-}
-
-function getPaymentGatewayAppearance($id)
-{
-    global $pdo;
-    if (!ensurePaymentGatewayAppearanceTable()) {
-        return null;
-    }
-    try {
-        $stmt = $pdo->prepare('SELECT * FROM payment_gateway_appearance WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => (int)$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
-    } catch (Throwable $e) {
-        error_log('Unable to load payment gateway appearance: ' . $e->getMessage());
-        return null;
-    }
-}
-
-function updatePaymentGatewayAppearance($id, $field, $value)
-{
-    global $pdo;
-    $columns = [
-        'button_style' => 'button_style',
-        'emoji_id' => 'emoji_id',
-    ];
-    if (!isset($columns[$field]) || !ensurePaymentGatewayAppearanceTable()) {
-        return false;
-    }
-    if ($field === 'button_style' && !in_array($value, ['primary', 'success', 'danger', 'secondary'], true)) {
-        return false;
-    }
-    if ($field === 'emoji_id' && $value !== '' && !preg_match('/^\d{15,22}$/', (string)$value)) {
-        return false;
-    }
-    try {
-        $stmt = $pdo->prepare("UPDATE payment_gateway_appearance SET {$columns[$field]} = :value WHERE id = :id");
-        $stmt->execute([':value' => (string)$value, ':id' => (int)$id]);
-        return $stmt->rowCount() > 0 || getPaymentGatewayAppearance($id) !== null;
-    } catch (Throwable $e) {
-        error_log('Unable to update payment gateway appearance: ' . $e->getMessage());
-        return false;
-    }
-}
-
-function movePaymentGatewayAppearance($id, $direction)
-{
-    global $pdo;
-    if (!in_array($direction, ['up', 'down'], true) || !ensurePaymentGatewayAppearanceTable()) {
-        return false;
-    }
-    try {
-        $pdo->beginTransaction();
-        $rows = $pdo->query('SELECT id, gateway_key, sort_order FROM payment_gateway_appearance ORDER BY sort_order ASC, id ASC FOR UPDATE')
-            ->fetchAll(PDO::FETCH_ASSOC);
-        $activeKeys = getActivePaymentGatewayKeys();
-        if ($activeKeys !== null) {
-            $rows = array_values(array_filter($rows, static function ($row) use ($activeKeys) {
-                return isset($activeKeys[$row['gateway_key']]);
-            }));
-        }
-        $rowIds = array_map(static function ($row) {
-            return (string)(int)$row['id'];
-        }, $rows);
-        $currentIndex = array_search((string)(int)$id, $rowIds, true);
-        if ($currentIndex === false) {
-            $pdo->rollBack();
-            return false;
-        }
-        $targetIndex = $direction === 'up' ? $currentIndex - 1 : $currentIndex + 1;
-        if (!isset($rows[$targetIndex])) {
-            $pdo->rollBack();
-            return true;
-        }
-        $current = $rows[$currentIndex];
-        $target = $rows[$targetIndex];
-        $stmt = $pdo->prepare('UPDATE payment_gateway_appearance SET sort_order = :sort_order WHERE id = :id');
-        $stmt->execute([':sort_order' => (int)$target['sort_order'], ':id' => (int)$current['id']]);
-        $stmt->execute([':sort_order' => (int)$current['sort_order'], ':id' => (int)$target['id']]);
-        $pdo->commit();
-        return true;
-    } catch (Throwable $e) {
-        if ($pdo instanceof PDO && $pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        error_log('Unable to reorder payment gateways: ' . $e->getMessage());
-        return false;
-    }
-}
-
-function applyPaymentGatewayAppearance(array $rows, array $catalog = [])
-{
-    $enabledCatalog = [];
-    foreach (flattenPaymentGatewayButtons($catalog) as $button) {
-        if (!empty($button['gateway_enabled'])) {
-            $enabledCatalog[] = $button;
-        }
-    }
-    setActivePaymentGatewayButtons(array_merge($rows, $enabledCatalog));
-    registerPaymentGatewayButtons(array_merge($catalog, $rows));
-
-    $appearanceMap = [];
-    foreach (getPaymentGatewayAppearances() as $appearance) {
-        $appearanceMap[$appearance['gateway_key']] = $appearance;
-    }
-
-    $gatewayRows = [];
-    $fixedRows = [];
-    foreach (array_values($rows) as $index => $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-        $rowOrder = PHP_INT_MAX;
-        $isGatewayRow = false;
-        foreach ($row as &$button) {
-            if (!is_array($button)) {
-                continue;
-            }
-            if (($button['callback_data'] ?? '') === 'colselist') {
-                unset($button['gateway_key']);
-                unset($button['gateway_enabled']);
-                continue;
-            }
-            $gatewayKey = paymentGatewayButtonKey($button);
-            unset($button['gateway_key']);
-            unset($button['gateway_enabled']);
-            if ($gatewayKey === '' || !isset($appearanceMap[$gatewayKey])) {
-                continue;
-            }
-            $isGatewayRow = true;
-            $appearance = $appearanceMap[$gatewayKey];
-            $rowOrder = min($rowOrder, (int)$appearance['sort_order']);
-            $style = (string)$appearance['button_style'];
-            if (in_array($style, ['primary', 'success', 'danger'], true)) {
-                $button['style'] = $style;
-            } else {
-                unset($button['style']);
-            }
-            $emojiId = (string)$appearance['emoji_id'];
-            if (preg_match('/^\d{15,22}$/', $emojiId)) {
-                $button['icon_custom_emoji_id'] = $emojiId;
-            } else {
-                unset($button['icon_custom_emoji_id']);
-            }
-        }
-        unset($button);
-        if ($isGatewayRow) {
-            $gatewayRows[] = ['row' => $row, 'order' => $rowOrder, 'index' => $index];
-        } else {
-            $fixedRows[] = ['row' => $row, 'index' => $index];
-        }
-    }
-
-    usort($gatewayRows, static function ($left, $right) {
-        if ($left['order'] === $right['order']) {
-            return $left['index'] <=> $right['index'];
-        }
-        return $left['order'] <=> $right['order'];
-    });
-
-    return array_merge(
-        array_column($gatewayRows, 'row'),
-        array_column($fixedRows, 'row')
-    );
-}
-
-function applyPanelAppearanceToButton(array $button, $panel)
-{
-    if (!is_array($panel)) {
-        return $button;
-    }
-
-    $color = (string) ($panel['panel_color'] ?? '');
-    if (in_array($color, ['primary', 'success', 'danger'], true)) {
-        $button['style'] = $color;
-    } else {
-        unset($button['style']);
-    }
-
-    $emoji = (string) ($panel['panel_emoji'] ?? '');
-    if (preg_match('/emoji-id=["\']?(\d+)["\']?/', $emoji, $matches)
-        || preg_match('/(\d{15,22})/', $emoji, $matches)) {
-        $button['icon_custom_emoji_id'] = (string) $matches[1];
-    } else {
-        unset($button['icon_custom_emoji_id']);
-    }
-
-    return $button;
-}
-
-function applyPanelColorToButton(array $button, $panel)
-{
-    if (!is_array($panel)) {
-        return $button;
-    }
-
-    $color = (string) ($panel['panel_color'] ?? '');
-    if (in_array($color, ['primary', 'success', 'danger'], true)) {
-        $button['style'] = $color;
-    } else {
-        unset($button['style']);
-    }
-    unset($button['icon_custom_emoji_id']);
-
-    return $button;
-}
-
-function purchasedServiceDisplayName($invoice, $isReseller = false, $includeNote = false)
-{
-    if (!is_array($invoice)) {
-        return '';
-    }
-
-    $username = trim((string) ($invoice['username'] ?? ''));
-    $productName = trim((string) ($invoice['name_product'] ?? ''));
-    if ($productName === 'سرویس تست') {
-        $productName = $isReseller ? 'نمایندگی آزمایشی' : 'سرویس تست';
-    } elseif (preg_match('/(?:سرویس|حجم)\s+دلخواه/u', $productName)) {
-        $productName = customServiceButtonText($productName);
-    } elseif ($isReseller && $productName !== '') {
-        $productName = 'پلن ' . preg_replace('/^پلن\s+/u', '', $productName);
-    }
-
-    $parts = array_values(array_filter([$productName, $username], static function ($value) {
-        return trim((string) $value) !== '';
-    }));
-    $label = implode(' | ', $parts);
-    if ($includeNote && trim((string) ($invoice['note'] ?? '')) !== '') {
-        $label .= ' • ' . trim((string) $invoice['note']);
-    }
-
-    if (function_exists('mb_strlen') && mb_strlen($label, 'UTF-8') > 64) {
-        return mb_substr($label, 0, 61, 'UTF-8') . '...';
-    }
-    return strlen($label) > 128 ? substr($label, 0, 125) . '...' : $label;
-}
-
-function customServiceButtonText($title)
-{
-    $title = trim((string) $title);
-    $plainTitle = preg_replace('/^[\x{200D}\x{2600}-\x{27BF}\x{FE0F}\x{1F000}-\x{1FAFF}\s]+/u', '', $title);
-
-    return trim((string) $plainTitle) !== '' ? trim($plainTitle) : $title;
-}
-
-function customServiceOrderCount($panel, $count)
-{
-    if (is_array($panel) && ($panel['type'] ?? '') === 'pasarguard_reseller') {
-        return 1;
-    }
-
-    return max(1, min(15, (int) $count));
-}
-
-function customServiceLimits($panel, $agent)
-{
-    $minVolume = max(1, customServiceAgentNumber($panel, 'mainvolume', $agent, 1));
-    $maxVolume = max($minVolume, customServiceAgentNumber($panel, 'maxvolume', $agent, 1000));
-    $minDays = max(1, customServiceAgentNumber($panel, 'maintime', $agent, 1));
-    $maxDays = max($minDays, customServiceAgentNumber($panel, 'maxtime', $agent, 365));
-
-    return [
-        'min_volume' => $minVolume,
-        'max_volume' => $maxVolume,
-        'min_days' => $minDays,
-        'max_days' => $maxDays,
-        'volume_step' => max(1, min(10, $maxVolume - $minVolume ?: 1)),
-        'days_step' => max(1, min(10, $maxDays - $minDays ?: 1)),
-    ];
-}
-
-function customServiceSelection($code, $panel, $agent)
-{
-    $limits = customServiceLimits($panel, $agent);
-    $days = $limits['min_days'];
-    $volume = $limits['min_volume'];
-
-    if (preg_match('/^customvolume_(\d+)_(\d+)$/', (string)$code, $matches)) {
-        $days = max($limits['min_days'], min($limits['max_days'], (int)$matches[1]));
-        $volume = max($limits['min_volume'], min($limits['max_volume'], (int)$matches[2]));
-    }
-
-    return [
-        'days' => $days,
-        'volume' => $volume,
-        'code' => "customvolume_{$days}_{$volume}",
-        'limits' => $limits,
-    ];
-}
-
-function customServiceNextVolume($volume, $direction, $minVolume, $maxVolume)
-{
-    $volume = (int)$volume;
-    $minVolume = max(1, (int)$minVolume);
-    $maxVolume = max($minVolume, (int)$maxVolume);
-
-    if ((int)$direction > 0) {
-        $nextVolume = $volume + ($volume < 10 ? 1 : 10);
-    } elseif ($volume <= 10) {
-        $nextVolume = $volume - 1;
-    } else {
-        $nextVolume = max(10, $volume - 10);
-    }
-
-    return max($minVolume, min($maxVolume, $nextVolume));
-}
-
-function customServiceInvoice($panel, $agent, $days, $volume, $count, $discountPercent = 0, $options = [])
-{
-    $options = is_array($options) ? $options : [];
-    $isPasarguard = is_array($panel) && ($panel['type'] ?? '') === 'pasarguard_reseller';
-    $callbackPrefix = preg_replace('/[^a-z0-9_]/i', '', (string) ($options['callback_prefix'] ?? 'csi')) ?: 'csi';
-    $confirmCallback = (string) ($options['confirm_callback'] ?? 'confirmandgetservice');
-    $backCallback = (string) ($options['back_callback'] ?? 'backuser');
-    $isExtension = !empty($options['is_extension']);
-    $coloredAdjustments = !empty($options['colored_adjustments']);
-    $valueButtonEmoji = !empty($options['value_button_emoji']);
-    $accountUsername = htmlspecialchars((string) ($options['username'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $count = customServiceOrderCount($panel, $count);
-    $volumePrice = customServiceAgentNumber($panel, 'pricecustomvolume', $agent, 0);
-    $dayPrice = customServiceAgentNumber($panel, 'pricecustomtime', $agent, 0);
-    $unitPrice = ($volume * $volumePrice) + ($days * $dayPrice);
-    $subtotal = $unitPrice * $count;
-    $discountPercent = max(0, min(100, (int)$discountPercent));
-    $total = $subtotal - (($subtotal * $discountPercent) / 100);
-    $total = max(0, round($total));
-
-    $invoiceTitle = $isExtension ? 'فاکتور تمدید نمایندگی' : 'فاکتور خرید';
-    $text = "<tg-emoji emoji-id=\"5280962371207077415\">🛍</tg-emoji> <b>{$invoiceTitle} [ {$days} روز - {$volume} گیگابایت ]</b>\n\n";
-    if ($accountUsername !== '') {
-        $text .= "<tg-emoji emoji-id=\"5258011929993026890\">👤</tg-emoji> <b>نام نمایندگی:</b> <code>{$accountUsername}</code>\n\n";
-    }
-    $text .= "<tg-emoji emoji-id=\"5350481089817232086\">🔶</tg-emoji> <b>حجم:</b> {$volume} گیگابایت\n\n";
-    $text .= "<tg-emoji emoji-id=\"5348090777308251395\">🔷</tg-emoji> <b>زمان:</b> {$days} روز\n\n";
-    if (!$isPasarguard) {
-        $text .= "<tg-emoji emoji-id=\"5348421451135336104\">⚙️</tg-emoji> <b>تعداد سفارش:</b> {$count} عدد\n\n";
-    }
-    if ($discountPercent > 0) {
-        $text .= "<tg-emoji emoji-id=\"5348470692935384957\">🏷</tg-emoji> <b>تخفیف:</b> {$discountPercent} درصد\n\n";
-    }
-    $text .= "<tg-emoji emoji-id=\"5348418461838098123\">🪙</tg-emoji> <b>مبلغ:</b> " . number_format($total) . " تومان";
-
-    $decreaseVolumeButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_v_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
-    $increaseVolumeButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_v_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
-    $decreaseDaysButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_d_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
-    $increaseDaysButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_d_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
-    if ($coloredAdjustments) {
-        $decreaseVolumeButton['style'] = 'danger';
-        $increaseVolumeButton['style'] = 'success';
-        $decreaseDaysButton['style'] = 'danger';
-        $increaseDaysButton['style'] = 'success';
-    }
-
-    $volumeValueButton = applyPanelAppearanceToButton(['text' => "{$volume} گیگابایت", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
-    $daysValueButton = applyPanelAppearanceToButton(['text' => "{$days} روز", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
-    if (!$valueButtonEmoji) {
-        unset($volumeValueButton['icon_custom_emoji_id'], $daysValueButton['icon_custom_emoji_id']);
-    }
-
-    $keyboardRows = [
-            [
-                $decreaseVolumeButton,
-                $volumeValueButton,
-                $increaseVolumeButton,
-            ],
-            [
-                $decreaseDaysButton,
-                $daysValueButton,
-                $increaseDaysButton,
-            ],
-    ];
-    if (!$isPasarguard) {
-        $decreaseCountButton = ['text' => 'کاهش', 'callback_data' => "{$callbackPrefix}_c_dec", 'icon_custom_emoji_id' => '5382261056078881010'];
-        $increaseCountButton = ['text' => 'افزایش', 'callback_data' => "{$callbackPrefix}_c_inc", 'icon_custom_emoji_id' => '5393194986252542669'];
-        if ($coloredAdjustments) {
-            $decreaseCountButton['style'] = 'danger';
-            $increaseCountButton['style'] = 'success';
-        }
-        $countValueButton = applyPanelAppearanceToButton(['text' => "{$count} عدد", 'callback_data' => "{$callbackPrefix}_none", 'style' => 'primary'], $panel);
-        if (!$valueButtonEmoji) {
-            unset($countValueButton['icon_custom_emoji_id']);
-        }
-        $keyboardRows[] = [
-                $decreaseCountButton,
-                $countValueButton,
-                $increaseCountButton,
-        ];
-    }
-    $keyboardRows[] = [
-                ['text' => $isExtension ? 'تأیید و تمدید نمایندگی' : 'تأیید و پرداخت', 'callback_data' => $confirmCallback, 'style' => 'success', 'icon_custom_emoji_id' => '5350572310627632617'],
-    ];
-    $keyboardRows[] = [
-                ['text' => $isExtension ? 'بازگشت به پنل نمایندگی' : 'بازگشت', 'callback_data' => $backCallback, 'style' => 'danger', 'icon_custom_emoji_id' => '5258236805890710909'],
-    ];
-    $keyboard = [
-        'inline_keyboard' => $keyboardRows,
-    ];
-
-    return [
-        'text' => $text,
-        'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
-        'unit_price' => $unitPrice,
-        'total' => $total,
-        'count' => $count,
-    ];
-}
-
-function customServiceCompatibleKeyboard($keyboard)
-{
-    $markup = is_string($keyboard) ? json_decode($keyboard, true) : $keyboard;
-    if (!is_array($markup)) {
-        return $keyboard;
-    }
-    foreach (($markup['inline_keyboard'] ?? []) as $rowIndex => $row) {
-        foreach ((array)$row as $buttonIndex => $button) {
-            if (!is_array($button)) {
-                continue;
-            }
-            unset($button['style'], $button['icon_custom_emoji_id']);
-            $markup['inline_keyboard'][$rowIndex][$buttonIndex] = $button;
-        }
-    }
-
-    return json_encode($markup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-}
-
-function customServiceReply($chatId, $messageId, $text, $keyboard, $preferEdit = true)
-{
-    $response = $preferEdit
-        ? Editmessagetext($chatId, $messageId, $text, $keyboard, 'HTML')
-        : sendmessage($chatId, $text, $keyboard, 'HTML');
-    if (is_array($response) && !empty($response['ok'])) {
-        return $response;
-    }
-    $description = is_array($response) ? (string)($response['description'] ?? '') : '';
-    if (stripos($description, 'message is not modified') !== false) {
-        return $response;
-    }
-
-    $compatibleKeyboard = customServiceCompatibleKeyboard($keyboard);
-    if ($compatibleKeyboard === $keyboard) {
-        return $response;
-    }
-
-    return $preferEdit
-        ? Editmessagetext($chatId, $messageId, $text, $compatibleKeyboard, 'HTML')
-        : sendmessage($chatId, $text, $compatibleKeyboard, 'HTML');
-}
-
-function pasarguardUsernameSelectionKeyboard($backCallback = 'backuser')
-{
-    return json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => 'نام کاربری تصادفی', 'callback_data' => 'pasarguard_random_username'],
-            ],
-            [
-                ['text' => 'بازگشت', 'callback_data' => $backCallback],
-            ],
-        ],
-    ], JSON_UNESCAPED_UNICODE);
-}
-
-function customServiceUsername($fromId, $panel, $user, $telegramUsername, $requestedUsername, $managePanel, $existingUsernames = [])
-{
-    $randomString = bin2hex(random_bytes(2));
-    if (($panel['type'] ?? '') === 'pasarguard_reseller') {
-        $generated = strtolower(trim((string) $requestedUsername));
-        if ($generated === '') {
-            $generated = 'pg_' . bin2hex(random_bytes(6));
-        }
-    } else {
-        $generated = generateUsername(
-            $fromId,
-            $panel['MethodUsername'],
-            $telegramUsername,
-            $randomString,
-            strtolower((string)$requestedUsername),
-            $panel['namecustom'],
-            $user['namecustom']
-        );
-    }
-    if (!is_string($generated) || trim($generated) === '') {
-        $generated = (($panel['type'] ?? '') === 'pasarguard_reseller' ? 'pg_' : $fromId . '_') . $randomString;
-    }
-
-    $generated = strtolower($generated);
-    $remoteUser = $managePanel->DataUser($panel['name_panel'], $generated);
-    if (isset($remoteUser['username']) || in_array($generated, (array)$existingUsernames, true)) {
-        if (($panel['type'] ?? '') === 'pasarguard_reseller') {
-            $generated = substr($generated, 0, 27) . '_' . bin2hex(random_bytes(2));
-        } else {
-            $generated = rand(1000000, 9999999) . '_' . $generated;
-        }
-    }
-
-    return $generated;
-}
 function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype = "VARCHAR(500)")
 {
     global $pdo;
@@ -2306,12 +1473,9 @@ function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype
 }
 function outtypepanel($typepanel, $message)
 {
-    global $from_id, $optionMarzban, $optionRebecca, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng, $optionX_ui_tunnel, $optionPasarguard, $optionPasarguardReseller;
-    
+    global $from_id, $optionMarzban, $optionX_ui_single, $optionhiddfy, $optionalireza, $optionalireza_single, $optionmarzneshin, $option_mikrotik, $optionwg, $options_ui, $optioneylanpanel, $optionibsng;
     if ($typepanel == "marzban") {
         sendmessage($from_id, $message, $optionMarzban, 'HTML');
-    } elseif ($typepanel == "rebecca") {
-        sendmessage($from_id, $message, $optionRebecca, 'HTML');
     } elseif ($typepanel == "x-ui_single") {
         sendmessage($from_id, $message, $optionX_ui_single, 'HTML');
     } elseif ($typepanel == "hiddify") {
@@ -2328,12 +1492,6 @@ function outtypepanel($typepanel, $message)
         sendmessage($from_id, $message, $optionibsng, 'HTML');
     } elseif ($typepanel == "mikrotik") {
         sendmessage($from_id, $message, $option_mikrotik, 'HTML');
-    } elseif ($typepanel == "x-ui_tunnel") {
-        sendmessage($from_id, $message, $optionX_ui_tunnel, 'HTML');
-    } elseif ($typepanel == "pasarguard") {
-        sendmessage($from_id, $message, $optionPasarguard, 'HTML');
-    } elseif ($typepanel == "pasarguard_reseller") {
-        sendmessage($from_id, $message, $optionPasarguardReseller, 'HTML');
     }
 }
 
@@ -2395,24 +1553,6 @@ function checktelegramip()
     $clientIp = trim($clientIp);
     if (!filter_var($clientIp, FILTER_VALIDATE_IP)) {
         return false;
-    }
-
-    // Docker/reverse-proxy deployments expose the gateway address as
-    // REMOTE_ADDR. Trust X-Forwarded-For only when that direct peer is local
-    // or private, so public clients cannot spoof Telegram source addresses.
-    $isTrustedProxy = $clientIp === '127.0.0.1'
-        || $clientIp === '::1'
-        || filter_var(
-            $clientIp,
-            FILTER_VALIDATE_IP,
-            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-        ) === false;
-    if ($isTrustedProxy && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $forwarded = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
-        $forwardedIp = trim($forwarded[0] ?? '');
-        if (filter_var($forwardedIp, FILTER_VALIDATE_IP)) {
-            $clientIp = $forwardedIp;
-        }
     }
 
     $telegramIpRanges = [
@@ -2524,7 +1664,7 @@ function activecron()
         "*/3 * * * * curl https://$domainhosts/cronbot/plisio.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/activeconfig.php",
         "*/1 * * * * curl https://$domainhosts/cronbot/disableconfig.php",
-        "*/1 * * * * curl https://$domainhosts/cronbot/tetrapay.php",
+        "*/1 * * * * curl https://$domainhosts/cronbot/iranpay1.php",
         "0 */5 * * * curl https://$domainhosts/cronbot/backupbot.php",
         "*/2 * * * * curl https://$domainhosts/cronbot/gift.php",
         "*/30 * * * * curl https://$domainhosts/cronbot/expireagent.php",
@@ -2549,7 +1689,7 @@ function createInvoice($amount)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2577,7 +1717,7 @@ function verifpay($id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
@@ -2602,14 +1742,14 @@ function createInvoiceiranpay1($amount, $id_invoice)
         "ApiKey" => $PaySetting,
         "Hash_id" => $id_invoice,
         "Amount" => $amount . "0",
-        "CallbackURL" => "https://$domainhosts/payment/tetrapay.php"
+        "CallbackURL" => "https://$domainhosts/payment/iranpay1.php"
     ];
     curl_setopt_array($curl, array(
         CURLOPT_URL => "https://tetra98.com/api/create_order",
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2634,7 +1774,7 @@ function verifyxvoocher($code)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'GET',
@@ -2807,69 +1947,6 @@ function isBase64($string)
     }
     return false;
 }
-function sendPasarguardWireGuardFiles($panel, $username, $chatId)
-{
-    if (($panel['type'] ?? '') !== 'pasarguard') {
-        return 0;
-    }
-    $sent = 0;
-    foreach (pasarguardPrepareWireGuardFiles($panel, $username) as $wireGuardFile) {
-        $response = telegram('senddocument', [
-            'chat_id' => $chatId,
-            'document' => new CURLFile($wireGuardFile['path'], $wireGuardFile['mime'] ?? 'application/x-wireguard-profile', $wireGuardFile['name']),
-            'caption' => 'فایل WireGuard سرویس شما',
-        ]);
-        if (is_array($response) && !empty($response['ok'])) {
-            $sent++;
-        }
-        @unlink($wireGuardFile['path']);
-    }
-    return $sent;
-}
-
-function sendRebeccaSubscriptionFiles($panel, $username, $chatId)
-{
-    if (($panel['type'] ?? '') !== 'rebecca') {
-        return 0;
-    }
-    $userResponse = rebeccaGetUser($panel, $username);
-    if (empty($userResponse['ok']) || !is_array($userResponse['data'] ?? null)) {
-        return 0;
-    }
-
-    $sent = 0;
-    $files = array_slice(rebeccaGetSubscriptionFiles($panel, $userResponse['data']), 0, 10);
-    foreach ($files as $file) {
-        if (empty($file['content']) || empty($file['name'])) {
-            continue;
-        }
-        $temporaryPath = tempnam(sys_get_temp_dir(), 'rb_cfg_');
-        if ($temporaryPath === false || file_put_contents($temporaryPath, $file['content'], LOCK_EX) === false) {
-            if ($temporaryPath !== false) {
-                @unlink($temporaryPath);
-            }
-            continue;
-        }
-        try {
-            $response = telegram('senddocument', [
-                'chat_id' => $chatId,
-                'document' => new CURLFile(
-                    $temporaryPath,
-                    $file['mime'] ?? 'application/octet-stream',
-                    rebeccaSafeFileName($file['name'])
-                ),
-                'caption' => $file['caption'] ?? 'فایل اتصال سرویس شما',
-            ]);
-            if (is_array($response) && !empty($response['ok'])) {
-                $sent++;
-            }
-        } finally {
-            @unlink($temporaryPath);
-        }
-    }
-    return $sent;
-}
-
 function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
 {
     global $setting, $from_id;
@@ -2921,13 +1998,6 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
             sendmessage($user_id, "📌 جهت دریافت کانفیگ روی دکمه دریافت کانفیگ کلیک کنید", keyboard_config($config, $invoice_id, false), 'HTML');
         }
     }
-    if (($panel_info['type'] ?? '') === 'pasarguard' && ($panel_info['config'] ?? '') === 'onconfig') {
-        sendPasarguardWireGuardFiles($panel_info, $username_service, $user_id);
-    }
-    if (($panel_info['type'] ?? '') === 'rebecca'
-        && (($panel_info['config'] ?? '') === 'onconfig' || ($panel_info['sublink'] ?? '') === 'onsublink')) {
-        sendRebeccaSubscriptionFiles($panel_info, $username_service, $user_id);
-    }
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {
@@ -2948,7 +2018,7 @@ function createPayZarinpal($price, $order_id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2974,9 +2044,6 @@ function createPayZarinpal($price, $order_id)
 function createPayaqayepardakht($price, $order_id)
 {
     global $domainhosts;
-    $callbackBaseUrl = preg_match('#^https?://#i', (string) $domainhosts)
-        ? rtrim((string) $domainhosts, '/')
-        : 'https://' . trim((string) $domainhosts, '/');
     $merchant_aqayepardakht = select("PaySetting", "ValuePay", "NamePay", "merchant_id_aqayepardakht", "select")['ValuePay'];
     $curl = curl_init();
     curl_setopt_array($curl, array(
@@ -2984,7 +2051,7 @@ function createPayaqayepardakht($price, $order_id)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_ENCODING => '',
         CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
@@ -2996,7 +2063,7 @@ function createPayaqayepardakht($price, $order_id)
     curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
         'pin' => $merchant_aqayepardakht,
         'amount' => $price,
-        'callback' => $callbackBaseUrl . "/payment/aqayepardakht.php",
+        'callback' => $domainhosts . "/payment/aqayepardakht.php",
         'invoice_id' => $order_id,
     ]));
     $response = curl_exec($curl);
@@ -3090,482 +2157,4 @@ function convertCustomEmojiToHTML($message)
     }
 
     return $text;
-}
-
-function get_all_crypto_currencies() {
-    global $connect;
-    $res = $connect->query("SELECT * FROM offline_crypto ORDER BY id ASC");
-    $list = [];
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $list[$row['symbol']] = $row;
-        }
-    }
-    return $list;
-}
-
-// دریافت اطلاعات یک ارز بر اساس نماد
-function get_crypto_currency($sym) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $stmt = $connect->prepare("SELECT * FROM offline_crypto WHERE symbol = ?");
-    $stmt->bind_param("s", $sym);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    return $res->fetch_assoc();
-}
-
-// ذخیره ولت
-function set_crypto_wallet($sym, $wallet) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $wallet = trim($wallet);
-    $stmt = $connect->prepare("UPDATE offline_crypto SET wallet = ? WHERE symbol = ?");
-    $stmt->bind_param("ss", $wallet, $sym);
-    return $stmt->execute();
-}
-
-// تغییر وضعیت روشن/خاموش
-function toggle_crypto_status($sym) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $info = get_crypto_currency($sym);
-    if ($info) {
-        $new_status = ($info['status'] == 'on') ? 'off' : 'on';
-        $stmt = $connect->prepare("UPDATE offline_crypto SET status = ? WHERE symbol = ?");
-        $stmt->bind_param("ss", $new_status, $sym);
-        $stmt->execute();
-        return $new_status;
-    }
-    return 'off';
-}
-
-function render_crypto_message($data, $amount_toman, $crypto_amount, $unit_price = null) {
-    $sym = strtoupper($data['symbol'] ?? 'CRYPTO');
-    $wallet = !empty($data['wallet']) ? $data['wallet'] : 'تنظیم نشده';
-    $emoji_id = !empty($data['emoji_id']) ? $data['emoji_id'] : '5836907383292436018';
-    $network = !empty($data['network']) ? $data['network'] : 'اصلی';
-    $formatted_toman = number_format($amount_toman);
-    $unit_price_text = ($unit_price !== null) ? number_format($unit_price) . " تومان" : "درحال استعلام...";
-
-    $titles = [
-        'TON'  => ['icon' => '🔷', 'name' => 'تون کوین (TON)'],
-        'TRX'  => ['icon' => '🔴', 'name' => 'ترون (TRX)'],
-        'USDT' => ['icon' => '💎', 'name' => 'تتر (USDT)'],
-        'BTC'  => ['icon' => '🪙', 'name' => 'بیت‌کوین (BTC)'],
-        'ETH'  => ['icon' => '🔷', 'name' => 'اتریوم (ETH)'],
-        'BNB'  => ['icon' => '🟡', 'name' => 'بایننس کوین (BNB)']
-    ];
-
-    $title_info = $titles[$sym] ?? ['icon' => '💎', 'name' => "پرداخت {$sym}"];
-
-    return "<tg-emoji emoji-id=\"{$emoji_id}\">{$title_info['icon']}</tg-emoji> <b>پرداخت {$title_info['name']}</b>\n\n" .
-           "<tg-emoji emoji-id=\"5769126056262898415\">💳</tg-emoji> <b>معادل تومانی:</b> {$formatted_toman} تومان\n" .
-           "<tg-emoji emoji-id=\"5348418461838098123\">📊</tg-emoji> <b>نرخ هر واحد:</b> {$unit_price_text}\n" .
-           "<tg-emoji emoji-id=\"5429571366384842791\">🌐</tg-emoji> <b>شبکه انتقال:</b> <code>{$network}</code>\n\n" .
-           "<tg-emoji emoji-id=\"5199457120428249992\">⏳</tg-emoji> <b>مهلت پرداخت:</b> 15 دقیقه (قیمت لحظه‌ای تغییر می‌کند).\n\n" .
-           "<b>مقصد (ولت دریافت):</b>\n<code>{$wallet}</code>\n\n" .
-           "<b>مقدار واریز ({$sym}):</b> <code>{$crypto_amount}</code>";
-}
-
-
-function set_crypto_emoji($sym, $emoji_id) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $stmt = $connect->prepare("UPDATE offline_crypto SET emoji_id = ? WHERE symbol = ?");
-    $stmt->bind_param("ss", $emoji_id, $sym);
-    return $stmt->execute();
-}
-
-function set_crypto_style($sym, $style) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $stmt = $connect->prepare("UPDATE offline_crypto SET style = ? WHERE symbol = ?");
-    $stmt->bind_param("ss", $style, $sym);
-    return $stmt->execute();
-}
-
-function set_crypto_name($sym, $name) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $name = trim($name);
-    $stmt = $connect->prepare("UPDATE offline_crypto SET name = ? WHERE symbol = ?");
-    $stmt->bind_param("ss", $name, $sym);
-    return $stmt->execute();
-}
-
-function set_crypto_network($sym, $network) {
-    global $connect;
-    $sym = strtolower(trim($sym));
-    $network = trim($network);
-    $stmt = $connect->prepare("UPDATE offline_crypto SET network = ? WHERE symbol = ?");
-    $stmt->bind_param("ss", $network, $sym);
-    return $stmt->execute();
-}
-
-function arz_nobitex() {
-    $cache_file = sys_get_temp_dir() . '/nobitex_rates_cache.json';
-    
-    // اگر از زمان آخرین استعلام کمتر از ۶۰ ثانیه گذشته باشد، از کش بخواند
-    if (file_exists($cache_file) && (time() - filemtime($cache_file) < 60)) {
-        $cached_data = json_decode(@file_get_contents($cache_file), true);
-        if (!empty($cached_data)) {
-            return $cached_data;
-        }
-    }
-
-    $rates = [];
-    $url = "https://apiv2.nobitex.ir/market/stats";
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 4,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        CURLOPT_HTTPHEADER     => ['Accept: application/json']
-    ]);
-    $response = curl_exec($ch);
-    curl_close($ch);
-
-    $res = json_decode((string)$response, true);
-    $stats = $res['stats'] ?? [];
-
-    $usdt_rls = (float)($stats['usdt-rls']['latest'] ?? 0);
-    $usdt_toman = ($usdt_rls > 0) ? intval($usdt_rls / 10) : 60000;
-
-    $rates['USD']  = $usdt_toman;
-    $rates['USDT'] = $usdt_toman;
-
-    $map = [
-        'btc'  => ['btc-rls', 'btc-irt', 'btc-usdt'],
-        'eth'  => ['eth-rls', 'eth-irt', 'eth-usdt'],
-        'bnb'  => ['bnb-rls', 'bnb-irt', 'bnb-usdt'],
-        'trx'  => ['trx-rls', 'trx-irt', 'trx-usdt'],
-        'ton'  => ['ton-rls', 'ton-irt', 'ton-usdt', 'gram-rls', 'gram-usdt']
-    ];
-
-    foreach ($map as $key => $pairs) {
-        $price = 0;
-        foreach ($pairs as $pair) {
-            if (!empty($stats[$pair]['latest'])) {
-                $val = (float)$stats[$pair]['latest'];
-                if (str_ends_with($pair, '-rls')) {
-                    $price = intval($val / 10);
-                } elseif (str_ends_with($pair, '-irt')) {
-                    $price = intval($val);
-                } elseif (str_ends_with($pair, '-usdt')) {
-                    $price = intval($val * $usdt_toman);
-                }
-                break;
-            }
-        }
-        $rates[strtoupper($key)] = $price > 0 ? $price : $usdt_toman;
-        $rates[strtolower($key)] = $price > 0 ? $price : $usdt_toman;
-    }
-
-    @file_put_contents($cache_file, json_encode($rates));
-
-    return $rates;
-}
-
-function abangatewayEndpoint(): ?string
-{
-    $endpoint = trim((string) getPaySettingValue('endpointabangateway', 'https://abanpay.com/api'));
-    if ($endpoint === '' || $endpoint === '0') {
-        return null;
-    }
-
-    $parts = parse_url($endpoint);
-    if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') === '') {
-        return null;
-    }
-
-    return rtrim($endpoint, '/');
-}
-
-function abangateway($order_id, $price)
-{
-    global $domainhosts;
-    
-    $api_key = trim((string) getPaySettingValue('api_abangateway', ''));
-    $endpoint = abangatewayEndpoint();
-    
-    if ($api_key === '' || $api_key === '0' || $endpoint === null) {
-        return ['success' => false, 'message' => 'abangateway: key or endpoint is unset'];
-    }
-
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => $endpoint . '/create',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 25,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $api_key,
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'amount' => intval($price),
-            'order_id' => $order_id,
-            'callback_url' => "https://$domainhosts/payment/iranpay4.php",
-        ], JSON_UNESCAPED_UNICODE),
-    ]);
-
-    $response = curl_exec($curl);
-    if ($response === false) {
-        curl_close($curl);
-        return ['success' => false, 'message' => 'abangateway: gateway unreachable'];
-    }
-    curl_close($curl);
-
-    return json_decode($response, true) ?: ['success' => false, 'message' => 'abangateway: bad response'];
-}
-
-function getPanelCustomTitle($panel)
-{
-    $colorsMap = [
-        'success'   => '🟢',
-        'danger'    => '🔴',
-        'primary'   => '🔵',
-        'secondary' => '⚪️'
-    ];
-
-    $colorEmoji = $colorsMap[$panel['panel_color'] ?? ''] ?? '';
-    $premiumEmoji = $panel['panel_emoji'] ?? '';
-    $name = $panel['name_panel'];
-
-    $parts = [];
-    if (!empty($premiumEmoji)) {
-        $parts[] = $premiumEmoji;
-    }
-    if (!empty($colorEmoji)) {
-        $parts[] = $colorEmoji;
-    }
-    $parts[] = $name;
-
-    return implode(' ', $parts);
-}
-
-
-function cubepayFeeValue()
-{
-    $val = select("PaySetting", "ValuePay", "NamePay", "feecubepay", "select")['ValuePay'] ?? 0;
-    return floatval($val);
-}
-
-function cubepayApplyFee($base, $fee)
-{
-    $base = intval($base);
-    if ($fee <= 0) {
-        return $base;
-    }
-
-    return $fee <= 100
-        ? (int) ceil($base * (1 + $fee / 100))
-        : $base + (int) round($fee);
-}
-
-function cubepayPayableAmount($price)
-{
-    $status = select("PaySetting", "ValuePay", "NamePay", "feestatuscubepay", "select")['ValuePay'] ?? 'offfeecubepay';
-    if ($status !== 'onfeecubepay') {
-        return intval($price);
-    }
-
-    return cubepayApplyFee($price, cubepayFeeValue());
-}
-
-function cubepay($order_id, $price)
-{
-    global $domainhosts, $from_id;
-    $token_cubepay = select("PaySetting", "*", "NamePay", "apicubepay", "select")['ValuePay'] ?? '';
-    $amount_toman = cubepayPayableAmount($price);
-    
-    $payload = json_encode([
-        'price_amount' => $amount_toman,
-        'order_id' => $order_id,
-        'callback_url' => "https://$domainhosts/payment/cubepay.php",
-    ], JSON_UNESCAPED_UNICODE);
-
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://cubevps.ir/pay/create-order.php',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . trim($token_cubepay)
-        ),
-    ));
-
-    $response = curl_exec($curl);
-    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    curl_close($curl);
-
-    // اگر کد پاسخ 200 نبود، متن خام پاسخ را چاپ یا لاگ کن تا علت دقیق مشخص شود
-    if ($http_code !== 200) {
-        return [
-            'success' => false, 
-            'message' => "HTTP Code: {$http_code}, Response: " . $response
-        ];
-    }
-
-    return json_decode($response, true);
-}
-
-
-function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
-{
-    global $pdo;
-
-    $start_sql = date('Y-m-d H:i:s', $start_ts);
-    $end_sql = date('Y-m-d H:i:s', $end_ts);
-
-    // service_other.time has historically been saved both as a Unix timestamp
-    // and as Y/m/d H:i:s or Y-m-d H:i:s. Normalize it inside the report query
-    // so old records remain visible in date-range reports.
-    $mixedDateRangeSql = static function (string $column): string {
-        return "(
-            (
-                TRIM({$column}) REGEXP '^[0-9]{9,10}$'
-                AND CAST(TRIM({$column}) AS UNSIGNED) BETWEEN :s_ts AND :e_ts
-            )
-            OR
-            (
-                TRIM({$column}) REGEXP '^[0-9]{13}$'
-                AND FLOOR(CAST(TRIM({$column}) AS UNSIGNED) / 1000) BETWEEN :s_ts_ms AND :e_ts_ms
-            )
-            OR
-            (
-                TRIM({$column}) NOT REGEXP '^[0-9]{9,10}$|^[0-9]{13}$'
-                AND COALESCE(
-                    STR_TO_DATE(TRIM({$column}), '%Y/%m/%d %H:%i:%s'),
-                    STR_TO_DATE(TRIM({$column}), '%Y-%m-%d %H:%i:%s'),
-                    STR_TO_DATE(TRIM({$column}), '%Y/%m/%d'),
-                    STR_TO_DATE(TRIM({$column}), '%Y-%m-%d')
-                ) BETWEEN :s_sql AND :e_sql
-            )
-        )";
-    };
-
-    try {
-        // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
-        $sql_order = "SELECT COUNT(*) AS count, SUM(CAST(price_product AS UNSIGNED)) AS sum 
-                      FROM invoice 
-                      WHERE (CAST(time_sell AS UNSIGNED) BETWEEN :s_ts AND :e_ts) 
-                      AND Status != 'Unpaid' 
-                      AND name_product != 'سرویس تست'";
-        $stmt = $pdo->prepare($sql_order);
-        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $res_order = $stmt->fetch(PDO::FETCH_ASSOC);
-        $count_order = (int)($res_order['count'] ?? 0);
-        $sum_order = (float)($res_order['sum'] ?? 0);
-
-        // ۲. اکانت‌های تست
-        $sql_test = "SELECT COUNT(*) AS count 
-                     FROM invoice 
-                     WHERE (CAST(time_sell AS UNSIGNED) BETWEEN :s_ts AND :e_ts) 
-                     AND name_product = 'سرویس تست'";
-        $stmt = $pdo->prepare($sql_test);
-        $stmt->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
-
-        // تابع کمکی برای خواندن از جدول service_other
-        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql, $mixedDateRangeSql) {
-            $dateCondition = $mixedDateRangeSql('time');
-            $sql = "SELECT COUNT(*) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
-                    FROM service_other 
-                    WHERE type = :type 
-                    AND {$dateCondition}
-                    {$extra_where}";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                ':type'  => $type,
-                ':s_sql' => $start_sql,
-                ':e_sql' => $end_sql,
-                ':s_ts'    => $start_ts,
-                ':e_ts'    => $end_ts,
-                ':s_ts_ms' => $start_ts,
-                ':e_ts_ms' => $end_ts
-            ]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            return [(int)($row['count'] ?? 0), (float)($row['sum'] ?? 0)];
-        };
-
-        // ۳. تمدید
-        list($count_extend, $sum_extend) = $fetchServiceOther('extend_user', "AND (status = 'paid' OR status IS NULL OR status != 'unpaid')");
-
-        // ۴. حجم اضافه
-        list($count_extra_vol, $sum_extra_vol) = $fetchServiceOther('extra_user');
-
-        // ۵. زمان اضافه
-        list($count_extra_time, $sum_extra_time) = $fetchServiceOther('extra_time_user');
-
-        // ۶. تغییر لوکیشن
-        list($count_loc, $sum_loc) = $fetchServiceOther('change_location');
-
-        // ۷. کاربران جدید ثبت‌نامی
-        $stmt_user = $pdo->prepare("SELECT COUNT(id) AS count FROM user WHERE (CAST(register AS UNSIGNED) BETWEEN :s_ts AND :e_ts) AND register != 'none'");
-        $stmt_user->execute([':s_ts' => $start_ts, ':e_ts' => $end_ts]);
-        $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
-
-        // ۸. ورودی درگاه‌های پرداخت با ستون دقیق time
-        $paymentDateCondition = $mixedDateRangeSql('time');
-        $sql_pay = "SELECT COUNT(id) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
-                    FROM Payment_report 
-                    WHERE payment_Status = 'paid' 
-                    AND {$paymentDateCondition}
-                    AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
-        $stmt_pay = $pdo->prepare($sql_pay);
-        $stmt_pay->execute([
-            ':s_ts'  => $start_ts,
-            ':e_ts'  => $end_ts,
-            ':s_sql' => $start_sql,
-            ':e_sql' => $end_sql,
-            ':s_ts_ms' => $start_ts,
-            ':e_ts_ms' => $end_ts
-        ]);
-        $res_pay = $stmt_pay->fetch(PDO::FETCH_ASSOC);
-        $count_pay = (int)($res_pay['count'] ?? 0);
-        $sum_pay = (float)($res_pay['sum'] ?? 0);
-
-        $total_sales = $sum_order + $sum_extend + $sum_extra_vol + $sum_extra_time + $sum_loc;
-        $time_text = !empty($time_label) ? "\n⏳ بازه زمانی: <code>{$time_label}</code>\n" : "";
-
-        return "📊 <b>{$title}</b>
-━━━━━━━━━━━━━━━━━━{$time_text}
-🛒 <b>خرید سرویس اولیه:</b>
-• تعداد: <code>" . number_format($count_order) . "</code> عدد
-• مبلغ: <code>" . number_format($sum_order) . "</code> تومان
-
-🔄 <b>تمدید اشتراک:</b>
-• تعداد: <code>" . number_format($count_extend) . "</code> بار
-• مبلغ: <code>" . number_format($sum_extend) . "</code> تومان
-
-📦 <b>خدمات مازاد و جانبی:</b>
-• حجم اضافه: <code>" . number_format($count_extra_vol) . "</code> بار (<code>" . number_format($sum_extra_vol) . "</code> تومان)
-• زمان اضافه: <code>" . number_format($count_extra_time) . "</code> بار (<code>" . number_format($sum_extra_time) . "</code> تومان)
-• تغییر لوکیشن: <code>" . number_format($count_loc) . "</code> بار (<code>" . number_format($sum_loc) . "</code> تومان)
-
-💰 <b>مجموع کل فروش این دوره:</b>
-• <b>" . number_format($total_sales) . " تومان</b>
-
-👥 <b>آمار کاربران:</b>
-• کاربران جدید: <code>" . number_format($count_users) . "</code> نفر
-• اکانت‌های تست: <code>" . number_format($count_test) . "</code> عدد
-
-📥 <b>شارژ درگاه‌های آنلاین:</b>
-• تراکنش‌های موفق: <code>" . number_format($count_pay) . "</code> عدد (<code>" . number_format($sum_pay) . "</code> تومان)
-";
-    } catch (Exception $e) {
-        return "⚠️ <b>خطا در دیتابیس:</b>\n<code>" . $e->getMessage() . "</code>";
-    }
 }
