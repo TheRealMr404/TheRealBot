@@ -1722,7 +1722,7 @@ EOF
             "curl -s -F \"url=https://${YOUR_DOMAIN}/index.php\" -F \"secret_token=${secrettoken}\" \"https://api.telegram.org/bot${YOUR_BOT_TOKEN}/setWebhook\"" \
             || { show_step_error; install_pause "Setting Telegram webhook"; }
 
-        MESSAGE="✅ The Mirza bot is installed! for start the bot send /start command."
+        MESSAGE="✅ The VPN bot is installed! for start the bot send /start command."
         curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" -d chat_id="${YOUR_CHAT_ID}" -d text="$MESSAGE" > /dev/null 2>&1
         sleep 3
         run_step "Starting Apache" "systemctl start apache2" \
