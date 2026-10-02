@@ -1,9 +1,0 @@
-Options -Indexes
-DirectoryIndex index.php
-<FilesMatch "^\.">
-    Require all denied
-</FilesMatch>
-
-<IfModule mod_headers.c>
-    Header always unset X-Powered-By
-</IfModule>
