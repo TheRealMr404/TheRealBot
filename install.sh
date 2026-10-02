@@ -1113,6 +1113,7 @@ DOCKER_INSTANCES="$DOCKER_ROOT/instances"
 DOCKER_BACKUPS="$DOCKER_ROOT/backups"
 DOCKER_GATEWAY="$DOCKER_ROOT/gateway"
 DOCKER_NETWORK="mirza-gateway"
+CONTROL_PANEL_ROOT="${MIRZA_PANEL_ROOT:-/opt/mirza-control-panel}"
 
 valid_bot_slug() { [[ "$1" =~ ^[a-z][a-z0-9-]{1,30}$ ]]; }
 
@@ -1359,8 +1360,9 @@ EOF
 }
 
 docker_refresh_gateway() {
-    local tmp env_file slug domain port edge_network found=0 gateway_mode
+    local tmp env_file slug domain port edge_network found=0 gateway_mode panel_env panel_domain panel_port
     mkdir -p "$DOCKER_GATEWAY"
+    panel_env="$CONTROL_PANEL_ROOT/.env"
     gateway_mode=$(cat "$DOCKER_GATEWAY/mode" 2>/dev/null || printf 'direct')
     if [ "$gateway_mode" = "apache" ]; then
         for env_file in "$DOCKER_INSTANCES"/*/.env; do
@@ -1376,6 +1378,18 @@ docker_refresh_gateway() {
                 return 1
             }
         done
+        if [ -f "$panel_env" ]; then
+            panel_domain=$(docker_env_value PANEL_DOMAIN "$panel_env")
+            panel_port=$(docker_env_value APP_PORT "$panel_env")
+            validate_domain "$panel_domain" || { echo "Invalid control-panel domain."; return 1; }
+            [[ "$panel_port" =~ ^18[0-9]{3}$ ]] || { echo "Invalid control-panel port."; return 1; }
+            docker_configure_apache_route "control-panel" "$panel_domain" "$panel_port" || {
+                echo "Apache/SSL route setup failed for the control panel."
+                return 1
+            }
+        else
+            [ -f /etc/apache2/sites-available/mirza-docker-control-panel.conf ] && docker_remove_apache_route "control-panel"
+        fi
         return 0
     fi
     tmp=$(mktemp "$DOCKER_GATEWAY/Caddyfile.XXXXXX") || return 1
@@ -1402,6 +1416,27 @@ $domain {
 
 EOF
     done
+    if [ -f "$panel_env" ]; then
+        panel_domain=$(docker_env_value PANEL_DOMAIN "$panel_env")
+        if validate_domain "$panel_domain"; then
+            found=1
+            cat >> "$tmp" <<EOF
+$panel_domain {
+    encode zstd gzip
+    reverse_proxy mirza-control-panel:80 {
+        header_up X-Real-IP {http.request.remote.host}
+        header_up X-Forwarded-For {http.request.remote.host}
+    }
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+}
+
+EOF
+        fi
+    fi
     if [ "$found" -eq 0 ]; then
         printf ':80 {\n    respond "Mirza gateway is ready" 200\n}\n' > "$tmp"
     fi
@@ -1417,6 +1452,9 @@ EOF
         docker network inspect "$edge_network" >/dev/null 2>&1 || continue
         docker network connect "$edge_network" mirza-gateway >/dev/null 2>&1 || true
     done
+    if [ -f "$panel_env" ] && docker network inspect mirza-control-edge >/dev/null 2>&1; then
+        docker network connect mirza-control-edge mirza-gateway >/dev/null 2>&1 || true
+    fi
     docker exec mirza-gateway caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
         || docker restart mirza-gateway >/dev/null
 }
@@ -1697,7 +1735,7 @@ docker_prompt_slug() {
 }
 
 docker_bot_add() {
-    local slug domain token admin_id bot_name dir db_user db_pass db_root_pass app_port schedule answer webhook_response
+    local slug domain token admin_id bot_name dir db_user db_pass db_root_pass app_port schedule answer webhook_response token_file
     docker_install_engine || { echo "Docker gateway setup failed."; return 1; }
 
     slug="${ARG_ID:-}"
@@ -1721,6 +1759,12 @@ docker_bot_add() {
     fi
 
     token="${ARG_TOKEN:-}"
+    token_file="${ARG_TOKEN_FILE:-}"
+    if [ -n "$token_file" ]; then
+        token_file=$(readlink -f -- "$token_file" 2>/dev/null) || { echo "Invalid --token-file path."; return 1; }
+        [ -f "$token_file" ] && [ ! -L "$token_file" ] || { echo "Telegram token file was not found."; return 1; }
+        token=$(head -n 1 -- "$token_file" | tr -d '\r\n')
+    fi
     [ -n "$token" ] || { printf "Telegram bot token: "; read -rs token; echo; }
     validate_token "$token"; case $? in
         0) ;;
@@ -2124,6 +2168,73 @@ docker_manager_menu() {
     done
 }
 
+control_panel_execute() {
+    local action="${1:-install}" script_dir installer temp_dir archive extracted
+    local -a panel_args
+    script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)")
+    installer="$script_dir/control-panel/install.sh"
+
+    if [ "$action" = "install" ]; then
+        docker_install_engine || return 1
+    fi
+
+    if [ "$action" != "install" ] && [ -f "$CONTROL_PANEL_ROOT/source/install.sh" ]; then
+        installer="$CONTROL_PANEL_ROOT/source/install.sh"
+    elif [ ! -f "$installer" ]; then
+        temp_dir=$(mktemp -d /tmp/mirza-control-panel.XXXXXX) || return 1
+        archive="$temp_dir/source.zip"
+        curl -fL --retry 3 --connect-timeout 15 --max-time 240 \
+            "https://github.com/$GIT_REPO/archive/refs/heads/main.zip" -o "$archive" \
+            || { rm -rf "$temp_dir"; echo "Failed to download the control-panel source."; return 1; }
+        unzip -q "$archive" -d "$temp_dir/extracted" \
+            || { rm -rf "$temp_dir"; echo "Failed to extract the control-panel source."; return 1; }
+        extracted=$(find "$temp_dir/extracted" -mindepth 1 -maxdepth 1 -type d | head -1)
+        installer="$extracted/control-panel/install.sh"
+        [ -f "$installer" ] || { rm -rf "$temp_dir"; echo "Control-panel installer is missing from the source."; return 1; }
+    fi
+
+    panel_args=("$action")
+    [ -n "${ARG_PANEL_DOMAIN:-}" ] && panel_args+=(--domain "$ARG_PANEL_DOMAIN")
+    [ -n "${ARG_PANEL_USERNAME:-}" ] && panel_args+=(--username "$ARG_PANEL_USERNAME")
+    [ -n "${ARG_PANEL_PASSWORD:-}" ] && panel_args+=(--password "$ARG_PANEL_PASSWORD")
+    [ "$ARG_FORCE" = "1" ] && panel_args+=(--yes)
+    bash "$installer" "${panel_args[@]}"
+    local result=$?
+    [ -n "${temp_dir:-}" ] && rm -rf "$temp_dir"
+    return "$result"
+}
+
+control_panel_menu() {
+    local option
+    while true; do
+        clear; banner; _sec "Web multi-bot control panel"
+        _mi "1" "Install or update the web panel"
+        _mi "2" "Show panel and agent status"
+        _mi "3" "Reset administrator password"
+        _mi "4" "Remove only the web panel"
+        _mi "0" "Back"
+        _rule; printf "  ${C_PROMPT}❯${CR} Select: "; read -r option
+        case "$option" in
+            1)
+                printf "Management domain: "; read -r ARG_PANEL_DOMAIN
+                printf "Admin username [admin]: "; read -r ARG_PANEL_USERNAME
+                ARG_PANEL_USERNAME="${ARG_PANEL_USERNAME:-admin}"
+                control_panel_execute install
+                ;;
+            2) control_panel_execute status ;;
+            3)
+                printf "Admin username [admin]: "; read -r ARG_PANEL_USERNAME
+                ARG_PANEL_USERNAME="${ARG_PANEL_USERNAME:-admin}"
+                control_panel_execute reset-password
+                ;;
+            4) control_panel_execute remove ;;
+            0) show_menu; return ;;
+            *) echo "Invalid option." ;;
+        esac
+        echo; printf "Press Enter to continue... "; read -r _
+    done
+}
+
 function show_menu() {
     show_logo
     _sec "Menu"
@@ -2134,10 +2245,11 @@ function show_menu() {
     _mi "5" "Renew SSL certificate"
     _mi "6" "Help & Parameters"
     _mi "7" "Docker multi-bot manager"
-    _mi "8" "Exit"
+    _mi "8" "Web multi-bot control panel"
+    _mi "9" "Exit"
     _rule
     echo ""
-    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-8]${CR}: "
+    printf  "  ${C_PROMPT}❯${CR} Select an option ${C_DIM}[1-9]${CR}: "
     read -r option
     case $option in
         1) install_bot ;;
@@ -2147,7 +2259,8 @@ function show_menu() {
         5) renew_ssl ;;
         6) show_help_screen ;;
         7) docker_manager_menu ;;
-        8) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
+        8) control_panel_menu ;;
+        9) echo -e "\n${C_OK}Exiting...${CR}"; exit 0 ;;
         *) echo -e "\n${C_BAD}Invalid option. Please try again.${CR}"; sleep 1; show_menu ;;
     esac
 }
@@ -2173,6 +2286,11 @@ function show_help_screen() {
     _kv "bot-restart" "${C_DIM}Restart one Docker bot${CR}"
     _kv "bot-logs" "${C_DIM}Follow one Docker bot's app logs${CR}"
     _kv "bot-backup-schedule" "${C_DIM}Configure daily/weekly backups${CR}"
+    _kv "panel-install" "${C_DIM}Install or update the web multi-bot panel${CR}"
+    _kv "panel-status" "${C_DIM}Show web panel and agent status${CR}"
+    _kv "panel-reset-password" "${C_DIM}Reset the web panel administrator${CR}"
+    _kv "panel-remove" "${C_DIM}Remove the web panel without removing customer bots${CR}"
+    _kv "docker-init" "${C_DIM}Initialize Docker and the shared HTTPS gateway${CR}"
     _kv "menu" "${C_DIM}Open this interactive panel (default)${CR}"
 
     _sec "Install parameters"
@@ -2191,6 +2309,9 @@ function show_help_screen() {
     _kv "--schedule" "${C_DIM}daily | weekly | off${CR}"
     _kv "--retention" "${C_DIM}Number of backups to keep${CR}"
     _kv "--source-dir" "${C_DIM}Install from a local source directory${CR}"
+    _kv "--panel-domain" "${C_DIM}HTTPS domain for the web management panel${CR}"
+    _kv "--panel-user" "${C_DIM}Web panel administrator username${CR}"
+    _kv "--panel-password" "${C_DIM}Initial/reset web panel password${CR}"
     _kv "--yes" "${C_DIM}Skip interactive confirmations${CR}"
     _kv "-h, --help" "${C_DIM}Show CLI help and exit${CR}"
 
@@ -2205,6 +2326,7 @@ function show_help_screen() {
     printf "    ${C_DIM}              --admin 111 --domain shop1.example.com${CR}\n"
     printf "    ${C_KEY}mirza bot-backup --id shop1 --retention 14${CR}\n"
     printf "    ${C_KEY}mirza bot-restore --id shop1 --backup /path/to/backup.tar.gz${CR}\n"
+    printf "    ${C_KEY}mirza panel-install --panel-domain manager.example.com${CR}\n"
 
     echo ""
     _rule
@@ -3408,6 +3530,7 @@ ARG_NAME=""       ARG_TOKEN=""      ARG_ADMIN=""      ARG_DOMAIN=""
 ARG_DBUSER=""     ARG_DBPASS=""     ARG_VERSION=""    ARG_CHANNEL=""
 ARG_ID=""         ARG_BACKUP=""     ARG_SCHEDULE=""   ARG_RETENTION="7"
 ARG_SOURCE_DIR="" ARG_FORCE="0"
+ARG_TOKEN_FILE="" ARG_PANEL_DOMAIN="" ARG_PANEL_USERNAME="" ARG_PANEL_PASSWORD=""
 
 print_usage() {
     cat <<USAGE
@@ -3433,6 +3556,12 @@ print_usage() {
     bot-restart        Restart a Docker bot
     bot-logs           Follow Docker bot logs
     bot-backup-schedule Configure automatic backups
+    panel-install      Install or update the web multi-bot control panel
+    panel-status       Show control-panel status
+    panel-reset-password Reset the control-panel administrator password
+    panel-remove       Remove only the web panel; customer bots remain intact
+    gateway-refresh    Refresh HTTPS routes for bots and the control panel
+    docker-init        Initialize the isolated Docker runtime and gateway
     menu               Show interactive menu (default)
 
   Options:
@@ -3449,6 +3578,10 @@ print_usage() {
     --schedule <mode>  daily | weekly | off
     --retention <n>    Number of backups to keep
     --source-dir <path> Use a local bot source directory
+    --token-file <path> Read Telegram token from a protected file
+    --panel-domain <domain> HTTPS domain for the web control panel
+    --panel-user <name> Web panel administrator username
+    --panel-password <password> Initial/reset web panel password
     --yes              Skip destructive confirmations
     -h, --help         Show this help and exit
 
@@ -3462,6 +3595,7 @@ print_usage() {
     mirza bot-add --id shop2 --name ShopBot2 --token TOKEN --admin 111 --domain shop2.example.com --source-dir /path/to/custom-source
     mirza bot-backup --id shop1 --retention 14
     mirza bot-restore --id shop1 --backup /opt/mirza/backups/shop1/file.tar.gz
+    mirza panel-install --panel-domain manager.example.com
 
 USAGE
 }
@@ -3470,7 +3604,7 @@ process_arguments() {
     local cmd="menu"
     # First non-flag token is the command
     case "$1" in
-        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule) cmd="$1"; shift ;;
+        install|update|remove|migrate|renew|updater-refresh|menu|bot-add|bot-list|bot-update|bot-backup|bot-restore|bot-remove|bot-restart|bot-logs|bot-backup-schedule|panel-install|panel-status|panel-reset-password|panel-remove|gateway-refresh|docker-init) cmd="$1"; shift ;;
         -h|--help) print_usage; exit 0 ;;
         "") cmd="menu" ;;
         --*) cmd="menu" ;;            # only flags given -> menu, but still parse flags
@@ -3480,13 +3614,14 @@ process_arguments() {
     # Parse remaining flags
     while [ $# -gt 0 ]; do
         case "$1" in
-            --name|--token|--admin|--domain|--db-user|--db-pass|--version|--channel|--id|--backup|--schedule|--retention|--source-dir)
+            --name|--token|--token-file|--admin|--domain|--db-user|--db-pass|--version|--channel|--id|--backup|--schedule|--retention|--source-dir|--panel-domain|--panel-user|--panel-password)
                 [ $# -ge 2 ] || { echo -e "\e[91mMissing value for $1\033[0m"; exit 1; }
                 ;;
         esac
         case "$1" in
             --name)    ARG_NAME="$2";    shift 2 ;;
             --token)   ARG_TOKEN="$2";   shift 2 ;;
+            --token-file) ARG_TOKEN_FILE="$2"; shift 2 ;;
             --admin)   ARG_ADMIN="$2";   shift 2 ;;
             --domain)  ARG_DOMAIN="$2";  shift 2 ;;
             --db-user) ARG_DBUSER="$2";  shift 2 ;;
@@ -3498,6 +3633,9 @@ process_arguments() {
             --schedule) ARG_SCHEDULE="$2"; shift 2 ;;
             --retention) ARG_RETENTION="$2"; shift 2 ;;
             --source-dir) ARG_SOURCE_DIR="$2"; shift 2 ;;
+            --panel-domain) ARG_PANEL_DOMAIN="$2"; shift 2 ;;
+            --panel-user) ARG_PANEL_USERNAME="$2"; shift 2 ;;
+            --panel-password) ARG_PANEL_PASSWORD="$2"; shift 2 ;;
             --yes) ARG_FORCE="1"; shift ;;
             -h|--help) print_usage; exit 0 ;;
             *) echo -e "\e[91mUnknown option: $1\033[0m"; print_usage; exit 1 ;;
@@ -3524,6 +3662,12 @@ process_arguments() {
         bot-restart) docker_bot_restart "$ARG_ID" ;;
         bot-logs) docker_bot_logs "$ARG_ID" ;;
         bot-backup-schedule) docker_bot_schedule_backup "$ARG_ID" "${ARG_SCHEDULE:-daily}" "$ARG_RETENTION" ;;
+        panel-install) control_panel_execute install ;;
+        panel-status) control_panel_execute status ;;
+        panel-reset-password) control_panel_execute reset-password ;;
+        panel-remove) control_panel_execute remove ;;
+        gateway-refresh) docker_refresh_gateway ;;
+        docker-init) docker_install_engine ;;
         menu|*)  show_menu ;;
     esac
 }

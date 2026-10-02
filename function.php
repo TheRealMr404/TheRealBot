@@ -3429,6 +3429,33 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
     $start_sql = date('Y-m-d H:i:s', $start_ts);
     $end_sql = date('Y-m-d H:i:s', $end_ts);
 
+    // service_other.time has historically been saved both as a Unix timestamp
+    // and as Y/m/d H:i:s or Y-m-d H:i:s. Normalize it inside the report query
+    // so old records remain visible in date-range reports.
+    $mixedDateRangeSql = static function (string $column): string {
+        return "(
+            (
+                TRIM({$column}) REGEXP '^[0-9]{9,10}$'
+                AND CAST(TRIM({$column}) AS UNSIGNED) BETWEEN :s_ts AND :e_ts
+            )
+            OR
+            (
+                TRIM({$column}) REGEXP '^[0-9]{13}$'
+                AND FLOOR(CAST(TRIM({$column}) AS UNSIGNED) / 1000) BETWEEN :s_ts_ms AND :e_ts_ms
+            )
+            OR
+            (
+                TRIM({$column}) NOT REGEXP '^[0-9]{9,10}$|^[0-9]{13}$'
+                AND COALESCE(
+                    STR_TO_DATE(TRIM({$column}), '%Y/%m/%d %H:%i:%s'),
+                    STR_TO_DATE(TRIM({$column}), '%Y-%m-%d %H:%i:%s'),
+                    STR_TO_DATE(TRIM({$column}), '%Y/%m/%d'),
+                    STR_TO_DATE(TRIM({$column}), '%Y-%m-%d')
+                ) BETWEEN :s_sql AND :e_sql
+            )
+        )";
+    };
+
     try {
         // ۱. سفارش‌های اولیه (خرید کانفیگ جدید)
         $sql_order = "SELECT COUNT(*) AS count, SUM(CAST(price_product AS UNSIGNED)) AS sum 
@@ -3452,22 +3479,22 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $count_test = (int)($stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
         // تابع کمکی برای خواندن از جدول service_other
-        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql) {
+        $fetchServiceOther = function ($type, $extra_where = '') use ($pdo, $start_ts, $end_ts, $start_sql, $end_sql, $mixedDateRangeSql) {
+            $dateCondition = $mixedDateRangeSql('time');
             $sql = "SELECT COUNT(*) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
                     FROM service_other 
                     WHERE type = :type 
-                    AND (
-                        (time BETWEEN :s_sql AND :e_sql) 
-                        OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
-                    ) 
+                    AND {$dateCondition}
                     {$extra_where}";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 ':type'  => $type,
                 ':s_sql' => $start_sql,
                 ':e_sql' => $end_sql,
-                ':s_ts'  => $start_ts,
-                ':e_ts'  => $end_ts
+                ':s_ts'    => $start_ts,
+                ':e_ts'    => $end_ts,
+                ':s_ts_ms' => $start_ts,
+                ':e_ts_ms' => $end_ts
             ]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             return [(int)($row['count'] ?? 0), (float)($row['sum'] ?? 0)];
@@ -3491,20 +3518,20 @@ function generatePeriodicReport($title, $start_ts, $end_ts, $time_label = '')
         $count_users = (int)($stmt_user->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
         // ۸. ورودی درگاه‌های پرداخت با ستون دقیق time
+        $paymentDateCondition = $mixedDateRangeSql('time');
         $sql_pay = "SELECT COUNT(id) AS count, SUM(CAST(price AS UNSIGNED)) AS sum 
                     FROM Payment_report 
                     WHERE payment_Status = 'paid' 
-                    AND (
-                        (time BETWEEN :s_sql AND :e_sql) 
-                        OR (CAST(time AS UNSIGNED) BETWEEN :s_ts AND :e_ts)
-                    )
+                    AND {$paymentDateCondition}
                     AND Payment_Method NOT IN ('add balance by admin', 'low balance by admin')";
         $stmt_pay = $pdo->prepare($sql_pay);
         $stmt_pay->execute([
             ':s_ts'  => $start_ts,
             ':e_ts'  => $end_ts,
             ':s_sql' => $start_sql,
-            ':e_sql' => $end_sql
+            ':e_sql' => $end_sql,
+            ':s_ts_ms' => $start_ts,
+            ':e_ts_ms' => $end_ts
         ]);
         $res_pay = $stmt_pay->fetch(PDO::FETCH_ASSOC);
         $count_pay = (int)($res_pay['count'] ?? 0);
